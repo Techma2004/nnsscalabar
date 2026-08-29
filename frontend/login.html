@@ -7,12 +7,38 @@
   <title>Portal Sign In — NNSS Calabar</title>
   <link rel="stylesheet" href="styles.css">
   <style>
-    .login-page { min-height: calc(100vh - 72px); display:grid; place-items:center; padding:3rem 1.25rem; margin-top:72px; background:linear-gradient(135deg,#071526 0%,#102b48 55%,#071526 100%); position:relative; overflow:hidden; }
-    .login-page::before,.login-page::after{content:"";position:absolute;border:1px solid rgba(201,162,39,.14);border-radius:50%;pointer-events:none}.login-page::before{width:520px;height:520px;right:-220px;top:-220px}.login-page::after{width:380px;height:380px;left:-190px;bottom:-190px}
-    .login-shell{width:min(100%,960px);display:grid;grid-template-columns:1.05fr .95fr;background:var(--bg-card);border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden;box-shadow:0 28px 80px rgba(0,0,0,.35);position:relative;z-index:1}
-    .login-brand{padding:3.5rem;background:linear-gradient(155deg,#0b1b30,#123b5f);color:#fff;display:flex;flex-direction:column;justify-content:center}.login-brand img{width:82px;height:82px;object-fit:cover;border-radius:50%;border:3px solid var(--accent);margin-bottom:1.5rem}.login-brand .eyebrow{color:var(--accent);font-size:.75rem;font-weight:800;letter-spacing:2px;text-transform:uppercase}.login-brand h2{font-size:2.25rem;line-height:1.15;margin:.6rem 0 1rem}.login-brand p{color:rgba(255,255,255,.76);line-height:1.7;max-width:430px}.login-points{display:grid;gap:.8rem;margin-top:1.8rem}.login-point{padding:.9rem 1rem;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04);font-size:.9rem;color:rgba(255,255,255,.86)}
-    .login-form-panel{padding:3.5rem}.login-form-panel h1{font-size:1.8rem;margin-bottom:.45rem}.login-form-panel .subtitle{color:var(--text-secondary);margin-bottom:2rem}.login-form-panel .btn-primary{margin-top:.25rem}.login-security-note{margin-top:1.25rem;padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--bg);color:var(--text-secondary);font-size:.82rem;line-height:1.55}.login-error{color:var(--danger);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);border-radius:10px;padding:.8rem;font-size:.85rem;text-align:left;margin-top:1rem;display:none}.login-helper{display:flex;justify-content:space-between;gap:1rem;margin-top:.75rem;color:var(--text-secondary);font-size:.78rem}.password-wrap{position:relative}.password-wrap input{padding-right:70px}.password-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--text-secondary);font-weight:700;cursor:pointer;padding:.5rem}
-    @media(max-width:760px){.login-shell{grid-template-columns:1fr}.login-brand{padding:2rem}.login-brand h2{font-size:1.8rem}.login-points{display:none}.login-form-panel{padding:2rem 1.4rem}}
+    .login-page { min-height: calc(100vh - 72px); display:grid; place-items:center; padding:2.5rem 1.25rem; margin-top:72px; background:var(--primary); }
+    .login-shell{width:min(100%,940px);display:grid;grid-template-columns:1fr 1fr;background:var(--bg-card);border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.35)}
+    .login-brand{padding:3rem;background:var(--primary-light);color:#fff;display:flex;flex-direction:column;justify-content:center;border-right:1px solid rgba(255,255,255,.06)}
+    .login-brand-mark{display:flex;align-items:center;gap:.75rem;margin-bottom:2rem}
+    .login-brand-mark img{width:42px;height:42px;border-radius:8px;object-fit:cover}
+    .login-brand-mark span{font-size:.82rem;font-weight:700;letter-spacing:.5px;color:rgba(255,255,255,.85)}
+    .login-brand .eyebrow{color:var(--accent);font-size:.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase}
+    .login-brand h2{font-size:1.85rem;font-weight:700;line-height:1.2;margin:.55rem 0 .85rem;letter-spacing:-0.01em}
+    .login-brand p{color:rgba(255,255,255,.68);line-height:1.65;max-width:420px;font-size:.94rem}
+    .login-points{display:grid;gap:.6rem;margin-top:1.75rem}
+    .login-point{display:flex;align-items:center;gap:.65rem;padding:.7rem .85rem;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.03);font-size:.86rem;color:rgba(255,255,255,.8)}
+    .login-point .nnss-icon{color:var(--accent)}
+    .login-form-panel{padding:3rem}
+    .login-form-panel h1{font-size:1.4rem;font-weight:700;margin-bottom:.35rem;letter-spacing:-0.01em}
+    .login-form-panel .subtitle{color:var(--text-secondary);margin-bottom:1.75rem;font-size:.92rem}
+    .login-form-panel .btn-primary{margin-top:.4rem}
+    .login-error{color:var(--danger);background:rgba(214,69,69,.08);border:1px solid rgba(214,69,69,.2);border-radius:var(--radius-sm);padding:.7rem .85rem;font-size:.84rem;text-align:left;margin-top:1rem;display:none}
+    .login-helper{display:flex;justify-content:space-between;gap:1rem;margin-top:.85rem;color:var(--text-light);font-size:.76rem}
+    .password-wrap{position:relative}
+    .password-wrap input{padding-right:44px}
+    .password-toggle{position:absolute;right:6px;top:0;bottom:0;border:0;background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;width:36px}
+    .password-toggle:hover{color:var(--text)}
+    @media(max-width:760px){
+      .login-shell{grid-template-columns:1fr;border-radius:12px}
+      .login-brand{padding:2rem;border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}
+      .login-brand h2{font-size:1.55rem}
+      .login-points{display:none}
+      .login-form-panel{padding:1.75rem}
+    }
+    @media(max-width:650px){
+      .login-page{margin-top:64px;min-height:calc(100vh - 64px)}
+    }
   </style>
 </head>
 <body>
@@ -25,18 +51,18 @@
 <section class="login-page">
   <div class="login-shell">
     <aside class="login-brand">
-      <img src="command-logo.png" alt="Nigerian Navy Secondary School Calabar crest">
+      <div class="login-brand-mark"><img src="command-logo.png" alt="NNSS Calabar crest"><span>NNSS CALABAR</span></div>
       <div class="eyebrow">Secure School Information System</div>
-      <h2>NNSS Calabar Portal</h2>
+      <h2>Sign in to the school portal</h2>
       <p>One secure point of access for academic records, teaching workflows, departmental review and school administration.</p>
-      <div class="login-points"><div class="login-point">Academic records and published results</div><div class="login-point">Teacher score entry and class management</div><div class="login-point">Administrative and departmental controls</div></div>
+      <div class="login-points" id="loginPoints"></div>
     </aside>
     <main class="login-form-panel">
-      <h1>Sign in to the portal</h1>
+      <h1>Welcome back</h1>
       <p class="subtitle">Use the school-issued account credentials provided to you.</p>
       <form id="portalLoginForm">
         <div class="form-group"><label for="loginUsername">User ID</label><input type="text" id="loginUsername" placeholder="Enter your school ID" required autocomplete="username" maxlength="20" autocapitalize="characters"></div>
-        <div class="form-group"><label for="loginPassword">Password</label><div class="password-wrap"><input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password"><button class="password-toggle" type="button" id="pwdToggleBtn" aria-label="Show password">Show</button></div></div>
+        <div class="form-group"><label for="loginPassword">Password</label><div class="password-wrap"><input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password"><button class="password-toggle" type="button" id="pwdToggleBtn" aria-label="Show password"></button></div></div>
         <button type="submit" class="btn btn-primary" id="loginBtn">Sign in</button>
         <div class="login-error" id="loginError" role="alert"></div>
         <div class="login-helper"><span>Access is role-controlled by the server.</span><span>Secure session</span></div>
@@ -45,11 +71,28 @@
     </main>
   </div>
 </section>
+<script src="icons.js"></script>
 <script src="main.js"></script>
 <script type="module">
 import { login, getCurrentUser } from './api.js';
 const $=s=>document.querySelector(s);
-$('#pwdToggleBtn').onclick=()=>{const input=$('#loginPassword'),btn=$('#pwdToggleBtn');const showing=input.type==='password';input.type=showing?'text':'password';btn.textContent=showing?'Hide':'Show';btn.setAttribute('aria-label',showing?'Hide password':'Show password');};
+
+document.getElementById('loginPoints').innerHTML = [
+  ['document','Academic records and published results'],
+  ['pencil','Teacher score entry and class management'],
+  ['settings','Administrative and departmental controls']
+].map(([icon,text]) => `<div class="login-point">${window.Icon(icon,{size:16})}<span>${text}</span></div>`).join('');
+
+const pwdToggle = $('#pwdToggleBtn');
+pwdToggle.innerHTML = window.Icon('eye', { size: 18 });
+pwdToggle.onclick = () => {
+  const input = $('#loginPassword');
+  const showing = input.type === 'password';
+  input.type = showing ? 'text' : 'password';
+  pwdToggle.innerHTML = window.Icon(showing ? 'eyeoff' : 'eye', { size: 18 });
+  pwdToggle.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+};
+
 $('#portalLoginForm').addEventListener('submit',async e=>{e.preventDefault();const username=$('#loginUsername').value.trim().toUpperCase();const password=$('#loginPassword').value;const error=$('#loginError');const btn=$('#loginBtn');error.style.display='none';btn.disabled=true;btn.innerHTML='<span class="loading"></span> Signing in…';try{const user=await login(username,password);window.showToast('Sign in successful.','success');setTimeout(()=>location.href='portal.html',350);}catch(err){error.textContent=err.message||'Unable to sign in.';error.style.display='block';btn.disabled=false;btn.textContent='Sign in';}});
 getCurrentUser().then(()=>location.href='portal.html').catch(()=>{});
 </script>

@@ -1,0 +1,701 @@
+From 344c0bea3e03e252bb4ce4a4521b1862e7e2942d Mon Sep 17 00:00:00 2001
+From: Techma2004 <techma@users.noreply.github.com>
+Date: Sat, 29 Aug 2026 06:56:31 +0000
+Subject: [PATCH] Redesign login page and portal for a professional, enterprise
+ look
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add icons.js: a small inline-SVG icon set (stroke, currentColor) to
+  replace every emoji glyph used in the login/portal UI (toast icons,
+  sidebar nav, dashboard stat cards, modal close, mobile nav toggle,
+  sign-out button, password show/hide, print button, AI import
+  dropzone). No icon library dependency, no network fetch — keeps the
+  offline-first footprint of the app.
+- Refine design tokens in styles.css: calmer navy/brass palette,
+  tighter border-radius and shadows, a proper system font stack (no
+  external font CDN), toned-down font weights/sizes across buttons,
+  badges, sidebar, dashboard cards and the portal-wide component
+  system. Also adds a matching '.toast.warning' style and a
+  currentColor-based icon treatment throughout.
+- Rebuild login.html: single-accent brand panel (no decorative rings
+  or oversized circular crest), icon-based password visibility
+  toggle, tightened responsive breakpoints.
+- Rebuild the portal shell (portal.html/portal.js): compact sidebar
+  with real icons per section, cleaner topbar, icon-driven stat cards
+  and workflow call-outs, refreshed modal/toast chrome. All content
+  is still rendered from the live API responses in state — no mock
+  or placeholder data was introduced.
+- Fixed a real mobile-cascade bug introduced by the redesign: the
+  navbar's height shrinks to 64px under 650px width, but login.html's
+  own inline styles for .login-page were unconditional and always
+  applied the 72px desktop offset, leaving a visible gap under the
+  navbar on phones. Added the matching mobile override so the two
+  stay in sync.
+- Cleaned up now-dead/conflicting mobile CSS left over from the old
+  emoji-based stat icons and the old circular login crest image.
+---
+ frontend/icons.js    |  47 +++++++++
+ frontend/login.html  |  67 ++++++++++---
+ frontend/main.js     |  24 ++++-
+ frontend/portal.html |   7 +-
+ frontend/portal.js   |  28 ++++--
+ frontend/styles.css  | 233 +++++++++++++++++++++++--------------------
+ 6 files changed, 269 insertions(+), 137 deletions(-)
+ create mode 100644 frontend/icons.js
+
+diff --git a/frontend/icons.js b/frontend/icons.js
+new file mode 100644
+index 0000000..6806436
+--- /dev/null
++++ b/frontend/icons.js
+@@ -0,0 +1,47 @@
++/* =====================================================
++   NNSS CALABAR — icons.js
++   Minimal inline-SVG icon set (stroke, currentColor).
++   Loaded as a classic script so both main.js and the
++   portal.js module can call window.Icon(name).
++   ===================================================== */
++(function () {
++  const PATHS = {
++    grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
++    document: '<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>',
++    book: '<path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/>',
++    bell: '<path d="M12 3a5 5 0 0 0-5 5v3.3c0 1-.4 2-1.1 2.7L4 16h16l-1.9-1.9A3.9 3.9 0 0 1 17 11.4V8a5 5 0 0 0-5-5z"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0"/>',
++    user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>',
++    users: '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 19c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15 13.2c2.7.4 4.6 2.4 5.5 5.8"/>',
++    idbadge: '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="9.3" r="2.3"/><path d="M8 16.2h8"/>',
++    pencil: '<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>',
++    cpu: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
++    checksquare: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M8 12l3 3 5-6"/>',
++    userplus: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5"/><line x1="18" y1="8" x2="18" y2="14"/><line x1="15" y1="11" x2="21" y2="11"/>',
++    settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1M18.6 18.6l-2.1-2.1M7.5 7.5 5.4 5.4"/>',
++    barchart: '<line x1="5" y1="20" x2="5" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="19" y1="20" x2="19" y2="14"/>',
++    trophy: '<path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3"/><path d="M12 13v3.5M9 21h6M9.5 16.5h5v1.8a1.7 1.7 0 0 1-1.7 1.7h-1.6a1.7 1.7 0 0 1-1.7-1.7z"/>',
++    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><line x1="21" y1="12" x2="9" y2="12"/>',
++    x: '<line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/>',
++    eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
++    eyeoff: '<path d="M3 3l18 18"/><path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17.9 17.9 0 0 1-3.2 4.1M6.5 6.6C4 8.3 2 12 2 12s3.5 7 10 7c1.4 0 2.6-.3 3.7-.8"/><path d="M9.5 9.6a3 3 0 0 0 4.2 4.2"/>',
++    printer: '<path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><rect x="7" y="14" width="10" height="7"/>',
++    plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
++    arrowright: '<line x1="4" y1="12" x2="19" y2="12"/><path d="M13 6l6 6-6 6"/>',
++    checkcircle: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/>',
++    alerttriangle: '<path d="M12 3.5l9.5 16.5H2.5z"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17.1" r="1" fill="currentColor" stroke="none"/>',
++    xcircle: '<circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/>',
++    infocircle: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/>',
++    trendingup: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 6h6v6"/>',
++    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
++    menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
++    shield: '<path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z"/>'
++  };
++
++  window.Icon = function (name, opts) {
++    const o = opts || {};
++    const size = o.size || 18;
++    const cls = o.class ? ` ${o.class}` : '';
++    const body = PATHS[name] || PATHS.grid;
++    return `<svg class="nnss-icon${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
++  };
++})();
+diff --git a/frontend/login.html b/frontend/login.html
+index dda092f..023fe86 100644
+--- a/frontend/login.html
++++ b/frontend/login.html
+@@ -7,12 +7,38 @@
+   <title>Portal Sign In — NNSS Calabar</title>
+   <link rel="stylesheet" href="styles.css">
+   <style>
+-    .login-page { min-height: calc(100vh - 72px); display:grid; place-items:center; padding:3rem 1.25rem; margin-top:72px; background:linear-gradient(135deg,#071526 0%,#102b48 55%,#071526 100%); position:relative; overflow:hidden; }
+-    .login-page::before,.login-page::after{content:"";position:absolute;border:1px solid rgba(201,162,39,.14);border-radius:50%;pointer-events:none}.login-page::before{width:520px;height:520px;right:-220px;top:-220px}.login-page::after{width:380px;height:380px;left:-190px;bottom:-190px}
+-    .login-shell{width:min(100%,960px);display:grid;grid-template-columns:1.05fr .95fr;background:var(--bg-card);border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden;box-shadow:0 28px 80px rgba(0,0,0,.35);position:relative;z-index:1}
+-    .login-brand{padding:3.5rem;background:linear-gradient(155deg,#0b1b30,#123b5f);color:#fff;display:flex;flex-direction:column;justify-content:center}.login-brand img{width:82px;height:82px;object-fit:cover;border-radius:50%;border:3px solid var(--accent);margin-bottom:1.5rem}.login-brand .eyebrow{color:var(--accent);font-size:.75rem;font-weight:800;letter-spacing:2px;text-transform:uppercase}.login-brand h2{font-size:2.25rem;line-height:1.15;margin:.6rem 0 1rem}.login-brand p{color:rgba(255,255,255,.76);line-height:1.7;max-width:430px}.login-points{display:grid;gap:.8rem;margin-top:1.8rem}.login-point{padding:.9rem 1rem;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04);font-size:.9rem;color:rgba(255,255,255,.86)}
+-    .login-form-panel{padding:3.5rem}.login-form-panel h1{font-size:1.8rem;margin-bottom:.45rem}.login-form-panel .subtitle{color:var(--text-secondary);margin-bottom:2rem}.login-form-panel .btn-primary{margin-top:.25rem}.login-security-note{margin-top:1.25rem;padding:1rem;border:1px solid var(--border);border-radius:12px;background:var(--bg);color:var(--text-secondary);font-size:.82rem;line-height:1.55}.login-error{color:var(--danger);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);border-radius:10px;padding:.8rem;font-size:.85rem;text-align:left;margin-top:1rem;display:none}.login-helper{display:flex;justify-content:space-between;gap:1rem;margin-top:.75rem;color:var(--text-secondary);font-size:.78rem}.password-wrap{position:relative}.password-wrap input{padding-right:70px}.password-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--text-secondary);font-weight:700;cursor:pointer;padding:.5rem}
+-    @media(max-width:760px){.login-shell{grid-template-columns:1fr}.login-brand{padding:2rem}.login-brand h2{font-size:1.8rem}.login-points{display:none}.login-form-panel{padding:2rem 1.4rem}}
++    .login-page { min-height: calc(100vh - 72px); display:grid; place-items:center; padding:2.5rem 1.25rem; margin-top:72px; background:var(--primary); }
++    .login-shell{width:min(100%,940px);display:grid;grid-template-columns:1fr 1fr;background:var(--bg-card);border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.35)}
++    .login-brand{padding:3rem;background:var(--primary-light);color:#fff;display:flex;flex-direction:column;justify-content:center;border-right:1px solid rgba(255,255,255,.06)}
++    .login-brand-mark{display:flex;align-items:center;gap:.75rem;margin-bottom:2rem}
++    .login-brand-mark img{width:42px;height:42px;border-radius:8px;object-fit:cover}
++    .login-brand-mark span{font-size:.82rem;font-weight:700;letter-spacing:.5px;color:rgba(255,255,255,.85)}
++    .login-brand .eyebrow{color:var(--accent);font-size:.72rem;font-weight:700;letter-spacing:1.4px;text-transform:uppercase}
++    .login-brand h2{font-size:1.85rem;font-weight:700;line-height:1.2;margin:.55rem 0 .85rem;letter-spacing:-0.01em}
++    .login-brand p{color:rgba(255,255,255,.68);line-height:1.65;max-width:420px;font-size:.94rem}
++    .login-points{display:grid;gap:.6rem;margin-top:1.75rem}
++    .login-point{display:flex;align-items:center;gap:.65rem;padding:.7rem .85rem;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:rgba(255,255,255,.03);font-size:.86rem;color:rgba(255,255,255,.8)}
++    .login-point .nnss-icon{color:var(--accent)}
++    .login-form-panel{padding:3rem}
++    .login-form-panel h1{font-size:1.4rem;font-weight:700;margin-bottom:.35rem;letter-spacing:-0.01em}
++    .login-form-panel .subtitle{color:var(--text-secondary);margin-bottom:1.75rem;font-size:.92rem}
++    .login-form-panel .btn-primary{margin-top:.4rem}
++    .login-error{color:var(--danger);background:rgba(214,69,69,.08);border:1px solid rgba(214,69,69,.2);border-radius:var(--radius-sm);padding:.7rem .85rem;font-size:.84rem;text-align:left;margin-top:1rem;display:none}
++    .login-helper{display:flex;justify-content:space-between;gap:1rem;margin-top:.85rem;color:var(--text-light);font-size:.76rem}
++    .password-wrap{position:relative}
++    .password-wrap input{padding-right:44px}
++    .password-toggle{position:absolute;right:6px;top:0;bottom:0;border:0;background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;width:36px}
++    .password-toggle:hover{color:var(--text)}
++    @media(max-width:760px){
++      .login-shell{grid-template-columns:1fr;border-radius:12px}
++      .login-brand{padding:2rem;border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}
++      .login-brand h2{font-size:1.55rem}
++      .login-points{display:none}
++      .login-form-panel{padding:1.75rem}
++    }
++    @media(max-width:650px){
++      .login-page{margin-top:64px;min-height:calc(100vh - 64px)}
++    }
+   </style>
+ </head>
+ <body>
+@@ -25,18 +51,18 @@
+ <section class="login-page">
+   <div class="login-shell">
+     <aside class="login-brand">
+-      <img src="command-logo.png" alt="Nigerian Navy Secondary School Calabar crest">
++      <div class="login-brand-mark"><img src="command-logo.png" alt="NNSS Calabar crest"><span>NNSS CALABAR</span></div>
+       <div class="eyebrow">Secure School Information System</div>
+-      <h2>NNSS Calabar Portal</h2>
++      <h2>Sign in to the school portal</h2>
+       <p>One secure point of access for academic records, teaching workflows, departmental review and school administration.</p>
+-      <div class="login-points"><div class="login-point">Academic records and published results</div><div class="login-point">Teacher score entry and class management</div><div class="login-point">Administrative and departmental controls</div></div>
++      <div class="login-points" id="loginPoints"></div>
+     </aside>
+     <main class="login-form-panel">
+-      <h1>Sign in to the portal</h1>
++      <h1>Welcome back</h1>
+       <p class="subtitle">Use the school-issued account credentials provided to you.</p>
+       <form id="portalLoginForm">
+         <div class="form-group"><label for="loginUsername">User ID</label><input type="text" id="loginUsername" placeholder="Enter your school ID" required autocomplete="username" maxlength="20" autocapitalize="characters"></div>
+-        <div class="form-group"><label for="loginPassword">Password</label><div class="password-wrap"><input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password"><button class="password-toggle" type="button" id="pwdToggleBtn" aria-label="Show password">Show</button></div></div>
++        <div class="form-group"><label for="loginPassword">Password</label><div class="password-wrap"><input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password"><button class="password-toggle" type="button" id="pwdToggleBtn" aria-label="Show password"></button></div></div>
+         <button type="submit" class="btn btn-primary" id="loginBtn">Sign in</button>
+         <div class="login-error" id="loginError" role="alert"></div>
+         <div class="login-helper"><span>Access is role-controlled by the server.</span><span>Secure session</span></div>
+@@ -45,11 +71,28 @@
+     </main>
+   </div>
+ </section>
++<script src="icons.js"></script>
+ <script src="main.js"></script>
+ <script type="module">
+ import { login, getCurrentUser } from './api.js';
+ const $=s=>document.querySelector(s);
+-$('#pwdToggleBtn').onclick=()=>{const input=$('#loginPassword'),btn=$('#pwdToggleBtn');const showing=input.type==='password';input.type=showing?'text':'password';btn.textContent=showing?'Hide':'Show';btn.setAttribute('aria-label',showing?'Hide password':'Show password');};
++
++document.getElementById('loginPoints').innerHTML = [
++  ['document','Academic records and published results'],
++  ['pencil','Teacher score entry and class management'],
++  ['settings','Administrative and departmental controls']
++].map(([icon,text]) => `<div class="login-point">${window.Icon(icon,{size:16})}<span>${text}</span></div>`).join('');
++
++const pwdToggle = $('#pwdToggleBtn');
++pwdToggle.innerHTML = window.Icon('eye', { size: 18 });
++pwdToggle.onclick = () => {
++  const input = $('#loginPassword');
++  const showing = input.type === 'password';
++  input.type = showing ? 'text' : 'password';
++  pwdToggle.innerHTML = window.Icon(showing ? 'eyeoff' : 'eye', { size: 18 });
++  pwdToggle.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
++};
++
+ $('#portalLoginForm').addEventListener('submit',async e=>{e.preventDefault();const username=$('#loginUsername').value.trim().toUpperCase();const password=$('#loginPassword').value;const error=$('#loginError');const btn=$('#loginBtn');error.style.display='none';btn.disabled=true;btn.innerHTML='<span class="loading"></span> Signing in…';try{const user=await login(username,password);window.showToast('Sign in successful.','success');setTimeout(()=>location.href='portal.html',350);}catch(err){error.textContent=err.message||'Unable to sign in.';error.style.display='block';btn.disabled=false;btn.textContent='Sign in';}});
+ getCurrentUser().then(()=>location.href='portal.html').catch(()=>{});
+ </script>
+diff --git a/frontend/main.js b/frontend/main.js
+index c2d6341..e67945d 100644
+--- a/frontend/main.js
++++ b/frontend/main.js
+@@ -79,11 +79,11 @@ function showToast(msg, type = 'info', duration = 3500) {
+   const container = document.getElementById('toastContainer');
+   if (!container) return;
+ 
+-  const icons = { success:'✅', error:'❌', info:'ℹ️', warning:'⚠️' };
++  const icons = { success:'checkcircle', error:'xcircle', info:'infocircle', warning:'alerttriangle' };
+   const toast = document.createElement('div');
+   toast.className = `toast ${type}`;
+   const iconEl = document.createElement('span');
+-  iconEl.textContent = icons[type] || icons.info;
++  iconEl.innerHTML = (typeof window.Icon === 'function') ? window.Icon(icons[type] || icons.info, { size: 18 }) : '';
+   const msgEl = document.createElement('span');
+   msgEl.textContent = msg;
+   toast.append(iconEl, msgEl);
+@@ -116,10 +116,30 @@ function initScrollAnimations() {
+   });
+ }
+ 
++// ---- PORTAL CHROME ICONS ----
++function initChromeIcons() {
++  if (typeof window.Icon !== 'function') return;
++  const map = [
++    ['#mobileToggle', 'menu', 20],
++    ['#modalClose', 'x', 16],
++    ['#logoutSide', 'logout', 16]
++  ];
++  map.forEach(([sel, name, size]) => {
++    const el = document.querySelector(sel);
++    if (!el) return;
++    if (sel === '#logoutSide') {
++      el.innerHTML = `${window.Icon(name, { size })}<span>Sign out</span>`;
++    } else {
++      el.innerHTML = window.Icon(name, { size });
++    }
++  });
++}
++
+ // ---- INIT ON LOAD ----
+ document.addEventListener('DOMContentLoaded', () => {
+   initCarousel();
+   initScrollAnimations();
++  initChromeIcons();
+ 
+   // Smooth scroll for anchor links
+   document.querySelectorAll('a[href^="#"]').forEach(a => {
+diff --git a/frontend/portal.html b/frontend/portal.html
+index 63fe81d..e2549cf 100644
+--- a/frontend/portal.html
++++ b/frontend/portal.html
+@@ -23,7 +23,7 @@
+ </nav>
+ 
+ <div class="sidebar-overlay" id="sidebarOverlay"></div>
+-<button class="mobile-toggle no-print" id="mobileToggle" aria-label="Open navigation">☰</button>
++<button class="mobile-toggle no-print" id="mobileToggle" aria-label="Open navigation"></button>
+ 
+ <div class="dashboard portal-shell">
+   <aside class="sidebar" id="sidebar">
+@@ -33,7 +33,7 @@
+       <span id="sidebarRole">Account</span>
+     </div>
+     <nav class="sidebar-nav" id="sidebarNav"></nav>
+-    <div class="sidebar-logout"><button id="logoutSide">⏻ &nbsp;Sign Out</button></div>
++    <div class="sidebar-logout"><button id="logoutSide"></button></div>
+   </aside>
+ 
+   <main class="main-content"><div id="appRoot" aria-live="polite"></div></main>
+@@ -41,11 +41,12 @@
+ 
+ <div class="modal-overlay" id="globalModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+   <div class="modal" id="globalModalContent">
+-    <div class="modal-header"><h3 id="modalTitle">Modal</h3><button class="modal-close" id="modalClose" aria-label="Close">✕</button></div>
++    <div class="modal-header"><h3 id="modalTitle">Modal</h3><button class="modal-close" id="modalClose" aria-label="Close"></button></div>
+     <div id="modalBody"></div>
+   </div>
+ </div>
+ 
++<script src="icons.js"></script>
+ <script src="main.js"></script>
+ <script type="module" src="portal.js"></script>
+ </body>
+diff --git a/frontend/portal.js b/frontend/portal.js
+index 8376790..accc9c3 100644
+--- a/frontend/portal.js
++++ b/frontend/portal.js
+@@ -16,6 +16,12 @@ const menus = {
+   admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Announcements','announcements'],['System','system'],['Account Management','accounts']],
+   commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Top Performers','top'],['Announcements','announcements'],['Account Management','accounts']]
+ };
++const panelIcons = {
++  dashboard:'grid', results:'document', subjects:'book', announcements:'bell', profile:'user',
++  scores:'pencil', 'ai-import':'cpu', students:'users', teachers:'idbadge', approval:'checksquare',
++  system:'settings', accounts:'userplus', overview:'barchart', top:'trophy'
++};
++const ic = (name,size) => (typeof window.Icon==='function') ? window.Icon(name,{size:size||18}) : '';
+ 
+ function toast(message,type='info') { window.showToast(message,type); }
+ function openModal(title, body) { $('#modalTitle').textContent=title; $('#modalBody').innerHTML=body; $('#globalModal').classList.add('active'); }
+@@ -23,12 +29,12 @@ function closeModal(){ $('#globalModal').classList.remove('active'); }
+ function initials(name){ return String(name||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase() || '?'; }
+ function fmtDate(v){ if(!v) return '—'; const d=new Date(v); return Number.isNaN(d.getTime())?'—':d.toLocaleDateString('en-NG',{day:'2-digit',month:'short',year:'numeric'}); }
+ function gradeClass(g){ return `grade-${String(g||'')[0] || 'C'}`; }
+-function stat(label,value,icon){ return `<div class="portal-stat"><span class="stat-icon">${icon}</span><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`; }
++function stat(label,value,icon){ return `<div class="portal-stat"><span class="stat-icon">${ic(icon,16)}</span><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`; }
+ function table(headers,rows,empty='No records found.') { return `<div class="table-wrapper"><table class="portal-table"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headers.length}"><div class="portal-empty">${esc(empty)}</div></td></tr>`}</tbody></table></div>`; }
+ function card(title,body,actions=''){ return `<section class="portal-card"><div class="portal-card-head"><h3>${title}</h3>${actions}</div><div class="portal-card-body">${body}</div></section>`; }
+ 
+ function buildNav(){
+-  $('#sidebarNav').innerHTML=(menus[state.user.role]||[]).map(item=>{ const [first, second, third] = item; const icon = third ? first : ''; const label = third ? second : first; const panel = third || second; return `<a href="#${panel}" data-panel="${panel}">${icon ? `<span class="icon">${icon}</span>` : ''}${label}</a>`; }).join('');
++  $('#sidebarNav').innerHTML=(menus[state.user.role]||[]).map(([label,panel])=>`<a href="#${panel}" data-panel="${panel}"><span class="icon">${ic(panelIcons[panel]||'grid',17)}</span>${esc(label)}</a>`).join('');
+   $('#sidebarNav').querySelectorAll('a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault(); render(a.dataset.panel);}));
+ }
+ function activeNav(panel){ $('#sidebarNav').querySelectorAll('a').forEach(a=>a.classList.toggle('active',a.dataset.panel===panel)); $('#sidebar').classList.remove('open'); $('#sidebarOverlay').classList.remove('active'); }
+@@ -37,7 +43,7 @@ async function init(){
+   try {
+     state.user=await getCurrentUser();
+   } catch { location.href='login.html'; return; }
+-  $('#navUserBadge').textContent=`👤 ${state.user.name} · ${roleName[state.user.role]}`;
++  $('#navUserBadge').textContent=`${state.user.name} · ${roleName[state.user.role]}`;
+   $('#sidebarAvatar').textContent=initials(state.user.name); $('#sidebarName').textContent=state.user.name; $('#sidebarRole').textContent=roleName[state.user.role];
+   buildNav();
+   $('#logoutTop').onclick=signOut; $('#logoutSide').onclick=signOut; $('#modalClose').onclick=closeModal; $('#globalModal').addEventListener('click',e=>{if(e.target.id==='globalModal')closeModal();});
+@@ -96,15 +102,15 @@ function renderPanel(panel){
+ 
+ function renderDashboard(){
+   const r=state.user.role;
+-  if(r==='student') return `<div class="portal-toolbar"><div><div class="eyebrow">Student workspace</div><h1>Welcome, ${esc(state.user.name.split(' ')[0])} 👋</h1><p>Your academic information at a glance.</p></div></div>
+-    <div class="portal-grid">${stat('Approved subjects',state.studentSummary.subjects||0,'📚')}${stat('Current average',state.studentSummary.average?`${state.studentSummary.average}%`:'—','📈')}${stat('Passed subjects',state.studentSummary.passes||0,'✅')}${stat('Active notices',state.stats.active_announcements||0,'📢')}</div>
+-    ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">● Active</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)} `;
++  if(r==='student') return `<div class="portal-toolbar"><div><div class="eyebrow">Student workspace</div><h1>Welcome, ${esc(state.user.name.split(' ')[0])}</h1><p>Your academic information at a glance.</p></div></div>
++    <div class="portal-grid">${stat('Approved subjects',state.studentSummary.subjects||0,'book')}${stat('Current average',state.studentSummary.average?`${state.studentSummary.average}%`:'—','trendingup')}${stat('Passed subjects',state.studentSummary.passes||0,'checkcircle')}${stat('Active notices',state.stats.active_announcements||0,'bell')}</div>
++    ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">Active</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)} `;
+   const title={teacher:'Teacher workspace',hod:'Department control centre',admin:'Administration control centre',commandant:'Commandant overview'}[r];
+   const subtitle={teacher:'Manage score entry and your assigned students.',hod:'Review departmental results before publication.',admin:'Manage accounts, academic records and school communications.',commandant:'Monitor school-wide academic performance and activity.'}[r];
+-  return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>${title}</h1><p>${subtitle}</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'👥')}${stat('Teachers',state.stats.teachers,'👨‍🏫')}${stat('Approved results',state.stats.results,'📊')}${stat('Pending results',state.stats.pending_results,'⏳')}</div>
+-    ${r==='teacher'?card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>📝</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>30 + 70</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>✅</strong></div>`):r==='hod'?card('Approval queue',`<p>There are <strong>${state.stats.pending_results||0}</strong> results waiting for review.</p><button class="btn btn-primary" data-go="approval">Open approval queue →</button>`):card('System status',`<div class="portal-kpi"><span>Database-backed portal</span><strong class="portal-badge ok">● Online</strong></div><div class="portal-kpi"><span>Active announcements</span><strong>${state.stats.active_announcements||0}</strong></div>`)}`;
++  return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>${title}</h1><p>${subtitle}</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'users')}${stat('Teachers',state.stats.teachers,'idbadge')}${stat('Approved results',state.stats.results,'barchart')}${stat('Pending results',state.stats.pending_results,'clock')}</div>
++    ${r==='teacher'?card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>30 + 70</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>${ic('checkcircle',16)}</strong></div>`):r==='hod'?card('Approval queue',`<p>There are <strong>${state.stats.pending_results||0}</strong> results waiting for review.</p><button class="btn btn-primary" data-go="approval">Open approval queue ${ic('arrowright',15)}</button>`):card('System status',`<div class="portal-kpi"><span>Database-backed portal</span><strong class="portal-badge ok">Online</strong></div><div class="portal-kpi"><span>Active announcements</span><strong>${state.stats.active_announcements||0}</strong></div>`)}`;
+ }
+-function renderResults(){ const rows=state.results.map((r,i)=>`<tr><td>${i+1}</td><td><strong>${esc(r.subject_name)}</strong></td><td>${esc(r.term_name)}<br><small>${esc(r.session_name)}</small></td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${r.is_approved?'<span class="portal-badge ok">Approved</span>':'<span class="portal-badge pending">Pending</span>'}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" onclick="window.print()">🖨 Print</button></div>${card('Published results',table(['#','Subject','Term','CA','Exam','Total','Grade','Status'],rows,'No approved results have been published yet.'))}`; }
++function renderResults(){ const rows=state.results.map((r,i)=>`<tr><td>${i+1}</td><td><strong>${esc(r.subject_name)}</strong></td><td>${esc(r.term_name)}<br><small>${esc(r.session_name)}</small></td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${r.is_approved?'<span class="portal-badge ok">Approved</span>':'<span class="portal-badge pending">Pending</span>'}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" onclick="window.print()">${ic('printer',16)}Print</button></div>${card('Published results',table(['#','Subject','Term','CA','Exam','Total','Grade','Status'],rows,'No approved results have been published yet.'))}`; }
+ function renderSubjects(){ const rows=state.subjects.map((s,i)=>`<tr><td>${i+1}</td><td><strong>${esc(s.subject_name)}</strong></td><td>${s.ca_max}</td><td>${s.exam_max}</td><td>${s.ca_max+s.exam_max}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic programme</div><h1>My Subjects</h1></div></div>${card('Enrolled subjects',table(['#','Subject','CA max','Exam max','Total'],rows,'No subjects have been enrolled for this session.'))}`; }
+ function renderAnnouncements(){ const items=state.announcements.map(a=>`<article class="portal-kpi"><div><strong>${esc(a.title)}</strong><div><small>${fmtDate(a.publish_at)} · ${esc(a.type)}</small></div><p style="margin-top:.4rem">${esc(a.body)}</p></div>${a.is_pinned?'<span class="portal-badge ok">Pinned</span>':''}</article>`).join(''); const action=['admin','commandant'].includes(state.user.role)?'<button class="btn btn-primary" id="newAnnouncement">+ Publish</button>':''; return `<div class="portal-toolbar"><div><div class="eyebrow">School communication</div><h1>Announcements</h1></div>${action}</div>${card('Latest notices',items||'<div class="portal-empty">No active announcements.</div>')}`; }
+ function renderProfile(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Account</div><h1>My Profile</h1></div></div>${card('Account details',`<div class="portal-form-grid"><div class="info-item"><label>Full name</label><p>${esc(state.user.name)}</p></div><div class="info-item"><label>Role</label><p>${esc(roleName[state.user.role])}</p></div><div class="info-item"><label>User ID</label><p>${esc(state.user.user_code)}</p></div><div class="info-item"><label>Email</label><p>${esc(state.user.email||'Not provided')}</p></div></div>`)}`; }
+@@ -117,10 +123,10 @@ function renderAccounts(){ const rows=state.accounts.map(a=>`<tr><td><strong>${e
+ function renderApproval(){ const rows=state.pending.map(r=>`<tr><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${esc(r.class_name)} ${esc(r.arm_name)}</td><td>${esc(r.subject_name)}</td><td>${esc(r.term_name)}</td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong> <span class="${gradeClass(r.grade)}">${esc(r.grade)}</span></td><td><button class="btn btn-primary" data-approve="${r.id}">Approve</button></td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Quality control</div><h1>Result Approval</h1><p>Review each submitted score before it becomes visible to students.</p></div></div>${card('Pending approval queue',table(['Student','Class','Subject','Term','CA','Exam','Total','Action'],rows,'No pending results. The department is up to date.'))}`; }
+ function renderTeachers(){ const rows=state.teachers.map((t,i)=>`<tr><td>${i+1}</td><td><strong>${esc(t.full_name)}</strong><br><small>${esc(t.user_code)}</small></td><td>${esc(t.department||'—')}</td><td>${esc(t.subjects||'—')}</td><td>${esc(t.email||'—')}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Staff directory</div><h1>Teachers</h1></div></div>${card('Teaching staff',table(['#','Teacher','Department','Subjects','Email'],rows,'No teachers found.'))}`; }
+ function renderSystem(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Configuration</div><h1>System Administration</h1></div></div>${card('Academic configuration',`<p>Academic sessions, terms, departments, subjects and assignments are stored in the database.</p><p style="margin-top:.7rem">Use the account creation workflow to provision controlled portal access. Passwords are hashed server-side and are never returned to the browser.</p>`)}${card('Security posture',`<div class="portal-kpi"><span>Authentication</span><strong>HTTP-only session cookie</strong></div><div class="portal-kpi"><span>Role enforcement</span><strong>Server-side</strong></div><div class="portal-kpi"><span>Result publication</span><strong>HOD approval required</strong></div>`)}`; }
+-function renderOverview(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Commandant</div><h1>School Overview</h1><p>High-level academic and operational indicators.</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'👥')}${stat('Teachers',state.stats.teachers,'👨‍🏫')}${stat('Approved results',state.stats.results,'📊')}${stat('Pending review',state.stats.pending_results,'⏳')}</div>${card('Operational picture','The dashboard is backed by live database queries rather than demo values. Use Top Performers for academic ranking and Announcements for official communications.')}`; }
++function renderOverview(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Commandant</div><h1>School Overview</h1><p>High-level academic and operational indicators.</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'users')}${stat('Teachers',state.stats.teachers,'idbadge')}${stat('Approved results',state.stats.results,'barchart')}${stat('Pending review',state.stats.pending_results,'clock')}</div>${card('Operational picture','The dashboard is backed by live database queries rather than demo values. Use Top Performers for academic ranking and Announcements for official communications.')}`; }
+ function renderTop(){ const rows=state.top.map((r,i)=>`<tr><td><span class="portal-badge ${i<3?'ok':''}">#${i+1}</span></td><td><strong>${esc(r.full_name)}</strong><br><small>${esc(r.user_code)}</small></td><td>${esc(r.class)}</td><td>${esc(r.arm)}</td><td><strong>${r.avg_score}%</strong></td><td>${r.subjects_taken}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic excellence</div><h1>Top Performers</h1></div></div>${card('Approved-result ranking',table(['Rank','Student','Class','Arm','Average','Subjects'],rows,'No approved results are available for ranking.'))}`; }
+ 
+-function renderAiImport(){ const terms=(state.meta?.terms||[]).filter(t=>!t.result_locked); return `<div class="portal-toolbar"><div><div class="eyebrow">Assisted data entry</div><h1>AI Score-Sheet Import</h1><p>Capture or upload a score sheet, review the extracted values, then submit verified scores for HOD approval.</p></div><span id="aiStatusBadge" class="portal-badge pending">Checking AI service…</span></div>${card('1. Select assignment',`<div class="portal-form-grid"><div class="form-group"><label for="aiAssignment">Teaching assignment</label><select id="aiAssignment"><option value="">Select class, arm and subject</option>${state.assignments.map(a=>`<option value="${a.id}">${esc(a.class_name)} ${esc(a.arm_name)} · ${esc(a.subject_name)} · ${esc(a.session_name)}</option>`).join('')}</select></div><div class="form-group"><label for="aiTerm">Academic term</label><select id="aiTerm"><option value="">Select term</option>${terms.map(t=>`<option value="${t.id}" ${t.is_current?'selected':''}>${esc(t.session_name)} · ${esc(t.term_name)}</option>`).join('')}</select></div></div>`)}${card('2. Capture or upload',`<div class="ai-dropzone"><div class="ai-drop-icon">+</div><h3>Score sheet image</h3><p>Use a clear, well-lit JPG, PNG or WebP image. The image is processed for extraction and is not stored by this feature.</p><div class="portal-actions"><label class="btn btn-primary" for="aiImage">Choose image<input id="aiImage" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden></label><button class="btn btn-secondary" id="aiAnalyze" disabled>Analyze sheet</button></div><small id="aiFileName">No image selected</small></div>`)}<div id="aiResults"></div>`; }
++function renderAiImport(){ const terms=(state.meta?.terms||[]).filter(t=>!t.result_locked); return `<div class="portal-toolbar"><div><div class="eyebrow">Assisted data entry</div><h1>AI Score-Sheet Import</h1><p>Capture or upload a score sheet, review the extracted values, then submit verified scores for HOD approval.</p></div><span id="aiStatusBadge" class="portal-badge pending">Checking AI service…</span></div>${card('1. Select assignment',`<div class="portal-form-grid"><div class="form-group"><label for="aiAssignment">Teaching assignment</label><select id="aiAssignment"><option value="">Select class, arm and subject</option>${state.assignments.map(a=>`<option value="${a.id}">${esc(a.class_name)} ${esc(a.arm_name)} · ${esc(a.subject_name)} · ${esc(a.session_name)}</option>`).join('')}</select></div><div class="form-group"><label for="aiTerm">Academic term</label><select id="aiTerm"><option value="">Select term</option>${terms.map(t=>`<option value="${t.id}" ${t.is_current?'selected':''}>${esc(t.session_name)} · ${esc(t.term_name)}</option>`).join('')}</select></div></div>`)}${card('2. Capture or upload',`<div class="ai-dropzone"><div class="ai-drop-icon">${ic('plus',20)}</div><h3>Score sheet image</h3><p>Use a clear, well-lit JPG, PNG or WebP image. The image is processed for extraction and is not stored by this feature.</p><div class="portal-actions"><label class="btn btn-primary" for="aiImage">Choose image<input id="aiImage" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden></label><button class="btn btn-secondary" id="aiAnalyze" disabled>Analyze sheet</button></div><small id="aiFileName">No image selected</small></div>`)}<div id="aiResults"></div>`; }
+ function bindAiImport(){
+   const badge=$('#aiStatusBadge'), file=$('#aiImage'), analyze=$('#aiAnalyze'), assignment=$('#aiAssignment'), term=$('#aiTerm'), fileName=$('#aiFileName'), results=$('#aiResults');
+   getAiStatus().then(s=>{ badge.textContent=s.available?'AI ready':'AI unavailable — manual entry available'; badge.className=`portal-badge ${s.available?'ok':'pending'}`; analyze.dataset.available=s.available?'1':'0'; }).catch(()=>{badge.textContent='AI unavailable — manual entry available';});
+diff --git a/frontend/styles.css b/frontend/styles.css
+index 2d949dc..7ec7489 100644
+--- a/frontend/styles.css
++++ b/frontend/styles.css
+@@ -4,54 +4,60 @@
+    ===================================================== */
+ 
+ :root {
+-  --primary: #0a1628;
+-  --primary-light: #1a3a5c;
+-  --accent: #c9a227;
+-  --accent-hover: #b8911f;
+-  --bg: #f5f7fa;
++  --primary: #0b1220;
++  --primary-light: #16263f;
++  --accent: #ab8330;
++  --accent-hover: #93701f;
++  --accent-soft: rgba(171,131,48,.12);
++  --bg: #f4f5f7;
+   --bg-card: #ffffff;
+-  --bg-card-hover: #f0f4f8;
+-  --text: #1a1a2e;
+-  --text-secondary: #6b7280;
+-  --text-light: #9ca3af;
+-  --border: #e5e7eb;
+-  --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+-  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+-  --radius: 12px;
+-  --radius-sm: 8px;
+-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+-  --success: #10b981;
+-  --danger: #ef4444;
+-  --warning: #f59e0b;
+-  --info: #3b82f6;
++  --bg-card-hover: #f7f8fa;
++  --text: #14181f;
++  --text-secondary: #5c6470;
++  --text-light: #8a91a0;
++  --border: #e2e4e9;
++  --shadow: 0 1px 2px rgba(15,23,42,.06), 0 1px 1px rgba(15,23,42,.04);
++  --shadow-lg: 0 10px 24px -12px rgba(15,23,42,.22);
++  --shadow-xl: 0 24px 48px -20px rgba(15,23,42,.28);
++  --radius: 10px;
++  --radius-sm: 7px;
++  --transition: all 0.18s ease;
++  --success: #0f9d68;
++  --danger: #d64545;
++  --warning: #b8791a;
++  --info: #2f6fb0;
+ }
+ 
+ [data-theme="dark"] {
+-  --bg: #0f172a;
+-  --bg-card: #1e293b;
+-  --bg-card-hover: #273548;
+-  --text: #f1f5f9;
+-  --text-secondary: #94a3b8;
+-  --text-light: #64748b;
+-  --border: #334155;
+-  --accent-hover: #d4b442;
+-  --shadow: 0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -1px rgba(0,0,0,0.2);
+-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.4), 0 4px 6px -2px rgba(0,0,0,0.3);
+-  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.5), 0 10px 10px -5px rgba(0,0,0,0.4);
++  --bg: #0c1220;
++  --bg-card: #141c2c;
++  --bg-card-hover: #1a2438;
++  --text: #e7eaf0;
++  --text-secondary: #9aa3b2;
++  --text-light: #6c7686;
++  --border: #263149;
++  --accent: #c6a04a;
++  --accent-hover: #d6b25e;
++  --accent-soft: rgba(198,160,74,.14);
++  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 1px 1px rgba(0,0,0,.3);
++  --shadow-lg: 0 10px 24px -12px rgba(0,0,0,.55);
++  --shadow-xl: 0 24px 48px -20px rgba(0,0,0,.6);
+ }
+ 
+ * { margin: 0; padding: 0; box-sizing: border-box; }
+ 
+ body {
+-  font-family: 'Fira Sans', 'Segoe UI', sans-serif;
++  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Fira Sans', Arial, sans-serif;
+   background: var(--bg);
+   color: var(--text);
+-  line-height: 1.6;
+-  transition: var(--transition);
++  line-height: 1.55;
++  letter-spacing: -0.005em;
++  transition: background .2s ease, color .2s ease;
+   overflow-x: hidden;
+ }
+ 
++.nnss-icon { display: inline-block; vertical-align: middle; flex-shrink: 0; }
++
+ ::-webkit-scrollbar { width: 8px; }
+ ::-webkit-scrollbar-track { background: var(--bg); }
+ ::-webkit-scrollbar-thumb { background: var(--primary-light); border-radius: 4px; }
+@@ -158,58 +164,66 @@ body {
+ .newsletter-item .date { color: var(--accent); font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem; }
+ .newsletter-item p { color: var(--text-secondary); line-height: 1.7; }
+ 
+-/* ===== LOGIN ===== */
+-.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%); padding: 2rem; margin-top: 72px; }
+-.login-container { background: var(--bg-card); border-radius: var(--radius); padding: 3rem; width: 100%; max-width: 480px; box-shadow: var(--shadow-xl); animation: fadeUp 0.5s ease-out; }
+-.login-container h2 { text-align: center; font-size: 1.8rem; font-weight: 800; margin-bottom: 0.5rem; }
++/* ===== LOGIN (legacy single-card fallback, superseded by .login-shell) ===== */
++.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--primary); padding: 2rem; margin-top: 72px; }
++.login-container { background: var(--bg-card); border-radius: var(--radius); padding: 3rem; width: 100%; max-width: 480px; box-shadow: var(--shadow-xl); animation: fadeUp 0.4s ease-out; }
++.login-container h2 { text-align: center; font-size: 1.55rem; font-weight: 700; margin-bottom: 0.5rem; }
+ .login-container .subtitle { text-align: center; color: var(--text-secondary); margin-bottom: 2rem; }
+ .login-error { color: var(--danger); font-size: 0.85rem; text-align: center; margin-top: 1rem; display: none; }
++
+ /* ===== FORMS ===== */
+-.form-group { margin-bottom: 1.5rem; }
+-.form-group label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; }
+-.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px 16px; border: 2px solid var(--border); border-radius: var(--radius-sm); font-size: 1rem; font-family: inherit; background: var(--bg); color: var(--text); transition: var(--transition); }
+-.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(201,162,39,0.2); }
++.form-group { margin-bottom: 1.25rem; }
++.form-group label { display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.84rem; color: var(--text-secondary); }
++.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 11px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.95rem; font-family: inherit; background: var(--bg-card); color: var(--text); transition: var(--transition); }
++.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+ 
+ /* ===== BUTTONS ===== */
+-.btn { padding: 12px 32px; border: none; border-radius: var(--radius-sm); font-size: 1rem; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+-.btn-primary { background: var(--accent); color: var(--primary); width: 100%; padding: 14px; font-size: 1.05rem; }
+-.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+-.btn-secondary { background: var(--bg); color: var(--text); border: 2px solid var(--border); }
+-.btn-secondary:hover { border-color: var(--accent); }
+-.btn-danger { background: var(--danger); color: white; }
+-.btn-danger:hover { background: #dc2626; }
++.btn { padding: 10px 20px; border: 1px solid transparent; border-radius: var(--radius-sm); font-size: 0.92rem; font-weight: 600; font-family: inherit; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; justify-content: center; gap: 8px; letter-spacing: -0.005em; }
++.btn-primary { background: var(--primary); color: #fff; }
++.btn-primary:hover { background: var(--primary-light); }
++[data-theme="dark"] .btn-primary { background: var(--accent); color: #1a1408; }
++[data-theme="dark"] .btn-primary:hover { background: var(--accent-hover); }
++.login-form-panel .btn-primary, .btn-primary.full-width { width: 100%; padding: 12px; font-size: 0.98rem; }
++.btn-secondary { background: var(--bg-card); color: var(--text); border-color: var(--border); }
++.btn-secondary:hover { border-color: var(--text-light); background: var(--bg-card-hover); }
++.btn-danger { background: rgba(214,69,69,.08); color: var(--danger); border-color: rgba(214,69,69,.25); }
++.btn-danger:hover { background: rgba(214,69,69,.16); }
+ .btn-success { background: var(--success); color: white; }
+-.btn-success:hover { background: #059669; }
++.btn-success:hover { background: #0b7f54; }
+ .btn-info { background: var(--info); color: white; }
+-.btn-sm { padding: 8px 16px; font-size: 0.85rem; }
++.btn-sm { padding: 7px 14px; font-size: 0.82rem; }
+ .btn-auto { width: auto !important; }
++.btn:disabled { opacity: .6; cursor: not-allowed; }
+ 
+-/* ===== DASHBOARD ===== */
++/* ===== DASHBOARD SHELL ===== */
+ .dashboard { display: flex; min-height: 100vh; margin-top: 72px; }
+-.sidebar { width: 260px; background: var(--primary); padding: 2rem 0; position: fixed; top: 72px; bottom: 0; left: 0; overflow-y: auto; z-index: 100; }
+-.sidebar-user { text-align: center; padding: 0 1.5rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 1rem; }
+-.sidebar-user .avatar { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--primary); margin: 0 auto 0.75rem; font-weight: 700; }
+-.sidebar-user h4 { color: white; font-size: 1rem; }
+-.sidebar-user span { color: var(--accent); font-size: 0.8rem; text-transform: uppercase; font-weight: 600; letter-spacing: 1px; }
+-.sidebar-nav a { display: flex; align-items: center; gap: 12px; padding: 12px 1.5rem; color: rgba(255,255,255,0.7); text-decoration: none; font-size: 0.95rem; transition: var(--transition); cursor: pointer; border: none; background: none; width: 100%; text-align: left; font-family: inherit; }
+-.sidebar-nav a:hover, .sidebar-nav a.active { color: white; background: rgba(255,255,255,0.1); border-left: 3px solid var(--accent); }
+-.sidebar-nav a .icon { width: 24px; text-align: center; font-size: 1.1rem; }
+-.sidebar-logout { position: absolute; bottom: 2rem; left: 0; right: 0; padding: 0 1.5rem; }
+-.sidebar-logout button { width: 100%; padding: 12px; background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid rgba(239,68,68,0.3); border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-size: 0.9rem; font-weight: 600; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px; }
+-.sidebar-logout button:hover { background: rgba(239,68,68,0.4); }
+-.main-content { margin-left: 260px; flex: 1; padding: 2rem; min-height: calc(100vh - 72px); }
+-.dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+-.dashboard-header h1 { font-size: 1.8rem; font-weight: 800; }
++.sidebar { width: 248px; background: var(--primary); padding: 1.5rem 0; position: fixed; top: 72px; bottom: 0; left: 0; overflow-y: auto; z-index: 100; border-right: 1px solid rgba(255,255,255,.06); }
++.sidebar-user { display: flex; align-items: center; gap: .75rem; text-align: left; padding: 0 1.25rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: .75rem; }
++.sidebar-user .avatar { width: 40px; height: 40px; border-radius: 8px; background: var(--accent-soft); border: 1px solid rgba(198,160,74,.35); display: flex; align-items: center; justify-content: center; font-size: .85rem; color: var(--accent); flex-shrink: 0; font-weight: 700; }
++.sidebar-user h4 { color: #fff; font-size: .88rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
++.sidebar-user span { color: rgba(255,255,255,.5); font-size: .72rem; text-transform: uppercase; font-weight: 600; letter-spacing: .5px; }
++.sidebar-nav { padding: 0 .6rem; }
++.sidebar-nav a { display: flex; align-items: center; gap: 11px; padding: 9px .7rem; color: rgba(255,255,255,0.62); text-decoration: none; font-size: 0.87rem; font-weight: 500; transition: var(--transition); cursor: pointer; border: none; border-radius: 7px; background: none; width: 100%; text-align: left; font-family: inherit; margin-bottom: 2px; }
++.sidebar-nav a:hover { color: #fff; background: rgba(255,255,255,0.06); }
++.sidebar-nav a.active { color: #fff; background: var(--accent-soft); }
++.sidebar-nav a.active .nnss-icon { color: var(--accent); }
++.sidebar-nav a .icon, .sidebar-nav a .nnss-icon { width: 18px; height: 18px; flex-shrink: 0; opacity: .9; }
++.sidebar-logout { padding: .9rem .85rem 0; margin-top: .5rem; border-top: 1px solid rgba(255,255,255,.08); }
++.sidebar-logout button { width: 100%; padding: 9px; background: transparent; color: rgba(255,255,255,.6); border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; font-size: 0.85rem; font-weight: 600; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 8px; }
++.sidebar-logout button:hover { background: rgba(214,69,69,0.14); color: #ef8f8f; }
++.main-content { margin-left: 248px; flex: 1; padding: 1.75rem 2rem; min-height: calc(100vh - 72px); }
++.dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.75rem; flex-wrap: wrap; gap: 1rem; }
++.dashboard-header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
+ .dashboard-header p { color: var(--text-secondary); }
+ 
+ /* ===== CARDS ===== */
+-.dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+-.dash-card { background: var(--bg-card); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); border: 1px solid var(--border); transition: var(--transition); }
+-.dash-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+-.dash-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+-.dash-card-icon { width: 48px; height: 48px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
+-.dash-card h3 { font-size: 2rem; font-weight: 800; }
+-.dash-card p { color: var(--text-secondary); font-size: 0.9rem; }
++.dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.75rem; }
++.dash-card { background: var(--bg-card); border-radius: var(--radius); padding: 1.25rem; box-shadow: var(--shadow); border: 1px solid var(--border); transition: var(--transition); }
++.dash-card:hover { border-color: var(--text-light); }
++.dash-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .85rem; }
++.dash-card-icon { width: 38px; height: 38px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); }
++.dash-card h3 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em; }
++.dash-card p { color: var(--text-secondary); font-size: 0.85rem; }
+ 
+ /* ===== TABLES ===== */
+ .table-container { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; margin-bottom: 2rem; }
+@@ -236,12 +250,12 @@ table tr:hover { background: var(--bg-card-hover); }
+ /* ===== MODALS ===== */
+ .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; backdrop-filter: blur(4px); opacity: 0; visibility: hidden; transition: var(--transition); }
+ .modal-overlay.active { opacity: 1; visibility: visible; }
+-.modal { background: var(--bg-card); border-radius: var(--radius); padding: 2rem; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl); transform: scale(0.9); transition: var(--transition); }
++.modal { background: var(--bg-card); border-radius: var(--radius); padding: 1.75rem; width: 90%; max-width: 600px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl); transform: scale(0.97); transition: transform .15s ease, opacity .15s ease; border: 1px solid var(--border); }
+ .modal-overlay.active .modal { transform: scale(1); }
+-.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+-.modal-header h3 { font-size: 1.3rem; font-weight: 700; }
+-.modal-close { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--bg); color: var(--text); font-size: 1.2rem; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; }
+-.modal-close:hover { background: var(--danger); color: white; }
++.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
++.modal-header h3 { font-size: 1.1rem; font-weight: 700; }
++.modal-close { width: 32px; height: 32px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text-secondary); cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; }
++.modal-close:hover { background: var(--bg-card-hover); color: var(--text); border-color: var(--text-light); }
+ 
+ /* ===== RESULT CARD ===== */
+ .result-card { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; margin-bottom: 1.5rem; }
+@@ -267,11 +281,13 @@ table tr:hover { background: var(--bg-card-hover); }
+ .info-item p { font-size: 1rem; font-weight: 600; margin-top: 0.25rem; }
+ 
+ /* ===== TOAST ===== */
+-.toast-container { position: fixed; top: 90px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; }
+-.toast { background: var(--bg-card); border-radius: var(--radius-sm); padding: 1rem 1.5rem; box-shadow: var(--shadow-lg); border: 1px solid var(--border); display: flex; align-items: center; gap: 10px; min-width: 300px; animation: slideIn 0.3s ease-out; }
+-.toast.success { border-left: 4px solid var(--success); }
+-.toast.error { border-left: 4px solid var(--danger); }
+-.toast.info { border-left: 4px solid var(--info); }
++.toast-container { position: fixed; top: 90px; right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; }
++.toast { background: var(--bg-card); border-radius: var(--radius-sm); padding: .8rem 1.1rem; box-shadow: var(--shadow-lg); border: 1px solid var(--border); display: flex; align-items: center; gap: 10px; min-width: 300px; font-size: .88rem; animation: slideIn 0.25s ease-out; }
++.toast .nnss-icon { flex-shrink: 0; }
++.toast.success { border-left: 3px solid var(--success); } .toast.success .nnss-icon { color: var(--success); }
++.toast.error { border-left: 3px solid var(--danger); } .toast.error .nnss-icon { color: var(--danger); }
++.toast.info { border-left: 3px solid var(--info); } .toast.info .nnss-icon { color: var(--info); }
++.toast.warning { border-left: 3px solid var(--warning); } .toast.warning .nnss-icon { color: var(--warning); }
+ @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+ 
+ /* ===== FOOTER ===== */
+@@ -301,9 +317,9 @@ table tr:hover { background: var(--bg-card-hover); }
+ .empty-state h3 { font-size: 1.2rem; margin-bottom: 0.5rem; color: var(--text); }
+ .loading { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+ @keyframes spin { to { transform: rotate(360deg); } }
+-.sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 99; }
++.sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(8,12,20,0.55); z-index: 99; }
+ .sidebar-overlay.active { display: block; }
+-.mobile-toggle { display: none; position: fixed; bottom: 20px; left: 20px; z-index: 101; width: 48px; height: 48px; border-radius: 50%; background: var(--accent); color: var(--primary); border: none; font-size: 1.3rem; cursor: pointer; box-shadow: var(--shadow-lg); }
++.mobile-toggle { display: none; position: fixed; bottom: 20px; left: 20px; z-index: 101; width: 48px; height: 48px; border-radius: 50%; background: var(--primary); color: #fff; border: 1px solid rgba(255,255,255,.12); cursor: pointer; box-shadow: var(--shadow-lg); align-items: center; justify-content: center; }
+ 
+ /* ===== PRINT ===== */
+ @media print { .sidebar, .navbar, .no-print { display: none !important; } .main-content { margin-left: 0 !important; } }
+@@ -335,46 +351,48 @@ table tr:hover { background: var(--bg-card-hover); }
+ }
+ 
+ /* ===== PRODUCTION PORTAL POLISH ===== */
+-.login-security-note { margin-top: 1.25rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text-secondary); font-size: .82rem; }
++.login-security-note { margin-top: 1.25rem; padding: .9rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text-secondary); font-size: .8rem; line-height: 1.55; }
+ .portal-shell { min-height: calc(100vh - 72px); }
+ .portal-toolbar { display:flex; justify-content:space-between; gap:1rem; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; }
+-.portal-toolbar .eyebrow { color:var(--accent); text-transform:uppercase; font-size:.72rem; font-weight:800; letter-spacing:1.4px; }
++.portal-toolbar .eyebrow { color:var(--accent); text-transform:uppercase; font-size:.7rem; font-weight:700; letter-spacing:1px; }
++.portal-toolbar h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.01em; margin-top: .15rem; }
++.portal-toolbar p { color: var(--text-secondary); font-size: .9rem; margin-top: .2rem; }
+ .portal-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem; }
+-.portal-stat { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem; box-shadow:var(--shadow); }
+-.portal-stat small { color:var(--text-secondary); font-weight:600; }
+-.portal-stat strong { display:block; font-size:1.75rem; margin-top:.3rem; }
+-.portal-stat .stat-icon { float:right; font-size:1.4rem; }
++.portal-stat { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:1.1rem 1.2rem; box-shadow:var(--shadow); position:relative; }
++.portal-stat small { color:var(--text-secondary); font-weight:600; font-size:.78rem; display:block; }
++.portal-stat strong { display:block; font-size:1.55rem; margin-top:.35rem; font-weight:700; letter-spacing:-0.01em; }
++.portal-stat .stat-icon { position:absolute; top:1.1rem; right:1.1rem; width:30px; height:30px; border-radius:7px; background:var(--accent-soft); color:var(--accent); display:flex; align-items:center; justify-content:center; }
+ .portal-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; margin-bottom:1.5rem; }
+-.portal-card-head { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:1rem 1.25rem; border-bottom:1px solid var(--border); }
+-.portal-card-head h3 { font-size:1rem; }
+-.portal-card-body { padding:1.25rem; }
++.portal-card-head { display:flex; justify-content:space-between; align-items:center; gap:1rem; padding:.95rem 1.2rem; border-bottom:1px solid var(--border); }
++.portal-card-head h3 { font-size:.94rem; font-weight:700; }
++.portal-card-body { padding:1.2rem; }
+ .portal-two-col { display:grid; grid-template-columns:1.35fr .65fr; gap:1.25rem; }
+ .portal-form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1rem; }
+ .portal-form-grid .full { grid-column:1/-1; }
+ .portal-actions { display:flex; gap:.6rem; flex-wrap:wrap; }
+-.portal-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.3rem .65rem; border-radius:999px; font-size:.72rem; font-weight:800; border:1px solid var(--border); }
+-.portal-badge.ok { color:var(--success); background:rgba(16,185,129,.08); }
+-.portal-badge.pending { color:var(--warning); background:rgba(245,158,11,.08); }
+-.portal-badge.danger { color:var(--danger); background:rgba(239,68,68,.08); }
++.portal-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.28rem .6rem; border-radius:6px; font-size:.72rem; font-weight:700; border:1px solid var(--border); background: var(--bg); color: var(--text-secondary); }
++.portal-badge.ok { color:var(--success); background:rgba(15,157,104,.08); border-color:rgba(15,157,104,.22); }
++.portal-badge.pending { color:var(--warning); background:rgba(184,121,26,.08); border-color:rgba(184,121,26,.22); }
++.portal-badge.danger { color:var(--danger); background:rgba(214,69,69,.08); border-color:rgba(214,69,69,.22); }
+ .portal-table { width:100%; border-collapse:collapse; }
+-.portal-table th,.portal-table td { padding:.8rem .9rem; border-bottom:1px solid var(--border); text-align:left; font-size:.86rem; vertical-align:middle; }
+-.portal-table th { color:var(--text-secondary); font-size:.72rem; text-transform:uppercase; letter-spacing:.5px; background:var(--bg); }
++.portal-table th,.portal-table td { padding:.75rem .9rem; border-bottom:1px solid var(--border); text-align:left; font-size:.85rem; vertical-align:middle; }
++.portal-table th { color:var(--text-secondary); font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.4px; background:var(--bg); }
+ .portal-table tr:last-child td { border-bottom:0; }
+ .portal-table tbody tr:hover { background:var(--bg-card-hover); }
+-.portal-empty { padding:2.5rem 1rem; text-align:center; color:var(--text-secondary); }
++.portal-empty { padding:2.5rem 1rem; text-align:center; color:var(--text-secondary); font-size:.9rem; }
+ .portal-loading { padding:3rem; text-align:center; color:var(--text-secondary); }
+-.portal-kpi { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem; border-radius:var(--radius-sm); background:var(--bg); border:1px solid var(--border); }
+-.portal-kpi + .portal-kpi { margin-top:.75rem; }
+-.portal-progress { height:8px; background:var(--border); border-radius:999px; overflow:hidden; margin-top:.5rem; }
++.portal-kpi { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 1rem; border-radius:var(--radius-sm); background:var(--bg); border:1px solid var(--border); }
++.portal-kpi + .portal-kpi { margin-top:.6rem; }
++.portal-progress { height:6px; background:var(--border); border-radius:999px; overflow:hidden; margin-top:.5rem; }
+ .portal-progress > span { display:block; height:100%; background:var(--accent); border-radius:inherit; }
+ @media (max-width: 1000px) { .portal-grid { grid-template-columns:repeat(2,1fr); } .portal-two-col { grid-template-columns:1fr; } }
+ @media (max-width: 650px) { .portal-grid,.portal-form-grid { grid-template-columns:1fr; } .portal-form-grid .full { grid-column:auto; } .portal-table { min-width:760px; } }
+ 
+ /* ===== AI IMPORT + RESPONSIVE HARDENING ===== */
+-.ai-dropzone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:2rem;text-align:center;background:var(--bg);}.ai-drop-icon{width:46px;height:46px;border-radius:14px;margin:0 auto 1rem;display:grid;place-items:center;background:var(--primary);color:var(--accent);font-size:1.7rem}.ai-dropzone h3{margin-bottom:.35rem}.ai-dropzone p{max-width:650px;margin:0 auto 1rem;color:var(--text-secondary)}.ai-dropzone small{display:block;margin-top:.8rem;color:var(--text-secondary);overflow-wrap:anywhere}.ai-review-note{padding:1rem;border:1px solid rgba(245,158,11,.3);background:rgba(245,158,11,.07);border-radius:var(--radius-sm);margin-bottom:1rem}.ai-note{display:block;color:var(--warning);margin-top:.25rem;max-width:220px}.ai-score-input{width:78px;max-width:100%;padding:.55rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text)}
++.ai-dropzone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:2rem;text-align:center;background:var(--bg);}.ai-drop-icon{width:44px;height:44px;border-radius:12px;margin:0 auto 1rem;display:flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent)}.ai-dropzone h3{margin-bottom:.35rem}.ai-dropzone p{max-width:650px;margin:0 auto 1rem;color:var(--text-secondary)}.ai-dropzone small{display:block;margin-top:.8rem;color:var(--text-secondary);overflow-wrap:anywhere}.ai-review-note{padding:1rem;border:1px solid rgba(184,121,26,.3);background:rgba(184,121,26,.07);border-radius:var(--radius-sm);margin-bottom:1rem}.ai-note{display:block;color:var(--warning);margin-top:.25rem;max-width:220px}.ai-score-input{width:78px;max-width:100%;padding:.55rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text)}
+ .table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.portal-table{min-width:680px}.portal-card-body{overflow-wrap:anywhere}.portal-toolbar h1{line-height:1.15}.btn{min-height:42px}.form-group input,.form-group select,.form-group textarea{min-height:44px;width:100%;max-width:100%}
+ @media(max-width:900px){.navbar{padding:0 1rem}.nav-logo-text h1{font-size:.95rem}.nav-logo img{width:42px;height:42px}.nav-right #navUserBadge{display:none}.main-content{padding:1.25rem}.portal-toolbar{align-items:flex-start}.portal-toolbar>div{min-width:0}.portal-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+-@media(max-width:650px){body{font-size:15px}.navbar{height:64px}.navbar .theme-toggle{display:none}.nav-logo-text span{display:none}.nav-logo img{width:38px;height:38px}.dashboard{margin-top:64px}.sidebar{top:64px;width:min(86vw,300px);padding-bottom:5rem}.mobile-toggle{bottom:16px;left:16px;width:46px;height:46px}.main-content{padding:1rem .75rem 5.5rem}.portal-grid{grid-template-columns:1fr 1fr;gap:.7rem}.portal-stat{padding:.9rem}.portal-stat strong{font-size:1.35rem}.portal-stat .stat-icon{font-size:1.1rem}.portal-card{margin-bottom:1rem}.portal-card-head,.portal-card-body{padding:.9rem}.portal-form-grid{grid-template-columns:1fr}.portal-actions{width:100%}.portal-actions .btn,.portal-actions label.btn{flex:1 1 100%;justify-content:center;text-align:center}.portal-table{min-width:620px}.toast-container{left:.75rem;right:.75rem;top:74px}.toast{min-width:0;width:100%}.ai-dropzone{padding:1.25rem}.login-page{min-height:calc(100vh - 64px);margin-top:64px;padding:1rem}.login-shell{border-radius:18px}.login-brand{padding:1.5rem}.login-brand img{width:64px;height:64px;margin-bottom:1rem}.login-brand h2{font-size:1.55rem}.login-form-panel{padding:1.35rem}.login-form-panel h1{font-size:1.45rem}}
++@media(max-width:650px){body{font-size:15px}.navbar{height:64px}.navbar .theme-toggle{display:none}.nav-logo-text span{display:none}.nav-logo img{width:38px;height:38px}.dashboard{margin-top:64px}.sidebar{top:64px;width:min(86vw,300px);padding-bottom:5rem}.mobile-toggle{bottom:16px;left:16px;width:46px;height:46px}.main-content{padding:1rem .75rem 5.5rem}.portal-grid{grid-template-columns:1fr 1fr;gap:.7rem}.portal-stat{padding:.9rem}.portal-stat strong{font-size:1.35rem}.portal-stat .stat-icon{width:26px;height:26px}.portal-card{margin-bottom:1rem}.portal-card-head,.portal-card-body{padding:.9rem}.portal-form-grid{grid-template-columns:1fr}.portal-actions{width:100%}.portal-actions .btn,.portal-actions label.btn{flex:1 1 100%;justify-content:center;text-align:center}.portal-table{min-width:620px}.toast-container{left:.75rem;right:.75rem;top:74px}.toast{min-width:0;width:100%}.ai-dropzone{padding:1.25rem}.login-page{min-height:calc(100vh - 64px);margin-top:64px;padding:1rem}.login-brand-mark img{width:36px;height:36px}}
+ @media(max-width:390px){.portal-grid{grid-template-columns:1fr}.portal-toolbar h1{font-size:1.45rem}.portal-toolbar p{font-size:.88rem}.nav-logo-text h1{font-size:.8rem}.sidebar{width:90vw}}
+ 
+ /* ===== FINAL RESPONSIVE / OVERFLOW HARDENING ===== */
+@@ -500,9 +518,6 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
+   .table-header, .portal-card-head, .portal-card-body, .result-card-body { padding: .85rem; }
+   .score-sheet-container table { min-width: 720px; }
+   .login-page { padding: .75rem; }
+-  .login-shell { width: 100%; }
+-  .login-brand, .login-form-panel { padding: 1.15rem; }
+-  .login-brand h2, .login-form-panel h1 { font-size: 1.35rem; }
+ }
+ 
+ @media (max-width: 360px) {
+-- 
+2.43.0
+
