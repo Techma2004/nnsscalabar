@@ -3,7 +3,7 @@ const db = require('../db');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const audience = req.user?.role || 'student';
     const [rows] = await db.query(`SELECT id,title,body,type,is_pinned,publish_at,expires_at FROM announcements

@@ -6,7 +6,7 @@ router.use(auth);
 
 router.get('/stats', async (req, res) => {
   try {
-    const [[students],[teachers],[hods],[results],[pending],[announcements]] = await Promise.all([
+    const [[[students]],[[teachers]],[[hods]],[[results]],[[pending]],[[announcements]]] = await Promise.all([
       db.query('SELECT COUNT(*) total FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1'),
       db.query('SELECT COUNT(*) total FROM teachers t JOIN users u ON u.id=t.user_id WHERE u.is_active=1'),
       db.query('SELECT COUNT(*) total FROM hods h JOIN users u ON u.id=h.user_id WHERE u.is_active=1'),

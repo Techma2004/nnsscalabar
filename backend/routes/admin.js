@@ -92,15 +92,15 @@ router.post('/users', requireManagement, async (req, res) => {
       } else {
         [[deptRow]] = await conn.query('SELECT id, dept_name FROM departments WHERE LOWER(TRIM(dept_name)) = LOWER(TRIM(?)) LIMIT 1', [department]);
       }
-      if (!deptRow || !deptRow.length) throw new Error('A valid department is required.');
+      if (!deptRow) throw new Error('A valid department is required.');
       if (role === 'teacher') {
         const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, qualification, date_joined) VALUES (?, ?, ?, ?, CURDATE())',
-          [userId, body.staff_no || null, deptRow[0].id, body.qualification || null]);
+          [userId, body.staff_no || null, deptRow.id, body.qualification || null]);
         const subjectNames = Array.isArray(body.subjects) ? body.subjects : (body.subject ? [body.subject] : []);
         for (const subject of subjectNames) {
           const [[subjectRow]] = await conn.query('SELECT id FROM subjects WHERE subject_name = ? LIMIT 1', [subject]);
-          if (!subjectRow.length) throw new Error(`Subject not found: ${subject}`);
-          await conn.query('INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES (?, ?)', [teacherResult.insertId, subjectRow[0].id]);
+          if (!subjectRow) throw new Error(`Subject not found: ${subject}`);
+          await conn.query('INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES (?, ?)', [teacherResult.insertId, subjectRow.id]);
           const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
           if (currentSession) {
             // Provision assignments for every class/arm where the subject belongs to the curriculum.
@@ -111,13 +111,13 @@ router.post('/users', requireManagement, async (req, res) => {
             const technical = new Set(['EKUN','EKPE']);
             for (const level of levels) for (const arm of arms) {
               const track = junior.has(level.level_name) ? 'junior' : science.has(arm.arm_name) ? 'science' : technical.has(arm.arm_name) ? 'technical' : 'arts';
-              const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1',[track,subjectRow[0].id]);
-              if (mapped) await conn.query(`INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)`,[teacherResult.insertId,subjectRow[0].id,level.id,arm.id,currentSession.id]);
+              const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1',[track,subjectRow.id]);
+              if (mapped) await conn.query(`INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)`,[teacherResult.insertId,subjectRow.id,level.id,arm.id,currentSession.id]);
             }
           }
         }
       } else {
-        await conn.query('INSERT INTO hods (user_id, dept_id, appointed_date) VALUES (?, ?, CURDATE())', [userId, deptRow[0].id]);
+        await conn.query('INSERT INTO hods (user_id, dept_id, appointed_date) VALUES (?, ?, CURDATE())', [userId, deptRow.id]);
       }
     }
 
