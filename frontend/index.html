@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nigerian Navy Secondary School Calabar - Home</title>
+  <link rel="stylesheet" href="styles.css">
+  <meta name="author" content="Topaz Edima Princewill Yeshua Greatness">
+</head>
+<body>
+
+<!-- Toast -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Navigation -->
+<nav class="navbar">
+  <a class="nav-logo" href="index.html">
+    <img src="command-logo.png" alt="NNSS CAL Logo">
+    <div class="nav-logo-text">
+      <h1>NNSS CALABAR</h1>
+      <span>Hardwork and Discipline</span>
+    </div>
+  </a>
+  <button class="hamburger" onclick="toggleMobileNav()"><span></span><span></span><span></span></button>
+  <div class="nav-right">
+    <ul class="nav-links" id="navLinks">
+      <li><a href="index.html" class="active">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="blog.html">Blog</a></li>
+      <li><a href="newsletter.html">Newsletter</a></li>
+      <li><a href="login.html" class="login-btn">Portal Login</a></li>
+    </ul>
+    <button class="theme-toggle" onclick="toggleTheme()"></button>
+  </div>
+</nav>
+
+<!-- Hero Carousel -->
+<section class="hero-carousel">
+  <div class="carousel-slide active" style="background-image: url('slider-01.png');">
+    <div class="carousel-overlay">
+      <h2>Nigerian Navy Secondary School</h2>
+      <p>An Educational Institution Aimed At Instilling  Hardwork And Discipline as core values in it's students and harnessing the very best of the students and expanding their academic, psychological capabilities.</p>
+      <button class="cta-btn" onclick="window.location='about.html'">Discover Our School</button>
+    </div>
+  </div>
+  <div class="carousel-slide" style="background-image: url('slider-02.png');">
+    <div class="carousel-overlay">
+      <h2>Academic Dynamism</h2>
+      <p>Beyond The Educational Curricullm and Clasroom Learning It's Students Are Proven To Be Well Rounded in terms of taught subject topics and their applictions.</p>
+      <button class="cta-btn" onclick="window.location='blog.html'">Read More</button>
+    </div>
+  </div>
+  <div class="carousel-slide" style="background-image: url('slider-03.png');">
+    <div class="carousel-overlay">
+      <h2>Proud Tradition of Service</h2>
+      <p>Built on naval heritage, our students embody discipline, hardwork, national pride and dignty, a developed sense atroitism embedded in every student i the chool to ensure the growth of the nation.</p>
+      <button class="cta-btn" onclick="window.location='login.html'">Student Portal</button>
+    </div>
+  </div>
+    <div class="carousel-slide" style="background-image: url('slider-05.png');">
+    <div class="carousel-overlay">
+      <h2>Renowned Sporting Champions</h2>
+      <p>Beyond the academics our students dominate the world of sports from track to feild events, ball and board games the students of the Nigerian Navy Secondary School Calabar prove time and time again that in order to truly excel one must be well rounded.</p>
+      <button class="cta-btn" onclick="window.location='newsletter.html'">Latest News</button>
+    </div>
+  </div>
+  <div class="carousel-slide" style="background-image: url('slider-06.png');">
+    <div class="carousel-overlay">
+      <h2>A Haven For Learning</h2>
+      <p>A conducive, serene and secure environment with first class learning facilities situated far away from noises and distactins to enable smooth teaching and learning processes for students to easily assimilate what's being taught an practicalise obtained knowledge.</p>
+      <button class="cta-btn" onclick="window.location='login.html'">Login Now →</button>
+    </div>
+  </div>
+
+  <!-- Arrows -->
+  <div class="carousel-arrows">
+    <button onclick="changeSlide(-1)">&#8592;</button>
+    <button onclick="changeSlide(1)">&#8594;</button>
+  </div>
+  <!-- Dots -->
+  <div class="carousel-dots" id="carouselDots"></div>
+</section>
+
+<!-- Stats Section #remember to close the comment tag
+<section class="stats-section">
+  <div class="stats-grid">
+    <div class="stat-item">
+      <h3 id="statStudents">0</h3>
+      <p>Enrolled Students</p>
+    </div>
+    <div class="stat-item">
+      <h3 id="statTeachers">0</h3>
+      <p>Qualified Teachers</p>
+    </div>
+    <div class="stat-item">
+      <h3>73%</h3>
+      <p>WAEC Pass Rate 2026</p>
+    </div>
+    <div class="stat-item">
+      <h3>6</h3>
+      <p>School Arms</p>
+    </div>
+  </div>
+</section> -->
+
+<!-- Features Section -->
+<section class="section">
+  <div class="section-title">
+    <h2>Why Choose NNSS Calabar?</h2>
+    <div class="line"></div>
+    <p>A school built on naval discipline, academic excellence, and holistic development featuring outstanding results, optimised extra-curricular activities optimised learning environment and an active PTA. </p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">📚</div>
+      <h3>Academic Excellence</h3>
+      <p>The topmost objective of the management of the Nigerian Navy Secondary School Calabar  is to ensure that it's students are being kitted and suited up with the fundamental skills and knowledge in order to acheive an unleverageable height of excellence among their counterparts and colleagues.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚓</div>
+      <h3>Naval Discipline</h3>
+      <p>In the Nigerian Navy Seconday School Calabar, discipline to us is serious business and we treat it as such, we beleive that in order to produce responsible citizens and individuals alike it is essential a child's personality is being modified an refined time and time again until the best version of that student is being harnessed.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🏆</div>
+      <h3>Outstandng Results</h3>
+      <p>Students of NNSS Calabar year after year perform oustandingly in external examinatons including WAEC, NECO and JAMB including the junior students Bece and NECO serving as a worthy proof of trend in acaemic excellence amongst it's students. </p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📈</div>
+      <h3>Optimised Learning Environment</h3>
+      <p>A serene, conducive, secure and digitalised learning environment is provided for the students by the NNSS Calabar management to ensure that teaching and learning activties within the school premises go on effectively, conveniently and safely.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🏅</div>
+      <h3>Extra- Curricular Activities</h3>
+      <p>Beyond formal class room academics NNSS Calabar aims at impacting dynamique intellectual capabilities in it's stuents ranging from various sports to cultural arts and actiities, hand made crafts,musical training on various instruments entreprenual training e.t.c all in a bid to produce individuals that can cope in any economy and excel.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🤝</div>
+      <h3>The NNSS Calabar PTA</h3>
+      <p>The Nigerian Navy Seconary School Calabar in earnest commitment to improve students and teachers  welfare actively involves the parents of the wards in part decision making in the school to aid whole development and advancement of the school.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Links -->
+<section class="section" style="padding-top: 0;">
+  <div class="section-title">
+    <h2>Quick Access</h2>
+    <div class="line"></div>
+    <p>Fast links to the most important areas of our school portal</p>
+  </div>
+  <div class="quick-links-grid">
+    <div class="quick-link-card" onclick="window.location='login.html'">
+      <div class="quick-link-icon" style="background:rgba(59,130,246,0.1);color:var(--info);"></div>
+      <div>
+        <h3>Academic Records</h3>
+        <p>Secure access to published academic results and subject performance.</p>
+      </div>
+    </div>
+    <div class="quick-link-card" onclick="window.location='login.html'">
+      <div class="quick-link-icon" style="background:rgba(16,185,129,0.1);color:var(--success);">👨‍🏫</div>
+      <div>
+        <h3>Staff Workspace</h3>
+        <p>Manage score entry, assigned classes and academic workflows.</p>
+      </div>
+    </div>
+    <div class="quick-link-card" onclick="window.location='newsletter.html'">
+      <div class="quick-link-icon" style="background:rgba(201,162,39,0.1);color:var(--accent);">📰</div>
+      <div>
+        <h3>Latest Newsletter</h3>
+        <p>Stay updated with the latest news, events, and announcements from NNSS Calabar</p>
+      </div>
+    </div>
+    <div class="quick-link-card" onclick="window.location='about.html'">
+      <div class="quick-link-icon" style="background:rgba(139,92,246,0.1);color:#8b5cf6;">🏫</div>
+      <div>
+        <h3>About Our School</h3>
+        <p>Learn about our history, mission, values, and the people who make NNSS Calabar great</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-grid">
+    <div class="footer-col">
+      <h4>NNSS Calabar</h4>
+      <p>Nigerian Navy Secondary School, Calabar. A premier institution committed to academic excellence and character development.</p>
+    </div>
+    <div class="footer-col">
+      <h4>Quick Links</h4>
+      <a href="index.html">Home</a>
+      <a href="about.html">About Us</a>
+      <a href="blog.html">Blog</a>
+      <a href="newsletter.html">Newsletter</a>
+      <a href="login.html">Portal Login</a>
+    </div>
+    <div class="footer-col">
+      <h4>Academic Services</h4>
+      <a href="login.html">Portal Access</a>
+      <a href="login.html">Academic Services</a>
+      <a href="login.html">Staff Services</a>
+    </div>
+    <div class="footer-col">
+      <h4>Contact</h4>
+      <p>📍 NNSS Calabar, Cross River State, Nigeria</p>
+      <p>📞 +234-8055784354</p>
+      <p>✉️ info@nnsscalabar.edu.ng</p>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>&copy; 2026 Nigerian Navy Secondary School, Calabar. All rights reserved. | Hardwork and Discipline
+    [created by the TEGY Team]</p>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+<script>
+  // Animate stats counter
+  function animateCounter(id, target, suffix) {
+    let count = 0;
+    const step = Math.ceil(target / 50);
+    const el = document.getElementById(id);
+    const interval = setInterval(() => {
+      count = Math.min(count + step, target);
+      el.textContent = count + (suffix || '');
+      if (count >= target) clearInterval(interval);
+    }, 30);
+  }
+
+  // Observe stats section
+  const statsObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        animateCounter('statStudents', 1200);
+        animateCounter('statTeachers', 85);
+        statsObserver.disconnect();
+      }
+    });
+  });
+  const statsEl = document.querySelector('.stats-section');
+  if (statsEl) statsObserver.observe(statsEl);
+</script>
+</body>
+</html>
