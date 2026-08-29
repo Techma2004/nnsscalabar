@@ -1,0 +1,96 @@
+From 165620eb9bc7376654b1e9dd6e4290f8655f1ca9 Mon Sep 17 00:00:00 2001
+From: Techma2004 <techma@users.noreply.github.com>
+Date: Sat, 29 Aug 2026 01:14:30 +0000
+Subject: [PATCH] Fix dashboard stats, teacher/HOD account creation, and
+ announcement audience filtering
+
+- dashboard.js: fix Promise.all destructuring so /api/dashboard/stats
+  actually returns row values instead of arrays (was returning
+  undefined for every stat due to missing nesting level).
+- admin.js: fix deptRow/subjectRow destructuring in POST /admin/users.
+  These were correctly unwrapped to single row objects but then
+  checked with '.length' (which objects don't have), so creating a
+  Teacher or HOD account always failed with 'A valid department is
+  required.' Also fixed downstream deptRow[0].id / subjectRow[0].id
+  references that would have crashed since these are objects, not
+  arrays.
+- announcements.js: add missing 'auth' middleware to GET / so
+  logged-in staff are correctly identified and see announcements
+  targeted at their role, instead of always falling back to the
+  'student' audience.
+---
+ backend/routes/admin.js         | 14 +++++++-------
+ backend/routes/announcements.js |  2 +-
+ backend/routes/dashboard.js     |  2 +-
+ 3 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/backend/routes/admin.js b/backend/routes/admin.js
+index 21c78a1..8c058ee 100644
+--- a/backend/routes/admin.js
++++ b/backend/routes/admin.js
+@@ -92,15 +92,15 @@ router.post('/users', requireManagement, async (req, res) => {
+       } else {
+         [[deptRow]] = await conn.query('SELECT id, dept_name FROM departments WHERE LOWER(TRIM(dept_name)) = LOWER(TRIM(?)) LIMIT 1', [department]);
+       }
+-      if (!deptRow || !deptRow.length) throw new Error('A valid department is required.');
++      if (!deptRow) throw new Error('A valid department is required.');
+       if (role === 'teacher') {
+         const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, qualification, date_joined) VALUES (?, ?, ?, ?, CURDATE())',
+-          [userId, body.staff_no || null, deptRow[0].id, body.qualification || null]);
++          [userId, body.staff_no || null, deptRow.id, body.qualification || null]);
+         const subjectNames = Array.isArray(body.subjects) ? body.subjects : (body.subject ? [body.subject] : []);
+         for (const subject of subjectNames) {
+           const [[subjectRow]] = await conn.query('SELECT id FROM subjects WHERE subject_name = ? LIMIT 1', [subject]);
+-          if (!subjectRow.length) throw new Error(`Subject not found: ${subject}`);
+-          await conn.query('INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES (?, ?)', [teacherResult.insertId, subjectRow[0].id]);
++          if (!subjectRow) throw new Error(`Subject not found: ${subject}`);
++          await conn.query('INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES (?, ?)', [teacherResult.insertId, subjectRow.id]);
+           const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
+           if (currentSession) {
+             // Provision assignments for every class/arm where the subject belongs to the curriculum.
+@@ -111,13 +111,13 @@ router.post('/users', requireManagement, async (req, res) => {
+             const technical = new Set(['EKUN','EKPE']);
+             for (const level of levels) for (const arm of arms) {
+               const track = junior.has(level.level_name) ? 'junior' : science.has(arm.arm_name) ? 'science' : technical.has(arm.arm_name) ? 'technical' : 'arts';
+-              const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1',[track,subjectRow[0].id]);
+-              if (mapped) await conn.query(`INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)`,[teacherResult.insertId,subjectRow[0].id,level.id,arm.id,currentSession.id]);
++              const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1',[track,subjectRow.id]);
++              if (mapped) await conn.query(`INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)`,[teacherResult.insertId,subjectRow.id,level.id,arm.id,currentSession.id]);
+             }
+           }
+         }
+       } else {
+-        await conn.query('INSERT INTO hods (user_id, dept_id, appointed_date) VALUES (?, ?, CURDATE())', [userId, deptRow[0].id]);
++        await conn.query('INSERT INTO hods (user_id, dept_id, appointed_date) VALUES (?, ?, CURDATE())', [userId, deptRow.id]);
+       }
+     }
+ 
+diff --git a/backend/routes/announcements.js b/backend/routes/announcements.js
+index 26b189c..0d4834d 100644
+--- a/backend/routes/announcements.js
++++ b/backend/routes/announcements.js
+@@ -3,7 +3,7 @@ const db = require('../db');
+ const auth = require('../middleware/auth');
+ const router = express.Router();
+ 
+-router.get('/', async (req, res) => {
++router.get('/', auth, async (req, res) => {
+   try {
+     const audience = req.user?.role || 'student';
+     const [rows] = await db.query(`SELECT id,title,body,type,is_pinned,publish_at,expires_at FROM announcements
+diff --git a/backend/routes/dashboard.js b/backend/routes/dashboard.js
+index 48b58fd..36ac0c6 100644
+--- a/backend/routes/dashboard.js
++++ b/backend/routes/dashboard.js
+@@ -6,7 +6,7 @@ router.use(auth);
+ 
+ router.get('/stats', async (req, res) => {
+   try {
+-    const [[students],[teachers],[hods],[results],[pending],[announcements]] = await Promise.all([
++    const [[[students]],[[teachers]],[[hods]],[[results]],[[pending]],[[announcements]]] = await Promise.all([
+       db.query('SELECT COUNT(*) total FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1'),
+       db.query('SELECT COUNT(*) total FROM teachers t JOIN users u ON u.id=t.user_id WHERE u.is_active=1'),
+       db.query('SELECT COUNT(*) total FROM hods h JOIN users u ON u.id=h.user_id WHERE u.is_active=1'),
+-- 
+2.43.0
+

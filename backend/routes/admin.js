@@ -15,9 +15,17 @@ function requireStaffDirectory(req, res, next) {
   if (!['admin', 'commandant', 'hod'].includes(req.user.role)) return res.status(403).json({ error: 'Staff directory access required.' });
   next();
 }
+// School configuration (classes, arms, departments, subjects, sessions, terms) is
+// non-sensitive reference data that teachers and HODs also need — e.g. teachers must
+// read the term list to enter scores. Only account management endpoints below stay
+// restricted to admin/commandant via requireManagement.
+function requireStaffReference(req, res, next) {
+  if (!['admin', 'commandant', 'hod', 'teacher'].includes(req.user.role)) return res.status(403).json({ error: 'Staff access required.' });
+  next();
+}
 router.use(auth);
 
-router.get('/meta', requireManagement, async (req, res) => {
+router.get('/meta', requireStaffReference, async (req, res) => {
   try {
     const [[classes], [arms], [departments], [subjects], [sessions], [terms]] = await Promise.all([
       db.query('SELECT id, level_name FROM class_levels ORDER BY id'),

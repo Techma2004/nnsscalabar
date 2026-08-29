@@ -79,11 +79,11 @@ function showToast(msg, type = 'info', duration = 3500) {
   const container = document.getElementById('toastContainer');
   if (!container) return;
 
-  const icons = { success:'✅', error:'❌', info:'ℹ️', warning:'⚠️' };
+  const icons = { success:'checkcircle', error:'xcircle', info:'infocircle', warning:'alerttriangle' };
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   const iconEl = document.createElement('span');
-  iconEl.textContent = icons[type] || icons.info;
+  iconEl.innerHTML = (typeof window.Icon === 'function') ? window.Icon(icons[type] || icons.info, { size: 18 }) : '';
   const msgEl = document.createElement('span');
   msgEl.textContent = msg;
   toast.append(iconEl, msgEl);
@@ -116,10 +116,30 @@ function initScrollAnimations() {
   });
 }
 
+// ---- PORTAL CHROME ICONS ----
+function initChromeIcons() {
+  if (typeof window.Icon !== 'function') return;
+  const map = [
+    ['#mobileToggle', 'menu', 20],
+    ['#modalClose', 'x', 16],
+    ['#logoutSide', 'logout', 16]
+  ];
+  map.forEach(([sel, name, size]) => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    if (sel === '#logoutSide') {
+      el.innerHTML = `${window.Icon(name, { size })}<span>Sign out</span>`;
+    } else {
+      el.innerHTML = window.Icon(name, { size });
+    }
+  });
+}
+
 // ---- INIT ON LOAD ----
 document.addEventListener('DOMContentLoaded', () => {
   initCarousel();
   initScrollAnimations();
+  initChromeIcons();
 
   // Smooth scroll for anchor links
   document.querySelectorAll('a[href^="#"]').forEach(a => {
