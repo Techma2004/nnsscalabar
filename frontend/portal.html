@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="NNSS Calabar secure school management portal">
+  <title>School Management Portal — NNSS Calabar</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="toast-container" id="toastContainer"></div>
+
+<nav class="navbar">
+  <a class="nav-logo" href="index.html">
+    <img src="command-logo.png" alt="NNSS Calabar logo">
+    <div class="nav-logo-text"><h1>NNSS CALABAR</h1><span>School Management Portal</span></div>
+  </a>
+  <div class="nav-right">
+    <span id="navUserBadge" style="color:rgba(255,255,255,.82);font-size:.85rem"></span>
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme"></button>
+    <button id="logoutTop" class="btn" style="background:rgba(239,68,68,.18);color:#fca5a5;border:1px solid rgba(239,68,68,.3);padding:7px 14px">Sign out</button>
+  </div>
+</nav>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<button class="mobile-toggle no-print" id="mobileToggle" aria-label="Open navigation">☰</button>
+
+<div class="dashboard portal-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-user">
+      <div class="avatar" id="sidebarAvatar">?</div>
+      <h4 id="sidebarName">Loading…</h4>
+      <span id="sidebarRole">Account</span>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav"></nav>
+    <div class="sidebar-logout"><button id="logoutSide">⏻ &nbsp;Sign Out</button></div>
+  </aside>
+
+  <main class="main-content"><div id="appRoot" aria-live="polite"></div></main>
+</div>
+
+<div class="modal-overlay" id="globalModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal" id="globalModalContent">
+    <div class="modal-header"><h3 id="modalTitle">Modal</h3><button class="modal-close" id="modalClose" aria-label="Close">✕</button></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="main.js"></script>
+<script type="module" src="portal.js"></script>
+</body>
+</html>
