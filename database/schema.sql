@@ -195,6 +195,13 @@ CREATE TABLE students (
   date_admitted   DATE,
   is_boarder      BOOLEAN DEFAULT FALSE,
   track           ENUM('junior','science','technical','arts') NOT NULL,
+  -- Enrollment lifecycle, independent of users.is_active (which only gates login).
+  -- 'active': currently attending. 'pending': admitted/returning but yet to resume.
+  -- 'withdrawn': permanently left the school (transfer, expulsion, etc).
+  -- 'graduated': completed studies — record kept, no ongoing portal access.
+  status             ENUM('active','pending','withdrawn','graduated') NOT NULL DEFAULT 'active',
+  status_reason      VARCHAR(160) NULL,
+  status_updated_at  TIMESTAMP NULL,
   FOREIGN KEY (user_id)        REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (class_level_id) REFERENCES class_levels(id),
   FOREIGN KEY (arm_id)         REFERENCES arms(id)
@@ -514,6 +521,7 @@ CREATE INDEX idx_results_approved  ON results(is_approved);
 CREATE INDEX idx_attendance_student ON attendance(student_id, att_date);
 CREATE INDEX idx_activity_user     ON activity_log(user_id, logged_at);
 CREATE INDEX idx_users_role        ON users(role, is_active);
+CREATE INDEX idx_students_status   ON students(status);
 
 -- =====================================================
 -- END OF SCHEMA

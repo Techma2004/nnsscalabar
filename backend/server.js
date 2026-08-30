@@ -1,4 +1,5 @@
 require('dotenv').config();
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -7,6 +8,7 @@ const db = require('./db');
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
+const HOST = process.env.HOST || '0.0.0.0';
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -27,12 +29,37 @@ app.use((req, res, next) => {
   next();
 });
 
-const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
+// ---- CORS: explicit allowlist + automatic same-network access ----
+// FRONTEND_ORIGIN lets an operator explicitly whitelist a public domain (e.g. a
+// real school domain once one exists). Beyond that, this app is designed to be
+// opened directly on the school's local network — a teacher's laptop, a lab PC,
+// a phone on the school wifi — all hitting this same server's LAN IP. Those
+// requests are same-origin in the browser (the frontend is served from this
+// same host:port), but some browsers still attach an Origin header, so we
+// recognise and allow any private/loopback network address rather than
+// silently accepting every origin when FRONTEND_ORIGIN isn't set.
+const explicitOrigins = (process.env.FRONTEND_ORIGIN || '')
   .split(',').map(v => v.trim()).filter(Boolean);
+
+function isPrivateNetworkOrigin(origin) {
+  try {
+    const { hostname } = new URL(origin);
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return callback(null, true);
+    if (!origin || explicitOrigins.includes(origin) || isPrivateNetworkOrigin(origin)) return callback(null, true);
     return callback(new Error('Origin not allowed by CORS'));
   },
   credentials: true,
@@ -104,13 +131,34 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: isProduction ? 'An unexpected server error occurred.' : err.message });
 });
 
-const server = app.listen(PORT, async () => {
+function getLanAddresses() {
+  const nets = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) addresses.push(net.address);
+    }
+  }
+  return addresses;
+}
+
+const server = app.listen(PORT, HOST, async () => {
   try {
     await db.query('SELECT 1');
-    console.log(`NNSS Calabar server listening on http://localhost:${PORT}`);
     console.log('Database connection: OK');
   } catch (err) {
     console.error('Database connection failed:', err.message);
+  }
+  console.log(`NNSS Calabar server listening on http://localhost:${PORT}`);
+  if (HOST === '0.0.0.0' || HOST === '::') {
+    const lan = getLanAddresses();
+    if (lan.length) {
+      console.log('Also reachable on this network at:');
+      lan.forEach(ip => console.log(`  http://${ip}:${PORT}`));
+      console.log('Share one of the addresses above with devices on the same wifi/LAN to let them use the portal.');
+    } else {
+      console.log('No LAN network interface detected yet — connect this machine to the school network to enable local-network access.');
+    }
   }
 });
 

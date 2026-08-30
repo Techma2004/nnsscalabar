@@ -135,11 +135,20 @@ function initChromeIcons() {
   });
 }
 
+// ---- CONTENT ICONS (marketing pages: footer contact details, etc.) ----
+function initContentIcons() {
+  if (typeof window.Icon !== 'function') return;
+  document.querySelectorAll('[data-icon]').forEach(el => {
+    el.insertAdjacentHTML('afterbegin', window.Icon(el.dataset.icon, { size: 15 }));
+  });
+}
+
 // ---- INIT ON LOAD ----
 document.addEventListener('DOMContentLoaded', () => {
   initCarousel();
   initScrollAnimations();
   initChromeIcons();
+  initContentIcons();
 
   // Smooth scroll for anchor links
   document.querySelectorAll('a[href^="#"]').forEach(a => {

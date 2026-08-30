@@ -6,10 +6,24 @@ router.use(auth);
 
 router.get('/', async (req, res) => {
   if (!['admin','commandant','teacher','hod'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
+  // Non-management staff (teacher/hod) only ever need the active roster for
+  // day-to-day teaching; only admin/commandant can browse other lifecycle
+  // states (pending, withdrawn, graduated) via ?status=.
+  const canBrowseAllStatuses = ['admin', 'commandant'].includes(req.user.role);
+  const requested = String(req.query.status || 'active').toLowerCase();
+  const validStatuses = ['active', 'pending', 'withdrawn', 'graduated'];
+  let statusClause = "AND s.status = 'active' AND u.is_active = 1";
+  let params = [];
+  if (canBrowseAllStatuses) {
+    if (requested === 'all') { statusClause = ''; params = []; }
+    else if (requested === 'active') { statusClause = "AND s.status = 'active' AND u.is_active = 1"; params = []; }
+    else if (validStatuses.includes(requested)) { statusClause = 'AND s.status = ?'; params = [requested]; }
+  }
   try {
-    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,s.id AS student_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
-      cl.level_name AS class,a.arm_name AS arm,s.track FROM students s JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
-      WHERE u.is_active=1 ORDER BY cl.id,a.arm_name,u.full_name`);
+    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,u.is_active,s.id AS student_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
+      cl.level_name AS class,a.arm_name AS arm,s.track,s.status,s.status_reason,s.status_updated_at
+      FROM students s JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
+      WHERE 1=1 ${statusClause} ORDER BY cl.id,a.arm_name,u.full_name`, params);
     res.json(rows);
   } catch (err) { console.error('[students]', err); res.status(500).json({ error: 'Unable to load students.' }); }
 });

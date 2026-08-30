@@ -34,7 +34,10 @@
     trendingup: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 6h6v6"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
     menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
-    shield: '<path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z"/>'
+    shield: '<path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z"/>',
+    mappin: '<path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.4"/>',
+    phone: '<path d="M4.5 4h3.8l1.7 4.4-2.2 1.8a12.3 12.3 0 0 0 6 6l1.8-2.2 4.4 1.7v3.8a1.8 1.8 0 0 1-1.9 1.8A16.7 16.7 0 0 1 2.7 5.9 1.8 1.8 0 0 1 4.5 4z"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 6.5l9 6 9-6"/>'
   };
 
   window.Icon = function (name, opts) {

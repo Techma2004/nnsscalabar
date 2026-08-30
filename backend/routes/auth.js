@@ -6,10 +6,19 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 const isProduction = process.env.NODE_ENV === 'production';
+// Secure cookies require HTTPS. A school running this on its own LAN typically has
+// no TLS certificate, so forcing `secure` on whenever NODE_ENV=production would
+// silently break login for every device on the network (the browser drops the
+// Set-Cookie header entirely over plain HTTP). COOKIE_SECURE lets an operator
+// state explicitly whether this deployment is served over HTTPS; it defaults to
+// the old production-only behaviour when not set, for cloud/HTTPS deployments.
+const cookieSecure = process.env.COOKIE_SECURE != null
+  ? String(process.env.COOKIE_SECURE).toLowerCase() === 'true'
+  : isProduction;
 const cookieOptions = {
   httpOnly: true,
-  secure: isProduction,
-  sameSite: isProduction ? 'strict' : 'lax',
+  secure: cookieSecure,
+  sameSite: cookieSecure ? 'strict' : 'lax',
   maxAge: 8 * 60 * 60 * 1000,
   path: '/'
 };
@@ -48,7 +57,7 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
-  res.clearCookie('nnss_token', { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'strict' : 'lax', path: '/' });
+  res.clearCookie('nnss_token', { httpOnly: true, secure: cookieSecure, sameSite: cookieSecure ? 'strict' : 'lax', path: '/' });
   res.json({ message: 'Signed out successfully.' });
 });
 
