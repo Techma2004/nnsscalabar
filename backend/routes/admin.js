@@ -217,4 +217,139 @@ router.patch('/users/:userId/status', requireManagement, async (req, res) => {
   } catch (err) { console.error('[admin/status]', err); res.status(500).json({ error: 'Unable to update account status.' }); }
 });
 
+// ---- STUDENT LIFECYCLE STATUS ----
+// A student's enrollment status is distinct from users.is_active (which only
+// gates login). Changing status here keeps both in sync: only 'active'
+// students can log in; pending/withdrawn/graduated students are locked out
+// of the portal but their account, admission record and academic history are
+// never deleted.
+const STUDENT_STATUSES = ['active', 'pending', 'withdrawn', 'graduated'];
+router.patch('/students/:studentId/status', requireManagement, async (req, res) => {
+  const studentId = Number(req.params.studentId);
+  const status = String(req.body?.status || '').toLowerCase();
+  const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 160) : null;
+  if (!Number.isInteger(studentId) || studentId < 1) return res.status(400).json({ error: 'Invalid student ID.' });
+  if (!STUDENT_STATUSES.includes(status)) return res.status(400).json({ error: `Status must be one of: ${STUDENT_STATUSES.join(', ')}.` });
+
+  const conn = await db.getConnection();
+  try {
+    const [[row]] = await conn.query(`SELECT s.id, s.status AS current_status, u.id AS user_id, u.user_code, u.full_name
+      FROM students s JOIN users u ON u.id = s.user_id WHERE s.id=? LIMIT 1`, [studentId]);
+    if (!row) return res.status(404).json({ error: 'Student not found.' });
+    if (row.current_status === status) return res.json({ message: `Student is already marked ${status}.` });
+
+    await conn.beginTransaction();
+    await conn.query('UPDATE students SET status=?, status_reason=?, status_updated_at=NOW() WHERE id=?', [status, reason, studentId]);
+    // Only an 'active' student may log in. Every other lifecycle state locks the account
+    // without touching admission records, results, or attendance history.
+    await conn.query('UPDATE users SET is_active=? WHERE id=?', [status === 'active' ? 1 : 0, row.user_id]);
+    await conn.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'STUDENT_STATUS_CHANGE', 'student', studentId, JSON.stringify({ user_code: row.user_code, from: row.current_status, to: status, reason })]);
+    await conn.commit();
+    res.json({ message: `${row.full_name} marked ${status}.`, student_id: studentId, status });
+  } catch (err) {
+    await conn.rollback();
+    console.error('[admin/students/status]', err); res.status(500).json({ error: 'Unable to update student status.' });
+  } finally { conn.release(); }
+});
+
+// ---- SUBJECT & CURRICULUM MANAGEMENT ----
+// Subjects are never hard-deleted (results reference them permanently). "No
+// longer offered" is expressed as is_active=0, which also removes the
+// subject from the reference list new teacher assignments/account creation
+// draw from (GET /meta already filters is_active=1).
+router.get('/subjects', requireManagement, async (req, res) => {
+  try {
+    const [rows] = await db.query(`SELECT s.id, s.subject_name, s.dept_id, d.dept_name, s.ca_max, s.exam_max, s.is_active,
+      GROUP_CONCAT(DISTINCT ts.track ORDER BY ts.track SEPARATOR ',') AS tracks
+      FROM subjects s LEFT JOIN departments d ON d.id = s.dept_id LEFT JOIN track_subjects ts ON ts.subject_id = s.id
+      GROUP BY s.id ORDER BY s.subject_name`);
+    res.json(rows.map(r => ({ ...r, tracks: r.tracks ? r.tracks.split(',') : [] })));
+  } catch (err) { console.error('[admin/subjects]', err); res.status(500).json({ error: 'Unable to load subjects.' }); }
+});
+
+router.post('/subjects', requireManagement, async (req, res) => {
+  const subject_name = String(req.body?.subject_name || '').trim();
+  const dept_id = Number(req.body?.dept_id) || null;
+  const ca_max = Number.isFinite(Number(req.body?.ca_max)) ? Number(req.body.ca_max) : 30;
+  const exam_max = Number.isFinite(Number(req.body?.exam_max)) ? Number(req.body.exam_max) : 70;
+  if (!subject_name || subject_name.length < 2) return res.status(400).json({ error: 'Subject name is required.' });
+  if (ca_max < 0 || ca_max > 100 || exam_max < 0 || exam_max > 100) return res.status(400).json({ error: 'CA and exam maximums must be between 0 and 100.' });
+  try {
+    const [result] = await db.query('INSERT INTO subjects (subject_name, dept_id, ca_max, exam_max, is_active) VALUES (?, ?, ?, ?, 1)', [subject_name, dept_id, ca_max, exam_max]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'CREATE_SUBJECT', 'subject', result.insertId, JSON.stringify({ subject_name })]);
+    res.status(201).json({ message: 'Subject created.', id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A subject with this name already exists.' });
+    console.error('[admin/subjects/create]', err); res.status(500).json({ error: 'Unable to create subject.' });
+  }
+});
+
+router.patch('/subjects/:subjectId', requireManagement, async (req, res) => {
+  const subjectId = Number(req.params.subjectId);
+  if (!Number.isInteger(subjectId) || subjectId < 1) return res.status(400).json({ error: 'Invalid subject ID.' });
+  const fields = [];
+  const params = [];
+  if (req.body?.subject_name != null) { fields.push('subject_name=?'); params.push(String(req.body.subject_name).trim()); }
+  if (req.body?.dept_id != null) { fields.push('dept_id=?'); params.push(Number(req.body.dept_id) || null); }
+  if (req.body?.ca_max != null) { fields.push('ca_max=?'); params.push(Number(req.body.ca_max)); }
+  if (req.body?.exam_max != null) { fields.push('exam_max=?'); params.push(Number(req.body.exam_max)); }
+  if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
+  params.push(subjectId);
+  try {
+    const [result] = await db.query(`UPDATE subjects SET ${fields.join(', ')} WHERE id=?`, params);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Subject not found.' });
+    res.json({ message: 'Subject updated.' });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A subject with this name already exists.' });
+    console.error('[admin/subjects/update]', err); res.status(500).json({ error: 'Unable to update subject.' });
+  }
+});
+
+router.patch('/subjects/:subjectId/status', requireManagement, async (req, res) => {
+  const subjectId = Number(req.params.subjectId);
+  const is_active = req.body?.is_active ? 1 : 0;
+  if (!Number.isInteger(subjectId) || subjectId < 1) return res.status(400).json({ error: 'Invalid subject ID.' });
+  try {
+    const [[subject]] = await db.query('SELECT id, subject_name FROM subjects WHERE id=? LIMIT 1', [subjectId]);
+    if (!subject) return res.status(404).json({ error: 'Subject not found.' });
+    await db.query('UPDATE subjects SET is_active=? WHERE id=?', [is_active, subjectId]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, is_active ? 'REACTIVATE_SUBJECT' : 'DEACTIVATE_SUBJECT', 'subject', subjectId, JSON.stringify({ subject_name: subject.subject_name })]);
+    res.json({ message: is_active ? 'Subject marked as offered.' : 'Subject marked as no longer offered.' });
+  } catch (err) { console.error('[admin/subjects/status]', err); res.status(500).json({ error: 'Unable to update subject status.' }); }
+});
+
+router.post('/curriculum/toggle', requireManagement, async (req, res) => {
+  const track = String(req.body?.track || '').toLowerCase();
+  const subject_id = Number(req.body?.subject_id);
+  const enabled = !!req.body?.enabled;
+  if (!TRACKS.includes(track)) return res.status(400).json({ error: 'Invalid curriculum track.' });
+  if (!Number.isInteger(subject_id) || subject_id < 1) return res.status(400).json({ error: 'Invalid subject ID.' });
+  try {
+    if (enabled) {
+      await db.query('INSERT IGNORE INTO track_subjects (track, subject_id) VALUES (?, ?)', [track, subject_id]);
+    } else {
+      await db.query('DELETE FROM track_subjects WHERE track=? AND subject_id=?', [track, subject_id]);
+    }
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, enabled ? 'ADD_CURRICULUM_SUBJECT' : 'REMOVE_CURRICULUM_SUBJECT', 'track_subjects', subject_id, JSON.stringify({ track })]);
+    res.json({ message: enabled ? 'Subject added to curriculum track.' : 'Subject removed from curriculum track.' });
+  } catch (err) { console.error('[admin/curriculum/toggle]', err); res.status(500).json({ error: 'Unable to update curriculum.' }); }
+});
+
+router.post('/departments', requireManagement, async (req, res) => {
+  const dept_name = String(req.body?.dept_name || '').trim();
+  const description = req.body?.description ? String(req.body.description).trim() : null;
+  if (!dept_name || dept_name.length < 2) return res.status(400).json({ error: 'Department name is required.' });
+  try {
+    const [result] = await db.query('INSERT INTO departments (dept_name, description) VALUES (?, ?)', [dept_name, description]);
+    res.status(201).json({ message: 'Department created.', id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A department with this name already exists.' });
+    console.error('[admin/departments]', err); res.status(500).json({ error: 'Unable to create department.' });
+  }
+});
+
 module.exports = router;

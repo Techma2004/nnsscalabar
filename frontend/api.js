@@ -33,10 +33,18 @@ export const getAllResults = () => apiFetch('/admin/results');
 export const updateUserStatus = (id, is_active) => apiFetch(`/admin/users/${id}/status`, { method: 'PATCH', body: JSON.stringify({ is_active }) });
 export const removeUser = id => apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
 
-export const getAllStudents = () => apiFetch('/students');
+export const getAllStudents = (status) => apiFetch(`/students${status ? `?status=${encodeURIComponent(status)}` : ''}`);
 export const getStudent = code => apiFetch(`/students/${encodeURIComponent(code)}`);
 export const getStudentSubjects = code => apiFetch(`/students/${encodeURIComponent(code)}/subjects`);
 export const getTeacherStudents = code => apiFetch(`/students/teacher/${encodeURIComponent(code)}`);
+export const updateStudentStatus = (id, status, reason) => apiFetch(`/admin/students/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) });
+
+export const getSubjects = () => apiFetch('/admin/subjects');
+export const createSubject = data => apiFetch('/admin/subjects', { method: 'POST', body: JSON.stringify(data) });
+export const updateSubject = (id, data) => apiFetch(`/admin/subjects/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const updateSubjectStatus = (id, is_active) => apiFetch(`/admin/subjects/${id}/status`, { method: 'PATCH', body: JSON.stringify({ is_active }) });
+export const toggleCurriculum = (track, subject_id, enabled) => apiFetch('/admin/curriculum/toggle', { method: 'POST', body: JSON.stringify({ track, subject_id, enabled }) });
+export const createDepartment = data => apiFetch('/admin/departments', { method: 'POST', body: JSON.stringify(data) });
 
 export const getAssignments = () => apiFetch('/results/assignments');
 export const uploadResult = data => apiFetch('/results/upload', { method: 'POST', body: JSON.stringify(data) });

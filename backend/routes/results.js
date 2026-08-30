@@ -16,7 +16,7 @@ router.get('/assignments', async (req, res) => {
     const [rows] = await db.query(`SELECT tca.id,tca.teacher_id,tca.subject_id,s.subject_name,tca.class_level_id,cl.level_name AS class_name,tca.arm_id,a.arm_name,
       tca.session_id,ac.session_name FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id
       JOIN arms a ON a.id=tca.arm_id JOIN academic_sessions ac ON ac.id=tca.session_id
-      WHERE (? IS NULL OR tca.teacher_id=?) ORDER BY ac.start_date DESC,cl.id,a.arm_name,s.subject_name`, [teacher?.id ?? null, teacher?.id ?? null]);
+      WHERE s.is_active=1 AND (? IS NULL OR tca.teacher_id=?) ORDER BY ac.start_date DESC,cl.id,a.arm_name,s.subject_name`, [teacher?.id ?? null, teacher?.id ?? null]);
     res.json(rows);
   } catch (err) { console.error('[results/assignments]', err); res.status(500).json({ error: 'Unable to load teaching assignments.' }); }
 });
