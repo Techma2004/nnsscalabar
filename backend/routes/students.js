@@ -42,7 +42,9 @@ router.get('/teacher/:teacherCode', async (req, res) => {
 });
 
 router.get('/:studentCode', async (req, res) => {
-  const code = String(req.params.studentCode || '').trim().toUpperCase();
+  let code = String(req.params.studentCode || '').trim().toUpperCase();
+  // Validate: 3-20 chars, letters/numbers/_- only (matching user_code convention)
+  if (!/^[A-Z0-9_-]{3,20}$/.test(code)) return res.status(400).json({ error: 'Invalid student code format. Must be 3-20 characters using letters, numbers, _ or -.' });
   if (req.user.role === 'student' && req.user.user_code !== code) return res.status(403).json({ error: 'Forbidden.' });
   try {
     const [[student]] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,s.id AS student_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
