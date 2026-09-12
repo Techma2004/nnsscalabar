@@ -217,6 +217,33 @@ router.patch('/users/:userId/status', requireManagement, async (req, res) => {
   } catch (err) { console.error('[admin/status]', err); res.status(500).json({ error: 'Unable to update account status.' }); }
 });
 
+// ---- ADMIN-DRIVEN PASSWORD RESET ----
+// For a school on its own LAN there is no email/SMS to run a self-service
+// "forgot password" flow through, so the supported recovery path is: an
+// admin or commandant sets a new password directly and hands it to the
+// person. Management-level targets (admin/commandant) can only be reset by
+// the Commandant, mirroring the status-change rule above. Unlike status
+// changes, resetting your own password through this route is allowed
+// (useful if you're locked out on one device but still signed in on
+// another) — self-service change with the current password is also
+// available via PATCH /api/auth/password.
+router.patch('/users/:userId/password', requireManagement, async (req, res) => {
+  const targetId = Number(req.params.userId);
+  const newPassword = String(req.body?.new_password || '');
+  if (!Number.isInteger(targetId) || targetId < 1) return res.status(400).json({ error: 'Invalid user ID.' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+  try {
+    const [[target]] = await db.query('SELECT id, role, user_code, full_name FROM users WHERE id=? LIMIT 1', [targetId]);
+    if (!target) return res.status(404).json({ error: 'User not found.' });
+    if (['admin','commandant'].includes(target.role) && req.user.role !== 'commandant') return res.status(403).json({ error: 'Only the Commandant can reset a management-level account password.' });
+    const hash = await bcrypt.hash(newPassword, 12);
+    await db.query('UPDATE users SET password_hash=? WHERE id=?', [hash, targetId]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'RESET_PASSWORD', 'user', targetId, JSON.stringify({ user_code: target.user_code })]);
+    res.json({ message: `Password reset for ${target.full_name} (${target.user_code}).` });
+  } catch (err) { console.error('[admin/password-reset]', err); res.status(500).json({ error: 'Unable to reset password.' }); }
+});
+
 // ---- STUDENT LIFECYCLE STATUS ----
 // A student's enrollment status is distinct from users.is_active (which only
 // gates login). Changing status here keeps both in sync: only 'active'

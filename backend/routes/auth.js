@@ -75,4 +75,41 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
+// ---- SELF-SERVICE PASSWORD CHANGE ----
+// Any signed-in user (any role) can change their own password once they
+// prove they know the current one. A small in-memory guard against
+// brute-forcing that check mirrors the login rate limiter (same 15-minute
+// window), keyed by account rather than IP since the request is already
+// authenticated.
+const passwordAttempts = new Map();
+function passwordChangeAllowed(userId) {
+  const now = Date.now();
+  const entry = passwordAttempts.get(userId) || { count: 0, resetAt: now + 15 * 60 * 1000 };
+  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 15 * 60 * 1000; }
+  entry.count += 1;
+  passwordAttempts.set(userId, entry);
+  return entry.count <= 10;
+}
+
+router.patch('/password', auth, async (req, res) => {
+  const currentPassword = String(req.body?.current_password || '');
+  const newPassword = String(req.body?.new_password || '');
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password are required.' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+  if (newPassword === currentPassword) return res.status(400).json({ error: 'New password must be different from your current password.' });
+  if (!passwordChangeAllowed(req.user.id)) return res.status(429).json({ error: 'Too many attempts. Please try again in a few minutes.' });
+  try {
+    const [[row]] = await db.query('SELECT password_hash FROM users WHERE id=? LIMIT 1', [req.user.id]);
+    if (!row) return res.status(404).json({ error: 'Account not found.' });
+    const valid = await bcrypt.compare(currentPassword, row.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect.' });
+    const hash = await bcrypt.hash(newPassword, 12);
+    await db.query('UPDATE users SET password_hash=? WHERE id=?', [hash, req.user.id]);
+    res.json({ message: 'Password updated successfully.' });
+  } catch (err) {
+    console.error('[auth/password]', err);
+    res.status(500).json({ error: 'Unable to update password.' });
+  }
+});
+
 module.exports = router;
