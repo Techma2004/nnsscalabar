@@ -1,0 +1,9 @@
+[project]
+name = "nnss-calabar-ocr"
+version = "1.0.0"
+description = "Score-sheet OCR extraction for the NNSS Calabar school portal"
+requires-python = ">=3.9"
+dependencies = [
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0.0",
+]
