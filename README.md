@@ -47,6 +47,7 @@ The backend serves `frontend/`, so the production deployment can use one origin 
 - Node.js 20+
 - MySQL 8+ or MariaDB 10.6+
 - npm
+- Python 3.9+ with [uv](https://docs.astral.sh/uv/) installed — only needed for the Score-Sheet Scanner feature (see below); everything else runs without it. `tesseract-ocr` (the system OCR engine) must also be installed for the scanner to work.
 
 ## Fresh local installation
 
@@ -272,68 +273,96 @@ This adds the `status`, `status_reason`, and `status_updated_at` columns to `stu
 
 Proprietary school software. Intended for authorized use by NNSS Calabar and its development/administrative team.
 
-## Optional AI Score-Sheet Import
+## Score-Sheet Scanner (Tesseract OCR)
 
-AI is an optional assistant, not a dependency. The school portal, manual score entry, authentication, HOD approval and other workflows continue to work when the AI service is stopped or not installed.
+The scanner is an optional assistant, not a dependency. The school portal, manual score entry, authentication, HOD approval and other workflows continue to work when Tesseract is stopped or not installed.
+
+Unlike a vision-language model, Tesseract OCR runs entirely on CPU with no GPU and no multi-gigabyte model to load — it's built specifically for a school server that can't run a model.
 
 ### How it works
 
 1. A teacher selects one of their assigned class/arm/subject assignments.
 2. The teacher captures a clear score-sheet photo on a phone or uploads an image.
-3. A local Ollama vision model reads the sheet and matches rows against the known school roster.
-4. The teacher reviews and can edit every extracted CA/exam value.
-5. The server validates the values and assignment again.
-6. Results are saved as pending and must still be approved by the HOD.
+3. The Node backend writes the image to a temporary file and runs `ocr_score_sheet.py` as a subprocess, passing it the real class roster (never a hardcoded one) over stdin.
+4. The script runs Tesseract, reconstructs each row from the OCR'd words, and only returns a row when its student code matches a real roster entry — nothing is ever invented.
+5. Each row's confidence score is Tesseract's own per-word OCR confidence, averaged across the row — not a fabricated number.
+6. The teacher reviews and can edit every extracted CA/exam value before anything is saved.
+7. The server independently re-validates the assignment, roster membership, and score ranges (0–30 / 0–70).
+8. Results are saved as pending and must still be approved by the HOD, exactly like manual entry.
 
-The AI never publishes a result automatically. Uploaded images are processed in memory by the application and are not stored by the AI feature.
+The scanner never publishes a result automatically. The uploaded image is written to a temp file only for the duration of the scan and is deleted immediately afterward, whether the scan succeeds or fails.
 
-### Install Ollama (optional)
+### Install Tesseract and uv (required for the scanner)
 
-Install Ollama from its official distribution for your operating system, then verify it is running. The default model is `qwen3-vl:2b-instruct`. On a modest school/local machine, start with the 2B model. Larger vision models may require substantially more RAM.
-
-Pull the model:
+Python dependencies are managed with [uv](https://docs.astral.sh/uv/) rather than pip — it manages its own virtual environment and installs the dependencies declared in `pyproject.toml` automatically the first time the scanner runs, so there is no separate `pip install` step to remember.
 
 ```bash
-ollama pull qwen3-vl:2b-instruct
+sudo apt install tesseract-ocr tesseract-ocr-eng
+curl -LsSf https://astral.sh/uv/install.sh | sh   # or: pip install uv --break-system-packages
+```
+
+That's it — no manual dependency install is required. The backend runs the scanner as `uv run ocr_score_sheet.py <image>`, and the first time that happens uv creates `.venv` and installs `pytesseract`/`Pillow` from `pyproject.toml` on its own (this first run takes a few extra seconds; every run after that is fast since the environment is cached on disk).
+
+To avoid a slow-feeling *first* scan for whichever teacher happens to try it first, warm the environment once after installing:
+
+```bash
+uv sync
 ```
 
 Configure the backend `.env`:
 
 ```env
 AI_SCORE_IMPORT_ENABLED=true
-OLLAMA_URL=http://127.0.0.1:11434
-OLLAMA_VISION_MODEL=qwen3-vl:2b-instruct
-OLLAMA_TIMEOUT_MS=90000
+OCR_RUNNER=uv
+OCR_TIMEOUT_MS=20000
 ```
 
-To disable AI while keeping the school system fully usable:
+If a particular machine genuinely cannot have uv installed, fall back to a plain interpreter that already has the dependencies installed:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install pytesseract Pillow
+```
+
+```env
+OCR_RUNNER=python
+OCR_PYTHON_BIN=/full/path/to/nnsscalabar/.venv/bin/python3
+```
+
+To disable the scanner while keeping the rest of the school system fully usable:
 
 ```env
 AI_SCORE_IMPORT_ENABLED=false
 ```
 
-When Ollama is stopped or the model is missing, the Teacher workspace displays an unavailable state and directs the teacher to manual score entry. It must not be treated as an application failure.
+When Tesseract or the Python script is missing, the Teacher workspace displays an unavailable state and directs the teacher to manual score entry. This must not be treated as an application failure — check `GET /api/results/ai-status` to see what the server currently detects.
 
 ### Recommended image quality
 
-Use a flat, well-lit sheet; keep all rows visible; avoid glare and motion blur; and photograph the page straight-on. Handwritten scores may require more manual verification than printed scores.
+Use a flat, well-lit sheet; keep all rows visible; avoid glare and motion blur; and photograph the page straight-on. Handwritten scores are read far less reliably than printed/typed ones — the scanner is tuned for typed score sheets. Rows that don't extract cleanly are simply omitted from the review table rather than guessed at; the teacher fills those in manually.
 
 ### Production safeguards
 
-- AI extraction is a draft only.
-- Student identity is matched against the selected class roster rather than trusted from the image alone.
-- CA values are restricted to 0–30 and exam values to 0–70.
+- OCR extraction is a draft only.
+- Student identity is matched against the selected class roster rather than trusted from the image alone — a row is only ever returned when its code matches a real, currently-enrolled student.
+- CA values are restricted to 0–30 and exam values to 0–70, checked independently on the server regardless of what the script reports.
 - Teacher verification is required before submission.
 - Existing teacher-assignment and HOD-department authorization remains enforced.
 - Manual entry remains the permanent fallback.
-- Do not send real student records to third-party AI services without the school's authorization and appropriate privacy controls.
+- Processing is entirely local — no image or student data ever leaves the server.
 
 ### HOD and teacher department selection
 
 The management account form sends the selected department by its database ID. The backend also accepts department names for backward compatibility and normalizes matching case/whitespace. This prevents valid departments from being rejected when display names and stored values differ.
 
+## Password management
+
+- **Self-service**: any signed-in user (any role) can change their own password from **My Profile**, by entering their current password plus a new one. Rate-limited to 10 attempts per 15 minutes per account.
+- **Admin/commandant reset**: from **Account Management**, an admin or commandant can set a new password directly for any account — the only practical recovery path on a school LAN with no email/SMS infrastructure to run a self-service "forgot password" flow through. Resetting a management-level account (admin/commandant) is restricted to the Commandant, the same rule already used for account status changes. Every reset is written to `activity_log` for audit purposes.
+- A password change takes effect immediately for new logins; it does not force out an already-active session on another device — the person should also sign out anywhere else they're logged in if the change was made because a password was compromised.
+
 ## Responsive UI hardening
 
 The current build includes a final responsive/overflow pass for desktop, tablet and mobile layouts. Buttons and action groups wrap or stack instead of overflowing, navigation collapses on smaller screens, tables use controlled horizontal scrolling where tabular data cannot be safely collapsed, modals adapt to small screens, and long labels/content are allowed to wrap without widening the viewport.
 
-When testing locally, verify at least these viewport widths in browser responsive mode: 1366px, 1024px, 768px, 520px, 390px and 360px. Check dashboard navigation, account management, score entry, AI score import, result approval, tables, dialogs and public pages.
+When testing locally, verify at least these viewport widths in browser responsive mode: 1366px, 1024px, 768px, 520px, 390px and 360px. Check dashboard navigation, account management, score entry, the score-sheet scanner, result approval, tables, dialogs and public pages.

@@ -1,8 +1,69 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs/promises');
+const os = require('os');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const router = express.Router();
 router.use(auth);
+
+const OCR_DIR = path.join(__dirname, '..', '..');
+const OCR_SCRIPT = path.join(OCR_DIR, 'ocr_score_sheet.py');
+// uv (https://docs.astral.sh/uv/) manages the Python venv and installs
+// pyproject.toml dependencies automatically on first run — no manual pip
+// install step on the server. Set OCR_RUNNER=python (with OCR_PYTHON_BIN
+// pointing at an interpreter that already has pytesseract/Pillow installed)
+// only if uv genuinely cannot be installed on a given machine.
+const OCR_RUNNER = String(process.env.OCR_RUNNER || 'uv').toLowerCase();
+const OCR_PYTHON_BIN = process.env.OCR_PYTHON_BIN || 'python3';
+const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 20000);
+
+/** Runs the Tesseract OCR script as a subprocess. Resolves with the parsed
+ * JSON the script prints, or rejects with a short, user-safe message —
+ * never with raw stderr/stack details, which could leak server paths. */
+function runOcr(imagePath, roster) {
+  return new Promise((resolve, reject) => {
+    const [cmd, args] = OCR_RUNNER === 'python'
+      ? [OCR_PYTHON_BIN, [OCR_SCRIPT, imagePath]]
+      : ['uv', ['run', '--project', OCR_DIR, OCR_SCRIPT, imagePath]];
+    const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], cwd: OCR_DIR });
+    let stdout = '', stderr = '';
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('OCR timed out. Try a clearer, more evenly-lit photo.')); }, OCR_TIMEOUT_MS);
+    child.stdout.on('data', d => { stdout += d; });
+    child.stderr.on('data', d => { stderr += d; });
+    child.on('error', err => {
+      clearTimeout(timer);
+      if (err.code === 'ENOENT') {
+        reject(new Error(OCR_RUNNER === 'python' ? 'OCR is not installed on this server (python3 not found).' : 'OCR is not installed on this server (uv not found). Ask an administrator to install uv, or set OCR_RUNNER=python.'));
+      } else {
+        reject(new Error('OCR failed to start.'));
+      }
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      // uv prints its own setup logs (venv creation, package downloads) to
+      // stderr on first run, and pytesseract itself never writes to stdout
+      // except our final JSON line — so stdout should always be clean. Fall
+      // back to scanning stderr too only if stdout truly has nothing usable,
+      // in case uv ever redirects an error there instead.
+      let parsed;
+      try { parsed = JSON.parse(stdout.trim().split('\n').pop()); }
+      catch {
+        try { parsed = JSON.parse(stderr.trim().split('\n').pop()); }
+        catch {
+          console.error('[ocr] unparseable output', { code, stdout, stderr });
+          return reject(new Error('OCR returned an unreadable response. Try again or use manual entry.'));
+        }
+      }
+      if (parsed.error) return reject(new Error(parsed.error));
+      resolve(parsed);
+    });
+    child.stdin.write(JSON.stringify(roster));
+    child.stdin.end();
+  });
+}
 
 async function teacherIdForUser(userId) {
   const [[row]] = await db.query('SELECT id, dept_id FROM teachers WHERE user_id=? LIMIT 1', [userId]);
@@ -65,32 +126,44 @@ router.post('/upload', async (req, res) => {
 router.get('/ai-status', async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can use score-sheet import.' });
   const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
-  if (!enabled) return res.json({ enabled: false, available: false, model: process.env.OLLAMA_VISION_MODEL || 'qwen3-vl:2b-instruct' });
-  const base = String(process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
-  const model = process.env.OLLAMA_VISION_MODEL || 'qwen3-vl:2b-instruct';
+  if (!enabled) return res.json({ enabled: false, available: false, model: 'Tesseract OCR' });
+  // Cheap readiness probe: actually invoking Tesseract's own version check is
+  // more honest than pinging a network service, since OCR runs locally with
+  // no server to be "down". Use the same runner (uv or raw python) as a real
+  // scan would, so this reflects what will actually happen.
   try {
-    const r = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(2500) });
-    if (!r.ok) throw new Error('Ollama unavailable');
-    const data = await r.json();
-    const available = Array.isArray(data.models) && data.models.some(m => m.name === model || m.name?.startsWith(`${model}:`));
-    res.json({ enabled: true, available, model });
-  } catch { res.json({ enabled: true, available: false, model }); }
+    await new Promise((resolve, reject) => {
+      const [cmd, args] = OCR_RUNNER === 'python'
+        ? [OCR_PYTHON_BIN, ['-c', 'import pytesseract; pytesseract.get_tesseract_version()']]
+        : ['uv', ['run', '--project', OCR_DIR, 'python', '-c', 'import pytesseract; pytesseract.get_tesseract_version()']];
+      const child = spawn(cmd, args, { stdio: 'ignore', cwd: OCR_DIR });
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('timeout')); }, 8000);
+      child.on('error', reject);
+      child.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error('exit ' + code)); });
+    });
+    res.json({ enabled: true, available: true, model: 'Tesseract OCR' });
+  } catch {
+    res.json({ enabled: true, available: false, model: 'Tesseract OCR' });
+  }
 });
 
 router.post('/ai-import', async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can import score sheets.' });
   const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
-  if (!enabled) return res.status(503).json({ error: 'AI score import is disabled. Use manual score entry.' });
+  if (!enabled) return res.status(503).json({ error: 'Score-sheet import is disabled. Use manual score entry.' });
   const assignmentId = Number(req.body?.assignment_id);
   const termId = Number(req.body?.term_id);
   const image = String(req.body?.image || '');
   if (!Number.isInteger(assignmentId) || assignmentId < 1) return res.status(400).json({ error: 'Select a valid teaching assignment.' });
   if (!Number.isInteger(termId) || termId < 1) return res.status(400).json({ error: 'Select an unlocked academic term.' });
-  if (!/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/.test(image)) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP score-sheet image.' });
+  const imageMatch = image.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!imageMatch) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP score-sheet image.' });
   if (image.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'Score-sheet image is too large. Use an image under 7 MB.' });
 
   const teacher = await teacherIdForUser(req.user.id);
   if (!teacher) return res.status(404).json({ error: 'Teacher record not found.' });
+
+  let tmpPath = null;
   try {
     const [[assignment]] = await db.query(`SELECT tca.id,tca.subject_id,tca.class_level_id,tca.arm_id,tca.session_id,s.subject_name,cl.level_name AS class_name,a.arm_name
       FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id JOIN arms a ON a.id=tca.arm_id
@@ -104,21 +177,37 @@ router.post('/ai-import', async (req, res) => {
       WHERE u.is_active=1 AND st.class_level_id=? AND st.arm_id=? ORDER BY u.full_name`, [assignment.class_level_id, assignment.arm_id]);
     if (!students.length) return res.status(409).json({ error: 'No active students were found for this class and arm.' });
 
-    const roster = students.map((x,i)=>`${i+1}. ${x.user_code} | ${x.full_name}`).join('\n');
-    const prompt = `You are extracting an academic score sheet. The teacher selected ${assignment.class_name} ${assignment.arm_name}, subject ${assignment.subject_name}.\n\nKNOWN STUDENT ROSTER:\n${roster}\n\nRead the visible rows. Return ONLY JSON in this exact shape: {"rows":[{"user_code":"...","ca_score":0,"exam_score":0,"confidence":0.0,"note":""}]}. Match only to the supplied roster. Do not invent students or scores. If a value is unclear, set that score to null and explain in note. Confidence is 0 to 1. Scores must be numbers or null. This is a draft for teacher verification, not an official result.`;
-    const base=String(process.env.OLLAMA_URL||'http://127.0.0.1:11434').replace(/\/$/,'');
-    const model=process.env.OLLAMA_VISION_MODEL||'qwen3-vl:2b-instruct';
-    const response=await fetch(`${base}/api/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model,messages:[{role:'user',content:prompt,images:[image.split(',')[1]]}],stream:false,format:'json',options:{temperature:0}}), signal:AbortSignal.timeout(Number(process.env.OLLAMA_TIMEOUT_MS||90000)) });
-    if(!response.ok) { const text=await response.text(); console.error('[results/ai-import]',text.slice(0,500)); return res.status(503).json({error:'AI service is unavailable. Use manual score entry.'}); }
-    const data=await response.json();
-    let parsed; try { parsed=JSON.parse(data.message?.content||'{}'); } catch { return res.status(502).json({error:'The AI returned an unreadable response. Please retry or use manual entry.'}); }
-    const known=new Map(students.map(x=>[x.user_code,{...x}]));
-    const rows=Array.isArray(parsed.rows)?parsed.rows.map(r=>({
-      user_code:String(r.user_code||'').trim().toUpperCase(), full_name:known.get(String(r.user_code||'').trim().toUpperCase())?.full_name||null,
-      ca_score:r.ca_score===null||r.ca_score===undefined?null:Number(r.ca_score), exam_score:r.exam_score===null||r.exam_score===undefined?null:Number(r.exam_score), confidence:Number(r.confidence||0), note:String(r.note||'')
-    })).filter(r=>known.has(r.user_code)).map(r=>({...r, valid_ca:Number.isFinite(r.ca_score)&&r.ca_score>=0&&r.ca_score<=30,valid_exam:Number.isFinite(r.exam_score)&&r.exam_score>=0&&r.exam_score<=70})) : [];
-    res.json({assignment:{id:assignment.id,class_name:assignment.class_name,arm_name:assignment.arm_name,subject_name:assignment.subject_name}, term_id:term.id, term_name:term.term_name, rows, roster_count:students.length, extracted_count:rows.length, model});
-  } catch(err) { console.error('[results/ai-import]',err); res.status(503).json({error:'AI score import is unavailable right now. Use manual score entry.'}); }
+    const roster = Object.fromEntries(students.map(s => [s.user_code, s.full_name]));
+    const ext = imageMatch[1] === 'jpg' ? 'jpeg' : imageMatch[1];
+    tmpPath = path.join(os.tmpdir(), `nnss-ocr-${crypto.randomUUID()}.${ext}`);
+    await fs.writeFile(tmpPath, Buffer.from(imageMatch[2], 'base64'));
+
+    const ocrResult = await runOcr(tmpPath, roster);
+    const known = new Map(students.map(x => [x.user_code, { ...x }]));
+    const rows = (ocrResult.rows || [])
+      .map(r => ({
+        user_code: String(r.user_code || '').trim().toUpperCase(),
+        full_name: known.get(String(r.user_code || '').trim().toUpperCase())?.full_name || null,
+        ca_score: r.ca_score === null || r.ca_score === undefined ? null : Number(r.ca_score),
+        exam_score: r.exam_score === null || r.exam_score === undefined ? null : Number(r.exam_score),
+        confidence: Number(r.confidence || 0),
+        note: ''
+      }))
+      .filter(r => known.has(r.user_code))
+      .map(r => ({ ...r, valid_ca: Number.isFinite(r.ca_score) && r.ca_score >= 0 && r.ca_score <= 30, valid_exam: Number.isFinite(r.exam_score) && r.exam_score >= 0 && r.exam_score <= 70 }));
+
+    res.json({ assignment: { id: assignment.id, class_name: assignment.class_name, arm_name: assignment.arm_name, subject_name: assignment.subject_name }, term_id: term.id, term_name: term.term_name, rows, roster_count: students.length, extracted_count: rows.length, model: 'Tesseract OCR' });
+  } catch (err) {
+    if (err.message && !err.message.includes('\n') && err.message.length < 200) {
+      // A clean, user-safe message we raised deliberately (from runOcr or a validation check above).
+      res.status(503).json({ error: err.message });
+    } else {
+      console.error('[results/ai-import]', err);
+      res.status(503).json({ error: 'Score-sheet import is unavailable right now. Use manual score entry.' });
+    }
+  } finally {
+    if (tmpPath) { try { await fs.unlink(tmpPath); } catch {} }
+  }
 });
 
 router.get('/pending', async (req, res) => {
