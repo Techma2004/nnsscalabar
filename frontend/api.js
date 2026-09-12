@@ -32,6 +32,8 @@ export const getAllTeachers = () => apiFetch('/admin/teachers');
 export const getAllResults = () => apiFetch('/admin/results');
 export const updateUserStatus = (id, is_active) => apiFetch(`/admin/users/${id}/status`, { method: 'PATCH', body: JSON.stringify({ is_active }) });
 export const removeUser = id => apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
+export const changeMyPassword = (current_password, new_password) => apiFetch('/auth/password', { method: 'PATCH', body: JSON.stringify({ current_password, new_password }) });
+export const resetUserPassword = (id, new_password) => apiFetch(`/admin/users/${id}/password`, { method: 'PATCH', body: JSON.stringify({ new_password }) });
 
 export const getAllStudents = (status) => apiFetch(`/students${status ? `?status=${encodeURIComponent(status)}` : ''}`);
 export const getStudent = code => apiFetch(`/students/${encodeURIComponent(code)}`);
