@@ -25,20 +25,25 @@ export async function login(user_code, password) {
 export async function logout() { try { await apiFetch('/auth/logout', { method: 'POST' }); } finally { currentUser = null; sessionStorage.removeItem('nnss_user'); } }
 export async function getCurrentUser() { currentUser = await apiFetch('/auth/me'); sessionStorage.setItem('nnss_user', JSON.stringify(currentUser)); return currentUser; }
 
+function qs(params) {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');
+  return entries.length ? `?${new URLSearchParams(entries)}` : '';
+}
+
 export const createUser = data => apiFetch('/admin/users', { method: 'POST', body: JSON.stringify(data) });
 export const getAdminMeta = () => apiFetch('/admin/meta');
-export const getAllUsers = () => apiFetch('/admin/users');
-export const getAllTeachers = () => apiFetch('/admin/teachers');
-export const getAllResults = () => apiFetch('/admin/results');
+export const getAllUsers = q => apiFetch(`/admin/users${qs({ q })}`);
+export const getAllTeachers = q => apiFetch(`/admin/teachers${qs({ q })}`);
+export const getAllResults = q => apiFetch(`/admin/results${qs({ q })}`);
 export const updateUserStatus = (id, is_active) => apiFetch(`/admin/users/${id}/status`, { method: 'PATCH', body: JSON.stringify({ is_active }) });
 export const removeUser = id => apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
 export const changeMyPassword = (current_password, new_password) => apiFetch('/auth/password', { method: 'PATCH', body: JSON.stringify({ current_password, new_password }) });
 export const resetUserPassword = (id, new_password) => apiFetch(`/admin/users/${id}/password`, { method: 'PATCH', body: JSON.stringify({ new_password }) });
 
-export const getAllStudents = (status) => apiFetch(`/students${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+export const getAllStudents = (status, q) => apiFetch(`/students${qs({ status, q })}`);
 export const getStudent = code => apiFetch(`/students/${encodeURIComponent(code)}`);
 export const getStudentSubjects = code => apiFetch(`/students/${encodeURIComponent(code)}/subjects`);
-export const getTeacherStudents = code => apiFetch(`/students/teacher/${encodeURIComponent(code)}`);
+export const getTeacherStudents = (code, q) => apiFetch(`/students/teacher/${encodeURIComponent(code)}${qs({ q })}`);
 export const updateStudentStatus = (id, status, reason) => apiFetch(`/admin/students/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, reason }) });
 
 export const getSubjects = () => apiFetch('/admin/subjects');
@@ -48,6 +53,12 @@ export const updateSubjectStatus = (id, is_active) => apiFetch(`/admin/subjects/
 export const toggleCurriculum = (track, subject_id, enabled) => apiFetch('/admin/curriculum/toggle', { method: 'POST', body: JSON.stringify({ track, subject_id, enabled }) });
 export const createDepartment = data => apiFetch('/admin/departments', { method: 'POST', body: JSON.stringify(data) });
 
+export const getSessions = () => apiFetch('/admin/sessions');
+export const createSession = data => apiFetch('/admin/sessions', { method: 'POST', body: JSON.stringify(data) });
+export const activateSession = id => apiFetch(`/admin/sessions/${id}/activate`, { method: 'PATCH' });
+export const createTerm = (sessionId, data) => apiFetch(`/admin/sessions/${sessionId}/terms`, { method: 'POST', body: JSON.stringify(data) });
+export const updateTerm = (id, data) => apiFetch(`/admin/terms/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+
 export const getAssignments = () => apiFetch('/results/assignments');
 export const uploadResult = data => apiFetch('/results/upload', { method: 'POST', body: JSON.stringify(data) });
 export const getPendingResults = () => apiFetch('/results/pending');
@@ -56,6 +67,9 @@ export const getStudentResults = code => apiFetch(`/results/student/${encodeURIC
 
 export const getAnnouncements = () => apiFetch('/announcements');
 export const createAnnouncement = data => apiFetch('/announcements', { method: 'POST', body: JSON.stringify(data) });
+export const getManagedAnnouncements = q => apiFetch(`/announcements/manage${qs({ q })}`);
+export const updateAnnouncement = (id, data) => apiFetch(`/announcements/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteAnnouncement = id => apiFetch(`/announcements/${id}`, { method: 'DELETE' });
 export const getStats = () => apiFetch('/dashboard/stats');
 export const getStudentSummary = () => apiFetch('/dashboard/student-summary');
 export const getTopPerformers = () => apiFetch('/dashboard/top-performers');

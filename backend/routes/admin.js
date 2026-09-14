@@ -144,32 +144,47 @@ router.post('/users', requireManagement, async (req, res) => {
 });
 
 router.get('/users', requireManagement, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const params = [];
+  let searchClause = '';
+  if (q) { searchClause = 'AND (full_name LIKE ? OR user_code LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   try {
     const [rows] = await db.query(`SELECT id AS user_id, user_code, full_name, email, role, is_active, last_login
-      FROM users WHERE is_active=1 ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'commandant' THEN 2 WHEN 'hod' THEN 3 WHEN 'teacher' THEN 4 WHEN 'student' THEN 5 ELSE 6 END, full_name`);
-    res.json(rows);
+      FROM users WHERE is_active=1 ${searchClause}
+      ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'commandant' THEN 2 WHEN 'hod' THEN 3 WHEN 'teacher' THEN 4 WHEN 'student' THEN 5 ELSE 6 END, full_name
+      LIMIT 300`, params);
+    res.json({ rows, truncated: rows.length === 300 });
   } catch (err) { console.error('[admin/users]', err); res.status(500).json({ error: 'Unable to load accounts.' }); }
 });
 
 router.get('/teachers', requireStaffDirectory, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const params = [];
+  let searchClause = '';
+  if (q) { searchClause = 'HAVING u.full_name LIKE ? OR u.user_code LIKE ? OR subjects LIKE ?'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
     const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.email,u.gender,t.id AS teacher_id,t.staff_no,d.dept_name AS department,t.qualification,t.date_joined,
       GROUP_CONCAT(DISTINCT s.subject_name ORDER BY s.subject_name SEPARATOR ', ') AS subjects
       FROM teachers t JOIN users u ON u.id=t.user_id LEFT JOIN departments d ON d.id=t.dept_id
       LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects s ON s.id=ts.subject_id
-      WHERE u.is_active=1 GROUP BY u.id,t.id,d.dept_name ORDER BY u.full_name`);
-    res.json(rows);
+      WHERE u.is_active=1 GROUP BY u.id,t.id,d.dept_name ${searchClause} ORDER BY u.full_name LIMIT 300`, params);
+    res.json({ rows, truncated: rows.length === 300 });
   } catch (err) { console.error('[admin/teachers]', err); res.status(500).json({ error: 'Unable to load teachers.' }); }
 });
 
 router.get('/results', requireManagement, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const params = [];
+  let searchClause = '';
+  if (q) { searchClause = 'AND (su.full_name LIKE ? OR su.user_code LIKE ? OR sub.subject_name LIKE ?)'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
     const [rows] = await db.query(`SELECT r.id,su.user_code AS student_code,su.full_name AS student_name,sub.subject_name,t.term_name,ac.session_name,
       r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.is_approved,r.uploaded_at,r.approved_at
       FROM results r JOIN students s ON s.id=r.student_id JOIN users su ON su.id=s.user_id JOIN subjects sub ON sub.id=r.subject_id
       JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
-      ORDER BY r.updated_at DESC LIMIT 500`);
-    res.json(rows);
+      WHERE 1=1 ${searchClause}
+      ORDER BY r.updated_at DESC LIMIT 500`, params);
+    res.json({ rows, truncated: rows.length === 500 });
   } catch (err) { console.error('[admin/results]', err); res.status(500).json({ error: 'Unable to load results.' }); }
 });
 
@@ -377,6 +392,106 @@ router.post('/departments', requireManagement, async (req, res) => {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A department with this name already exists.' });
     console.error('[admin/departments]', err); res.status(500).json({ error: 'Unable to create department.' });
   }
+});
+
+// ---- ACADEMIC SESSIONS & TERMS ----
+// A school needs to roll into a new session (e.g. 2027/2028) every year and
+// open/lock terms as the calendar progresses, without a developer touching
+// the database by hand. Exactly one session, and exactly one term, is ever
+// "current" at a time — that's what teacher/student defaults and the
+// dashboard read — so activating one always clears the others in the same
+// transaction.
+router.get('/sessions', requireManagement, async (req, res) => {
+  try {
+    const [sessions] = await db.query('SELECT id, session_name, is_current, start_date, end_date FROM academic_sessions ORDER BY start_date DESC, id DESC');
+    const [terms] = await db.query('SELECT id, session_id, term_number, term_name, start_date, end_date, is_current, result_locked FROM terms ORDER BY session_id DESC, term_number');
+    const bySession = {};
+    for (const t of terms) { (bySession[t.session_id] = bySession[t.session_id] || []).push(t); }
+    res.json(sessions.map(s => ({ ...s, terms: bySession[s.id] || [] })));
+  } catch (err) { console.error('[admin/sessions]', err); res.status(500).json({ error: 'Unable to load academic sessions.' }); }
+});
+
+router.post('/sessions', requireManagement, async (req, res) => {
+  const session_name = String(req.body?.session_name || '').trim();
+  const start_date = req.body?.start_date || null;
+  const end_date = req.body?.end_date || null;
+  const make_current = !!req.body?.make_current;
+  if (!/^\d{4}\/\d{4}$/.test(session_name)) return res.status(400).json({ error: 'Session name must look like 2027/2028.' });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [result] = await conn.query('INSERT INTO academic_sessions (session_name, start_date, end_date, is_current) VALUES (?, ?, ?, 0)', [session_name, start_date, end_date]);
+    if (make_current) {
+      await conn.query('UPDATE academic_sessions SET is_current=0');
+      await conn.query('UPDATE academic_sessions SET is_current=1 WHERE id=?', [result.insertId]);
+    }
+    await conn.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'CREATE_SESSION', 'academic_session', result.insertId, JSON.stringify({ session_name })]);
+    await conn.commit();
+    res.status(201).json({ message: `${session_name} created.`, id: result.insertId });
+  } catch (err) {
+    await conn.rollback();
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A session with this name already exists.' });
+    console.error('[admin/sessions/create]', err); res.status(500).json({ error: 'Unable to create session.' });
+  } finally { conn.release(); }
+});
+
+router.patch('/sessions/:sessionId/activate', requireManagement, async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const conn = await db.getConnection();
+  try {
+    const [[session]] = await conn.query('SELECT id, session_name FROM academic_sessions WHERE id=? LIMIT 1', [sessionId]);
+    if (!session) return res.status(404).json({ error: 'Session not found.' });
+    await conn.beginTransaction();
+    await conn.query('UPDATE academic_sessions SET is_current=0');
+    await conn.query('UPDATE academic_sessions SET is_current=1 WHERE id=?', [sessionId]);
+    await conn.commit();
+    res.json({ message: `${session.session_name} is now the current academic session.` });
+  } catch (err) { await conn.rollback(); console.error('[admin/sessions/activate]', err); res.status(500).json({ error: 'Unable to activate session.' }); }
+  finally { conn.release(); }
+});
+
+const TERM_NAMES = { 1: 'First Term', 2: 'Second Term', 3: 'Third Term' };
+router.post('/sessions/:sessionId/terms', requireManagement, async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const term_number = Number(req.body?.term_number);
+  const start_date = req.body?.start_date || null;
+  const end_date = req.body?.end_date || null;
+  if (![1, 2, 3].includes(term_number)) return res.status(400).json({ error: 'Term number must be 1, 2, or 3.' });
+  try {
+    const [[session]] = await db.query('SELECT id FROM academic_sessions WHERE id=? LIMIT 1', [sessionId]);
+    if (!session) return res.status(404).json({ error: 'Session not found.' });
+    const term_name = TERM_NAMES[term_number];
+    const [result] = await db.query('INSERT INTO terms (session_id, term_number, term_name, start_date, end_date) VALUES (?, ?, ?, ?, ?)', [sessionId, term_number, term_name, start_date, end_date]);
+    res.status(201).json({ message: `${term_name} added.`, id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'That term already exists for this session.' });
+    console.error('[admin/terms/create]', err); res.status(500).json({ error: 'Unable to create term.' });
+  }
+});
+
+router.patch('/terms/:termId', requireManagement, async (req, res) => {
+  const termId = Number(req.params.termId);
+  const conn = await db.getConnection();
+  try {
+    const [[term]] = await conn.query('SELECT id, term_name FROM terms WHERE id=? LIMIT 1', [termId]);
+    if (!term) return res.status(404).json({ error: 'Term not found.' });
+    await conn.beginTransaction();
+    if (req.body?.is_current !== undefined) {
+      if (req.body.is_current) {
+        await conn.query('UPDATE terms SET is_current=0');
+        await conn.query('UPDATE terms SET is_current=1 WHERE id=?', [termId]);
+      } else {
+        await conn.query('UPDATE terms SET is_current=0 WHERE id=?', [termId]);
+      }
+    }
+    if (req.body?.result_locked !== undefined) {
+      await conn.query('UPDATE terms SET result_locked=? WHERE id=?', [req.body.result_locked ? 1 : 0, termId]);
+    }
+    await conn.commit();
+    res.json({ message: `${term.term_name} updated.` });
+  } catch (err) { await conn.rollback(); console.error('[admin/terms/update]', err); res.status(500).json({ error: 'Unable to update term.' }); }
+  finally { conn.release(); }
 });
 
 module.exports = router;
