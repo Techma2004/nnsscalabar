@@ -373,6 +373,11 @@ table tr:hover { background: var(--bg-card-hover); }
 .portal-form-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1rem; }
 .portal-form-grid .full { grid-column:1/-1; }
 .portal-actions { display:flex; gap:.6rem; flex-wrap:wrap; }
+.portal-search { position:relative; flex:0 1 260px; min-width:180px; }
+.portal-search-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--text-light); pointer-events:none; }
+.portal-search input { width:100%; padding:10px 12px 10px 34px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-card); color:var(--text); font-size:.88rem; font-family:inherit; }
+.portal-search input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.portal-search input::-webkit-search-cancel-button { cursor:pointer; }
 .portal-badge { display:inline-flex; align-items:center; gap:.35rem; padding:.28rem .6rem; border-radius:6px; font-size:.72rem; font-weight:700; border:1px solid var(--border); background: var(--bg); color: var(--text-secondary); }
 .portal-badge.ok { color:var(--success); background:rgba(15,157,104,.08); border-color:rgba(15,157,104,.22); }
 .portal-badge.pending { color:var(--warning); background:rgba(184,121,26,.08); border-color:rgba(184,121,26,.22); }

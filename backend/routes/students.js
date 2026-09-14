@@ -5,26 +5,28 @@ const router = express.Router();
 router.use(auth);
 
 router.get('/', async (req, res) => {
-  if (!['admin','commandant','teacher','hod'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
-  // Non-management staff (teacher/hod) only ever need the active roster for
-  // day-to-day teaching; only admin/commandant can browse other lifecycle
-  // states (pending, withdrawn, graduated) via ?status=.
-  const canBrowseAllStatuses = ['admin', 'commandant'].includes(req.user.role);
+  // This endpoint returns the roster across ALL classes — it must stay
+  // restricted to admin/commandant. Teachers only ever see their own
+  // assigned classes via GET /students/teacher/:teacherCode below; a teacher
+  // hitting this route previously got the entire school's roster regardless
+  // of what they actually teach, which was a real privilege overreach.
+  if (!['admin','commandant'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
   const requested = String(req.query.status || 'active').toLowerCase();
   const validStatuses = ['active', 'pending', 'withdrawn', 'graduated'];
+  const q = String(req.query.q || '').trim();
   let statusClause = "AND s.status = 'active' AND u.is_active = 1";
   let params = [];
-  if (canBrowseAllStatuses) {
-    if (requested === 'all') { statusClause = ''; params = []; }
-    else if (requested === 'active') { statusClause = "AND s.status = 'active' AND u.is_active = 1"; params = []; }
-    else if (validStatuses.includes(requested)) { statusClause = 'AND s.status = ?'; params = [requested]; }
-  }
+  if (requested === 'all') { statusClause = ''; params = []; }
+  else if (requested === 'active') { statusClause = "AND s.status = 'active' AND u.is_active = 1"; params = []; }
+  else if (validStatuses.includes(requested)) { statusClause = 'AND s.status = ?'; params = [requested]; }
+  let searchClause = '';
+  if (q) { searchClause = 'AND (u.full_name LIKE ? OR u.user_code LIKE ? OR s.admission_no LIKE ?)'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
     const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,u.is_active,s.id AS student_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
       cl.level_name AS class,a.arm_name AS arm,s.track,s.status,s.status_reason,s.status_updated_at
       FROM students s JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
-      WHERE 1=1 ${statusClause} ORDER BY cl.id,a.arm_name,u.full_name`, params);
-    res.json(rows);
+      WHERE 1=1 ${statusClause} ${searchClause} ORDER BY cl.id,a.arm_name,u.full_name LIMIT 500`, params);
+    res.json({ rows, truncated: rows.length === 500 });
   } catch (err) { console.error('[students]', err); res.status(500).json({ error: 'Unable to load students.' }); }
 });
 
@@ -32,11 +34,15 @@ router.get('/teacher/:teacherCode', async (req, res) => {
   if (!['teacher','hod','admin','commandant'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
   const teacherCode = String(req.params.teacherCode || '').trim().toUpperCase();
   if (req.user.role === 'teacher' && req.user.user_code !== teacherCode) return res.status(403).json({ error: 'You can only view your assigned students.' });
+  const q = String(req.query.q || '').trim();
+  const params = [teacherCode];
+  let searchClause = '';
+  if (q) { searchClause = 'AND (u.full_name LIKE ? OR u.user_code LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   try {
     const [rows] = await db.query(`SELECT DISTINCT u.user_code,u.full_name,s.id AS student_id,cl.level_name AS class,a.arm_name AS arm,s.track,s.admission_no
       FROM teacher_class_assignments tca JOIN teachers t ON t.id=tca.teacher_id JOIN users tu ON tu.id=t.user_id
       JOIN students s ON s.class_level_id=tca.class_level_id AND s.arm_id=tca.arm_id JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
-      JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tu.user_code=? AND u.is_active=1 AND ac.is_current=1 ORDER BY cl.id,a.arm_name,u.full_name`, [teacherCode]);
+      JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tu.user_code=? AND u.is_active=1 AND ac.is_current=1 ${searchClause} ORDER BY cl.id,a.arm_name,u.full_name`, params);
     res.json(rows);
   } catch (err) { console.error('[students/teacher]', err); res.status(500).json({ error: 'Unable to load assigned students.' }); }
 });
