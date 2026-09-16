@@ -5,10 +5,11 @@ import {
   getAnnouncements, createAnnouncement, getTopPerformers, removeUser, getAiStatus, aiImportScores,
   updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment,
   changeMyPassword, resetUserPassword, getManagedAnnouncements, updateAnnouncement, deleteAnnouncement,
-  getSessions, createSession, activateSession, createTerm, updateTerm
+  getSessions, createSession, activateSession, createTerm, updateTerm,
+  getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
 } from './api.js';
 
-const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], sessions:[], search:{} };
+const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, search:{} };
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const roleName = {student:'Student',teacher:'Subject Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant'};
@@ -19,13 +20,13 @@ const menus = {
   student:[['Dashboard','dashboard'],['My Results','results'],['My Subjects','subjects'],['Announcements','announcements'],['My Profile','profile']],
   teacher:[['Dashboard','dashboard'],['Score Entry','scores'],['Score-Sheet Scanner','ai-import'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
   hod:[['Dashboard','dashboard'],['Result Approval','approval'],['Department Teachers','teachers'],['Announcements','announcements'],['My Profile','profile']],
-  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Curriculum','curriculum'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
-  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Top Performers','top'],['Curriculum','curriculum'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
+  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
+  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Top Performers','top'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
 };
 const panelIcons = {
   dashboard:'grid', results:'document', subjects:'book', announcements:'bell', profile:'user',
   scores:'pencil', 'ai-import':'cpu', students:'users', teachers:'idbadge', approval:'checksquare',
-  system:'settings', accounts:'userplus', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar'
+  system:'settings', accounts:'userplus', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar', classes:'grid'
 };
 const ic = (name,size) => (typeof window.Icon==='function') ? window.Icon(name,{size:size||18}) : '';
 
@@ -79,11 +80,15 @@ async function render(panel){
       if(panel==='scores' || panel==='ai-import') { state.assignments=await getAssignments(); state.students=await getTeacherStudents(state.user.user_code); state.meta=await getAdminMeta(); }
       if(panel==='students') { const r=await getTeacherStudents(state.user.user_code,state.search.students); state.students=r; }
     }
-    if(state.user.role==='hod' && panel==='approval') state.pending=await getPendingResults();
+    if(state.user.role==='hod'){
+      if(panel==='dashboard') state.hodSummary=await getHodSummary();
+      if(panel==='approval') state.pending=await getPendingResults();
+    }
     if(state.user.role==='hod' && panel==='teachers') { const r=await getAllTeachers(state.search.teachers); state.teachers=r.rows; state.teachersTruncated=r.truncated; }
     if(['admin','commandant'].includes(state.user.role)){
       if(panel==='accounts') { const r=await getAllUsers(state.search.accounts); state.accounts=r.rows; state.accountsTruncated=r.truncated; }
       if(panel==='sessions') state.sessions=await getSessions();
+      if(panel==='classes') state.classesArms=await getClassesAndArms();
     }
     if(state.user.role==='admin'){
       if(panel==='students') { const r=await getAllStudents(state.studentStatusFilter,state.search.students); state.students=r.rows; state.studentsTruncated=r.truncated; }
@@ -114,6 +119,7 @@ function renderPanel(panel){
   if(panel==='system') return renderSystem();
   if(panel==='curriculum') return renderCurriculum();
   if(panel==='sessions') return renderSessions();
+  if(panel==='classes') return renderClassesArms();
   if(panel==='overview') return renderOverview();
   if(panel==='top') return renderTop();
   if(panel==='accounts') return renderAccounts();
@@ -125,10 +131,85 @@ function renderDashboard(){
   if(r==='student') return `<div class="portal-toolbar"><div><div class="eyebrow">Student workspace</div><h1>Welcome, ${esc(state.user.name.split(' ')[0])}</h1><p>Your academic information at a glance.</p></div></div>
     <div class="portal-grid">${stat('Approved subjects',state.studentSummary.subjects||0,'book')}${stat('Current average',state.studentSummary.average?`${state.studentSummary.average}%`:'—','trendingup')}${stat('Passed subjects',state.studentSummary.passes||0,'checkcircle')}${stat('Active notices',state.stats.active_announcements||0,'bell')}</div>
     ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">Active</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)} `;
-  const title={teacher:'Teacher workspace',hod:'Department control centre',admin:'Administration control centre',commandant:'Commandant overview'}[r];
-  const subtitle={teacher:'Manage score entry and your assigned students.',hod:'Review departmental results before publication.',admin:'Manage accounts, academic records and school communications.',commandant:'Monitor school-wide academic performance and activity.'}[r];
+  // An HOD sees their own department named explicitly, with figures scoped to
+  // that department, rather than school-wide counters they have to interpret.
+  if(r==='hod'){
+    const h=state.hodSummary;
+    if(!h) return `<div class="portal-toolbar"><div><div class="eyebrow">Head of Department</div><h1>Department control centre</h1></div></div>${card('Department not assigned','<p>No department is currently assigned to your account. Please contact an administrator so your dashboard and approval queue can be scoped correctly.</p>')}`;
+    return `<div class="portal-toolbar"><div><div class="eyebrow">Head of Department</div><h1>${esc(h.dept_name)}</h1><p>${esc(h.description||'Review departmental results before publication.')}</p></div><span class="portal-badge ok">${esc(h.dept_name)}</span></div>
+      <div class="portal-grid">${stat('Department teachers',h.teachers,'idbadge')}${stat('Department subjects',h.subjects,'book')}${stat('Awaiting approval',h.pending_results,'clock')}${stat('Approved results',h.approved_results,'barchart')}</div>
+      ${card('Approval queue',`<p>There ${h.pending_results===1?'is':'are'} <strong>${h.pending_results}</strong> result${h.pending_results===1?'':'s'} from <strong>${esc(h.dept_name)}</strong> waiting for your review.</p><button class="btn btn-primary" data-go="approval">Open approval queue ${ic('arrowright',15)}</button>`)}
+      ${card('Department details',`<div class="portal-kpi"><span>Department</span><strong>${esc(h.dept_name)}</strong></div><div class="portal-kpi"><span>Appointed</span><strong>${h.appointed_date?fmtDate(h.appointed_date):'—'}</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)}`;
+  }
+  const title={teacher:'Teacher workspace',admin:'Administration control centre',commandant:'Commandant overview'}[r];
+  const subtitle={teacher:'Manage score entry and your assigned students.',admin:'Manage accounts, academic records and school communications.',commandant:'Monitor school-wide academic performance and activity.'}[r];
   return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>${title}</h1><p>${subtitle}</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'users')}${stat('Teachers',state.stats.teachers,'idbadge')}${stat('Approved results',state.stats.results,'barchart')}${stat('Pending results',state.stats.pending_results,'clock')}</div>
-    ${r==='teacher'?card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>30 + 70</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>${ic('checkcircle',16)}</strong></div>`):r==='hod'?card('Approval queue',`<p>There are <strong>${state.stats.pending_results||0}</strong> results waiting for review.</p><button class="btn btn-primary" data-go="approval">Open approval queue ${ic('arrowright',15)}</button>`):card('System status',`<div class="portal-kpi"><span>Database-backed portal</span><strong class="portal-badge ok">Online</strong></div><div class="portal-kpi"><span>Active announcements</span><strong>${state.stats.active_announcements||0}</strong></div>`)}`;
+    ${r==='teacher'?card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>30 + 70</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>${ic('checkcircle',16)}</strong></div>`):card('System status',`<div class="portal-kpi"><span>Database-backed portal</span><strong class="portal-badge ok">Online</strong></div><div class="portal-kpi"><span>Active announcements</span><strong>${state.stats.active_announcements||0}</strong></div>`)}`;
+}
+
+function renderClassesArms(){
+  const ARM_TYPES=['junior','science','technical','arts'];
+  const classRows=state.classesArms.classes.map(c=>`<tr><td><strong>${esc(c.level_name)}</strong></td><td>${c.is_junior?'<span class="portal-badge">Junior</span>':'<span class="portal-badge">Senior</span>'}</td><td>${c.student_count}</td><td class="portal-actions"><button class="btn btn-secondary btn-sm" data-edit-class="${c.id}">Rename</button><button class="btn btn-danger btn-sm" data-delete-class="${c.id}" data-name="${esc(c.level_name)}" data-count="${c.student_count}">Delete</button></td></tr>`).join('');
+  const armRows=state.classesArms.arms.map(a=>`<tr><td><strong>${esc(a.arm_name)}</strong>${a.is_active?'':' <span class="portal-badge danger">Inactive</span>'}<br><small>${esc(a.category||'—')}</small></td><td>${esc(a.arm_type)}</td><td>${a.student_count}</td><td class="portal-actions"><button class="btn btn-secondary btn-sm" data-edit-arm="${a.id}">Edit</button><button class="btn btn-sm ${a.is_active?'btn-secondary':'btn-primary'}" data-toggle-arm="${a.id}" data-active="${a.is_active?'1':'0'}">${a.is_active?'Deactivate':'Reactivate'}</button><button class="btn btn-danger btn-sm" data-delete-arm="${a.id}" data-name="${esc(a.arm_name)}" data-count="${a.student_count}">Delete</button></td></tr>`).join('');
+  const addClass=`<div class="portal-form-grid"><div class="form-group"><label>Class name</label><input id="newClassName" maxlength="20" placeholder="e.g. SS4"></div><div class="form-group" style="align-self:end"><label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-weight:500"><input type="checkbox" id="newClassJunior" style="width:auto"> Junior class (uses the junior curriculum)</label></div><div class="full"><button class="btn btn-primary" id="addClassBtn">Add class</button></div></div>`;
+  const addArm=`<div class="portal-form-grid"><div class="form-group"><label>Arm name</label><input id="newArmName" maxlength="30" placeholder="e.g. OBUDU"></div><div class="form-group"><label>Track</label><select id="newArmType">${ARM_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div><div class="form-group full"><label>Category (optional)</label><input id="newArmCategory" maxlength="50" placeholder="e.g. Senior Science"></div><div class="full"><button class="btn btn-primary" id="addArmBtn">Add arm</button></div></div>`;
+  return `<div class="portal-toolbar"><div><div class="eyebrow">School structure</div><h1>Classes & Arms</h1><p>Add, rename or retire classes and arms as the school reorganises. Arms in use are deactivated rather than deleted so existing records stay intact.</p></div></div>
+    ${card('Add a class',addClass)}
+    ${card('Class levels',table(['Class','Level','Students','Action'],classRows,'No classes defined.'))}
+    ${card('Add an arm',addArm)}
+    ${card('Arms',table(['Arm','Track','Students','Action'],armRows,'No arms defined.'))}`;
+}
+function bindClassesArms(){
+  $('#addClassBtn').onclick=async()=>{
+    const level_name=$('#newClassName').value.trim();
+    if(!level_name) return toast('Enter a class name.','error');
+    try{ await createClassLevel({level_name,is_junior:$('#newClassJunior').checked}); toast('Class added.','success'); render('classes'); }
+    catch(e){ toast(e.message,'error'); }
+  };
+  $('#addArmBtn').onclick=async()=>{
+    const arm_name=$('#newArmName').value.trim();
+    if(!arm_name) return toast('Enter an arm name.','error');
+    try{ await createArm({arm_name,arm_type:$('#newArmType').value,category:$('#newArmCategory').value.trim()||null}); toast('Arm added.','success'); render('classes'); }
+    catch(e){ toast(e.message,'error'); }
+  };
+  document.querySelectorAll('[data-edit-class]').forEach(b=>b.onclick=()=>{
+    const c=state.classesArms.classes.find(x=>x.id===Number(b.dataset.editClass)); if(!c) return;
+    openModal(`Rename ${esc(c.level_name)}`,`<div class="portal-form-grid"><div class="form-group full"><label>Class name</label><input id="editClassName" maxlength="20" value="${esc(c.level_name)}"></div><div class="form-group full"><label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-weight:500"><input type="checkbox" id="editClassJunior" style="width:auto" ${c.is_junior?'checked':''}> Junior class</label></div><div class="full"><button class="btn btn-primary" id="saveClass">Save changes</button></div></div>`);
+    $('#saveClass').onclick=async()=>{
+      const level_name=$('#editClassName').value.trim();
+      if(!level_name) return toast('Class name is required.','error');
+      try{ await updateClassLevel(c.id,{level_name,is_junior:$('#editClassJunior').checked}); closeModal(); toast('Class updated.','success'); render('classes'); }
+      catch(e){ toast(e.message,'error'); }
+    };
+  });
+  document.querySelectorAll('[data-delete-class]').forEach(b=>b.onclick=async()=>{
+    if(Number(b.dataset.count)>0) return toast(`${b.dataset.name} still has students. Move or withdraw them first.`,'error');
+    if(!confirm(`Delete ${b.dataset.name}? This cannot be undone.`)) return;
+    try{ await deleteClassLevel(Number(b.dataset.deleteClass)); toast('Class removed.','success'); render('classes'); }
+    catch(e){ toast(e.message,'error'); }
+  });
+  document.querySelectorAll('[data-edit-arm]').forEach(b=>b.onclick=()=>{
+    const a=state.classesArms.arms.find(x=>x.id===Number(b.dataset.editArm)); if(!a) return;
+    const types=['junior','science','technical','arts'];
+    openModal(`Edit ${esc(a.arm_name)}`,`<div class="portal-form-grid"><div class="form-group"><label>Arm name</label><input id="editArmName" maxlength="30" value="${esc(a.arm_name)}"></div><div class="form-group"><label>Track</label><select id="editArmType">${types.map(t=>`<option value="${t}" ${a.arm_type===t?'selected':''}>${t}</option>`).join('')}</select></div><div class="form-group full"><label>Category</label><input id="editArmCategory" maxlength="50" value="${esc(a.category||'')}"></div><div class="full"><button class="btn btn-primary" id="saveArm">Save changes</button></div></div>`);
+    $('#saveArm').onclick=async()=>{
+      const arm_name=$('#editArmName').value.trim();
+      if(!arm_name) return toast('Arm name is required.','error');
+      try{ await updateArm(a.id,{arm_name,arm_type:$('#editArmType').value,category:$('#editArmCategory').value.trim()||null}); closeModal(); toast('Arm updated.','success'); render('classes'); }
+      catch(e){ toast(e.message,'error'); }
+    };
+  });
+  document.querySelectorAll('[data-toggle-arm]').forEach(b=>b.onclick=async()=>{
+    const makeActive=b.dataset.active!=='1';
+    try{ await updateArm(Number(b.dataset.toggleArm),{is_active:makeActive}); toast(makeActive?'Arm reactivated.':'Arm deactivated — it will no longer be offered for new students.','success'); render('classes'); }
+    catch(e){ toast(e.message,'error'); }
+  });
+  document.querySelectorAll('[data-delete-arm]').forEach(b=>b.onclick=async()=>{
+    if(Number(b.dataset.count)>0) return toast(`${b.dataset.name} still has students. Deactivate it instead.`,'error');
+    if(!confirm(`Delete ${b.dataset.name}? This cannot be undone.`)) return;
+    try{ await deleteArm(Number(b.dataset.deleteArm)); toast('Arm removed.','success'); render('classes'); }
+    catch(e){ toast(e.message,'error'); }
+  });
 }
 function renderResults(){
   const isOwn = state.user.role==='student';
@@ -279,6 +360,7 @@ function bindPanel(panel){
   if(panel==='announcements') bindAnnouncements();
   if(panel==='curriculum' && ['admin','commandant'].includes(state.user.role)) bindCurriculum();
   if(panel==='sessions' && ['admin','commandant'].includes(state.user.role)) bindSessions();
+  if(panel==='classes' && ['admin','commandant'].includes(state.user.role)) bindClassesArms();
   if(panel==='students'){
     bindSearch('students', async q => { state.search.students=q; render('students'); });
     if(['admin','commandant'].includes(state.user.role)){

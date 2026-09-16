@@ -28,8 +28,8 @@ router.use(auth);
 router.get('/meta', requireStaffReference, async (req, res) => {
   try {
     const [[classes], [arms], [departments], [subjects], [sessions], [terms]] = await Promise.all([
-      db.query('SELECT id, level_name FROM class_levels ORDER BY id'),
-      db.query('SELECT id, arm_name, category FROM arms ORDER BY arm_name'),
+      db.query('SELECT id, level_name, is_junior FROM class_levels ORDER BY sort_order, id'),
+      db.query('SELECT id, arm_name, arm_type, category FROM arms WHERE is_active = 1 ORDER BY arm_name'),
       db.query('SELECT id, dept_name FROM departments ORDER BY dept_name'),
       db.query('SELECT id, subject_name, dept_id, ca_max, exam_max FROM subjects WHERE is_active = 1 ORDER BY subject_name'),
       db.query('SELECT id, session_name, is_current FROM academic_sessions ORDER BY start_date DESC'),
@@ -112,13 +112,14 @@ router.post('/users', requireManagement, async (req, res) => {
           const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
           if (currentSession) {
             // Provision assignments for every class/arm where the subject belongs to the curriculum.
-            const [levels] = await conn.query('SELECT id,level_name FROM class_levels');
-            const [arms] = await conn.query('SELECT id,arm_name FROM arms');
-            const junior = new Set(['JSS1','JSS2','JSS3']);
-            const science = new Set(['AGU','AYAM','DAMISA']);
-            const technical = new Set(['EKUN','EKPE']);
+            // Track is derived from stored data (class_levels.is_junior, arms.arm_type) rather
+            // than hardcoded name lists — otherwise renaming or adding an arm silently breaks
+            // assignment provisioning for every teacher created afterwards.
+            const [levels] = await conn.query('SELECT id,level_name,is_junior FROM class_levels');
+            const [arms] = await conn.query('SELECT id,arm_name,arm_type FROM arms');
             for (const level of levels) for (const arm of arms) {
-              const track = junior.has(level.level_name) ? 'junior' : science.has(arm.arm_name) ? 'science' : technical.has(arm.arm_name) ? 'technical' : 'arts';
+              const track = level.is_junior ? 'junior' : arm.arm_type;
+              if (!TRACKS.includes(track)) continue;
               const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1',[track,subjectRow.id]);
               if (mapped) await conn.query(`INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)`,[teacherResult.insertId,subjectRow.id,level.id,arm.id,currentSession.id]);
             }
@@ -160,6 +161,16 @@ router.get('/users', requireManagement, async (req, res) => {
 router.get('/teachers', requireStaffDirectory, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const params = [];
+  // An HOD's menu item reads "Department Teachers" and that is what they should
+  // get — previously this returned every teacher in the school to them, which is
+  // both a privilege overreach and misleading. Admin/commandant still see all.
+  let deptClause = '';
+  if (req.user.role === 'hod') {
+    const [[hod]] = await db.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1', [req.user.id]);
+    if (!hod) return res.status(404).json({ error: 'No department is assigned to your account. Contact an administrator.' });
+    deptClause = 'AND t.dept_id = ?';
+    params.push(hod.dept_id);
+  }
   let searchClause = '';
   if (q) { searchClause = 'HAVING u.full_name LIKE ? OR u.user_code LIKE ? OR subjects LIKE ?'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
@@ -167,7 +178,7 @@ router.get('/teachers', requireStaffDirectory, async (req, res) => {
       GROUP_CONCAT(DISTINCT s.subject_name ORDER BY s.subject_name SEPARATOR ', ') AS subjects
       FROM teachers t JOIN users u ON u.id=t.user_id LEFT JOIN departments d ON d.id=t.dept_id
       LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects s ON s.id=ts.subject_id
-      WHERE u.is_active=1 GROUP BY u.id,t.id,d.dept_name ${searchClause} ORDER BY u.full_name LIMIT 300`, params);
+      WHERE u.is_active=1 ${deptClause} GROUP BY u.id,t.id,d.dept_name ${searchClause} ORDER BY u.full_name LIMIT 300`, params);
     res.json({ rows, truncated: rows.length === 300 });
   } catch (err) { console.error('[admin/teachers]', err); res.status(500).json({ error: 'Unable to load teachers.' }); }
 });
@@ -492,6 +503,142 @@ router.patch('/terms/:termId', requireManagement, async (req, res) => {
     res.json({ message: `${term.term_name} updated.` });
   } catch (err) { await conn.rollback(); console.error('[admin/terms/update]', err); res.status(500).json({ error: 'Unable to update term.' }); }
   finally { conn.release(); }
+});
+
+// ---- CLASS LEVELS & ARMS ----
+// Schools reorganise: an arm gets renamed, a new one opens, an old one stops
+// taking students. None of this should need a developer. Arms and classes are
+// never hard-deleted while anyone references them — students and results point
+// at them permanently — so "remove" means deactivate unless the row is genuinely
+// unused, in which case a real delete is allowed.
+const ARM_TYPES = ['science', 'technical', 'arts', 'junior'];
+
+router.get('/classes', requireManagement, async (req, res) => {
+  try {
+    const [classes] = await db.query(`SELECT cl.id, cl.level_name, cl.is_junior, cl.sort_order,
+      (SELECT COUNT(*) FROM students s WHERE s.class_level_id = cl.id) AS student_count
+      FROM class_levels cl ORDER BY cl.sort_order, cl.id`);
+    const [arms] = await db.query(`SELECT a.id, a.arm_name, a.arm_type, a.category, a.is_active,
+      (SELECT COUNT(*) FROM students s WHERE s.arm_id = a.id) AS student_count
+      FROM arms a ORDER BY a.is_active DESC, a.arm_name`);
+    res.json({ classes, arms });
+  } catch (err) { console.error('[admin/classes]', err); res.status(500).json({ error: 'Unable to load classes and arms.' }); }
+});
+
+router.post('/classes', requireManagement, async (req, res) => {
+  const level_name = String(req.body?.level_name || '').trim();
+  const is_junior = req.body?.is_junior ? 1 : 0;
+  if (!level_name || level_name.length > 20) return res.status(400).json({ error: 'Class name is required (max 20 characters).' });
+  try {
+    const [[maxRow]] = await db.query('SELECT COALESCE(MAX(sort_order),0) AS m FROM class_levels');
+    const [result] = await db.query('INSERT INTO class_levels (level_name, is_junior, sort_order) VALUES (?, ?, ?)', [level_name, is_junior, maxRow.m + 1]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'CREATE_CLASS_LEVEL', 'class_level', result.insertId, JSON.stringify({ level_name })]);
+    res.status(201).json({ message: `${level_name} added.`, id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A class with this name already exists.' });
+    console.error('[admin/classes/create]', err); res.status(500).json({ error: 'Unable to add class.' });
+  }
+});
+
+router.patch('/classes/:classId', requireManagement, async (req, res) => {
+  const classId = Number(req.params.classId);
+  if (!Number.isInteger(classId) || classId < 1) return res.status(400).json({ error: 'Invalid class ID.' });
+  const fields = [], params = [];
+  if (req.body?.level_name != null) {
+    const name = String(req.body.level_name).trim();
+    if (!name || name.length > 20) return res.status(400).json({ error: 'Class name is required (max 20 characters).' });
+    fields.push('level_name=?'); params.push(name);
+  }
+  if (req.body?.is_junior != null) { fields.push('is_junior=?'); params.push(req.body.is_junior ? 1 : 0); }
+  if (req.body?.sort_order != null) { fields.push('sort_order=?'); params.push(Number(req.body.sort_order) || 0); }
+  if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
+  params.push(classId);
+  try {
+    const [result] = await db.query(`UPDATE class_levels SET ${fields.join(', ')} WHERE id=?`, params);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Class not found.' });
+    res.json({ message: 'Class updated.' });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A class with this name already exists.' });
+    console.error('[admin/classes/update]', err); res.status(500).json({ error: 'Unable to update class.' });
+  }
+});
+
+router.delete('/classes/:classId', requireManagement, async (req, res) => {
+  const classId = Number(req.params.classId);
+  if (!Number.isInteger(classId) || classId < 1) return res.status(400).json({ error: 'Invalid class ID.' });
+  try {
+    const [[cls]] = await db.query('SELECT id, level_name FROM class_levels WHERE id=? LIMIT 1', [classId]);
+    if (!cls) return res.status(404).json({ error: 'Class not found.' });
+    const [[inUse]] = await db.query('SELECT COUNT(*) AS n FROM students WHERE class_level_id=?', [classId]);
+    if (inUse.n > 0) return res.status(409).json({ error: `${cls.level_name} still has ${inUse.n} student(s). Move or withdraw them before removing this class.` });
+    await db.query('DELETE FROM teacher_class_assignments WHERE class_level_id=?', [classId]);
+    await db.query('DELETE FROM class_levels WHERE id=?', [classId]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'DELETE_CLASS_LEVEL', 'class_level', classId, JSON.stringify({ level_name: cls.level_name })]);
+    res.json({ message: `${cls.level_name} removed.` });
+  } catch (err) { console.error('[admin/classes/delete]', err); res.status(500).json({ error: 'Unable to remove class.' }); }
+});
+
+router.post('/arms', requireManagement, async (req, res) => {
+  const arm_name = String(req.body?.arm_name || '').trim();
+  const arm_type = String(req.body?.arm_type || '').toLowerCase();
+  const category = req.body?.category ? String(req.body.category).trim() : null;
+  if (!arm_name || arm_name.length > 30) return res.status(400).json({ error: 'Arm name is required (max 30 characters).' });
+  if (!ARM_TYPES.includes(arm_type)) return res.status(400).json({ error: `Arm type must be one of: ${ARM_TYPES.join(', ')}.` });
+  try {
+    const [result] = await db.query('INSERT INTO arms (arm_name, arm_type, category, is_active) VALUES (?, ?, ?, 1)', [arm_name, arm_type, category]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'CREATE_ARM', 'arm', result.insertId, JSON.stringify({ arm_name, arm_type })]);
+    res.status(201).json({ message: `${arm_name} added.`, id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'An arm with this name already exists.' });
+    console.error('[admin/arms/create]', err); res.status(500).json({ error: 'Unable to add arm.' });
+  }
+});
+
+router.patch('/arms/:armId', requireManagement, async (req, res) => {
+  const armId = Number(req.params.armId);
+  if (!Number.isInteger(armId) || armId < 1) return res.status(400).json({ error: 'Invalid arm ID.' });
+  const fields = [], params = [];
+  if (req.body?.arm_name != null) {
+    const name = String(req.body.arm_name).trim();
+    if (!name || name.length > 30) return res.status(400).json({ error: 'Arm name is required (max 30 characters).' });
+    fields.push('arm_name=?'); params.push(name);
+  }
+  if (req.body?.arm_type != null) {
+    const type = String(req.body.arm_type).toLowerCase();
+    if (!ARM_TYPES.includes(type)) return res.status(400).json({ error: `Arm type must be one of: ${ARM_TYPES.join(', ')}.` });
+    fields.push('arm_type=?'); params.push(type);
+  }
+  if (req.body?.category !== undefined) { fields.push('category=?'); params.push(req.body.category ? String(req.body.category).trim() : null); }
+  if (req.body?.is_active != null) { fields.push('is_active=?'); params.push(req.body.is_active ? 1 : 0); }
+  if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
+  params.push(armId);
+  try {
+    const [result] = await db.query(`UPDATE arms SET ${fields.join(', ')} WHERE id=?`, params);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Arm not found.' });
+    res.json({ message: 'Arm updated.' });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'An arm with this name already exists.' });
+    console.error('[admin/arms/update]', err); res.status(500).json({ error: 'Unable to update arm.' });
+  }
+});
+
+router.delete('/arms/:armId', requireManagement, async (req, res) => {
+  const armId = Number(req.params.armId);
+  if (!Number.isInteger(armId) || armId < 1) return res.status(400).json({ error: 'Invalid arm ID.' });
+  try {
+    const [[arm]] = await db.query('SELECT id, arm_name FROM arms WHERE id=? LIMIT 1', [armId]);
+    if (!arm) return res.status(404).json({ error: 'Arm not found.' });
+    const [[inUse]] = await db.query('SELECT COUNT(*) AS n FROM students WHERE arm_id=?', [armId]);
+    if (inUse.n > 0) return res.status(409).json({ error: `${arm.arm_name} still has ${inUse.n} student(s). Deactivate it instead, or move them to another arm first.` });
+    await db.query('DELETE FROM teacher_class_assignments WHERE arm_id=?', [armId]);
+    await db.query('DELETE FROM arms WHERE id=?', [armId]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'DELETE_ARM', 'arm', armId, JSON.stringify({ arm_name: arm.arm_name })]);
+    res.json({ message: `${arm.arm_name} removed.` });
+  } catch (err) { console.error('[admin/arms/delete]', err); res.status(500).json({ error: 'Unable to remove arm.' }); }
 });
 
 module.exports = router;

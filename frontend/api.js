@@ -53,6 +53,15 @@ export const updateSubjectStatus = (id, is_active) => apiFetch(`/admin/subjects/
 export const toggleCurriculum = (track, subject_id, enabled) => apiFetch('/admin/curriculum/toggle', { method: 'POST', body: JSON.stringify({ track, subject_id, enabled }) });
 export const createDepartment = data => apiFetch('/admin/departments', { method: 'POST', body: JSON.stringify(data) });
 
+export const getClassesAndArms = () => apiFetch('/admin/classes');
+export const createClassLevel = data => apiFetch('/admin/classes', { method: 'POST', body: JSON.stringify(data) });
+export const updateClassLevel = (id, data) => apiFetch(`/admin/classes/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteClassLevel = id => apiFetch(`/admin/classes/${id}`, { method: 'DELETE' });
+export const createArm = data => apiFetch('/admin/arms', { method: 'POST', body: JSON.stringify(data) });
+export const updateArm = (id, data) => apiFetch(`/admin/arms/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deleteArm = id => apiFetch(`/admin/arms/${id}`, { method: 'DELETE' });
+export const getHodSummary = () => apiFetch('/dashboard/hod-summary');
+
 export const getSessions = () => apiFetch('/admin/sessions');
 export const createSession = data => apiFetch('/admin/sessions', { method: 'POST', body: JSON.stringify(data) });
 export const activateSession = id => apiFetch(`/admin/sessions/${id}/activate`, { method: 'PATCH' });

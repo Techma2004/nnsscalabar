@@ -105,18 +105,23 @@ INSERT INTO subjects (subject_name, dept_id) VALUES
 -- =====================================================
 CREATE TABLE class_levels (
   id         INT AUTO_INCREMENT PRIMARY KEY,
-  level_name VARCHAR(10) NOT NULL UNIQUE
+  level_name VARCHAR(20) NOT NULL UNIQUE,
+  -- Junior classes follow the junior curriculum regardless of which arm a
+  -- student sits in; senior classes take their track from the arm instead.
+  is_junior  BOOLEAN NOT NULL DEFAULT FALSE,
+  sort_order INT NOT NULL DEFAULT 0
 );
 
-INSERT INTO class_levels (level_name) VALUES
-  ('JSS1'),('JSS2'),('JSS3'),
-  ('SS1'),('SS2'),('SS3');
+INSERT INTO class_levels (level_name, is_junior, sort_order) VALUES
+  ('JSS1', 1, 1),('JSS2', 1, 2),('JSS3', 1, 3),
+  ('SS1', 0, 4),('SS2', 0, 5),('SS3', 0, 6);
 
 CREATE TABLE arms (
-  id       INT AUTO_INCREMENT PRIMARY KEY,
-  arm_name VARCHAR(10) NOT NULL UNIQUE,
-  arm_type ENUM('science','technical','arts','junior') NOT NULL,
-  category VARCHAR(30)
+  id        INT AUTO_INCREMENT PRIMARY KEY,
+  arm_name  VARCHAR(30) NOT NULL UNIQUE,
+  arm_type  ENUM('science','technical','arts','junior') NOT NULL,
+  category  VARCHAR(50),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 INSERT INTO arms (arm_name, arm_type, category) VALUES
