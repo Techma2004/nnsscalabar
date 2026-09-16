@@ -6,10 +6,10 @@ import {
   updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment,
   changeMyPassword, resetUserPassword, getManagedAnnouncements, updateAnnouncement, deleteAnnouncement,
   getSessions, createSession, activateSession, createTerm, updateTerm,
-  getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
+  getDepartments, getDepartmentDetail, getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
 } from './api.js';
 
-const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, search:{} };
+const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{} };
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const roleName = {student:'Student',teacher:'Subject Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant'};
@@ -18,15 +18,15 @@ const STUDENT_STATUSES = ['active','pending','withdrawn','graduated'];
 const statusBadgeClass = {active:'ok', pending:'pending', withdrawn:'danger', graduated:''};
 const menus = {
   student:[['Dashboard','dashboard'],['My Results','results'],['My Subjects','subjects'],['Announcements','announcements'],['My Profile','profile']],
-  teacher:[['Dashboard','dashboard'],['Score Entry','scores'],['Score-Sheet Scanner','ai-import'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
-  hod:[['Dashboard','dashboard'],['Result Approval','approval'],['Department Teachers','teachers'],['Announcements','announcements'],['My Profile','profile']],
-  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
-  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Top Performers','top'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
+  teacher:[['Dashboard','dashboard'],['My Department','departments'],['Score Entry','scores'],['Score-Sheet Scanner','ai-import'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
+  hod:[['Dashboard','dashboard'],['My Department','departments'],['Result Approval','approval'],['Department Teachers','teachers'],['Announcements','announcements'],['My Profile','profile']],
+  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
+  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Top Performers','top'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
 };
 const panelIcons = {
   dashboard:'grid', results:'document', subjects:'book', announcements:'bell', profile:'user',
   scores:'pencil', 'ai-import':'cpu', students:'users', teachers:'idbadge', approval:'checksquare',
-  system:'settings', accounts:'userplus', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar', classes:'grid'
+  system:'settings', accounts:'userplus', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar', classes:'grid', departments:'shield'
 };
 const ic = (name,size) => (typeof window.Icon==='function') ? window.Icon(name,{size:size||18}) : '';
 
@@ -39,6 +39,25 @@ function gradeClass(g){ return `grade-${String(g||'')[0] || 'C'}`; }
 function stat(label,value,icon){ return `<div class="portal-stat"><span class="stat-icon">${ic(icon,16)}</span><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`; }
 function table(headers,rows,empty='No records found.') { return `<div class="table-wrapper"><table class="portal-table"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headers.length}"><div class="portal-empty">${esc(empty)}</div></td></tr>`}</tbody></table></div>`; }
 function card(title,body,actions=''){ return `<section class="portal-card"><div class="portal-card-head"><h3>${title}</h3>${actions}</div><div class="portal-card-body">${body}</div></section>`; }
+// Every password input in the portal is built through this helper so that all
+// of them get a show/hide toggle — people genuinely cannot tell what they are
+// typing otherwise, which is the main cause of "the password doesn't work"
+// support calls when an admin is handing out credentials.
+function pwdField(id,label,autocomplete='new-password',extra=''){
+  return `<div class="form-group full"><label for="${id}">${esc(label)}</label><div class="password-wrap"><input id="${id}" type="password" autocomplete="${autocomplete}" ${extra}><button type="button" class="password-toggle" data-pwd-toggle="${id}" aria-label="Show password">${ic('eye',18)}</button></div></div>`;
+}
+// One delegated listener covers every toggle, including those inside modals
+// rendered after page load.
+document.addEventListener('click', e => {
+  const btn = e.target.closest?.('[data-pwd-toggle]');
+  if(!btn) return;
+  const input = document.getElementById(btn.dataset.pwdToggle);
+  if(!input) return;
+  const showing = input.type === 'password';
+  input.type = showing ? 'text' : 'password';
+  btn.innerHTML = ic(showing ? 'eyeoff' : 'eye', 18);
+  btn.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+});
 function searchBox(key,placeholder){ return `<div class="portal-search"><span class="portal-search-icon">${ic('search',15)}</span><input type="search" id="search-${key}" placeholder="${esc(placeholder)}" value="${esc(state.search[key]||'')}"></div>`; }
 function bindSearch(key,onSearch){
   const input=$(`#search-${key}`); if(!input) return;
@@ -100,6 +119,13 @@ async function render(panel){
       state.announcements=await getAnnouncements();
       if(['admin','commandant','hod'].includes(state.user.role)) state.manageAnnouncements=await getManagedAnnouncements(state.search.announcements);
     }
+    if(panel==='departments'){
+      state.departments=await getDepartments();
+      // Non-management staff only ever have one department, so open it directly.
+      const only = state.activeDeptId || (state.departments.length===1 ? state.departments[0].id : null);
+      state.deptDetail = only ? await getDepartmentDetail(only) : null;
+      state.activeDeptId = only;
+    }
     if(panel==='top') state.top=await getTopPerformers();
     $('#appRoot').innerHTML=renderPanel(panel);
     bindPanel(panel);
@@ -120,6 +146,7 @@ function renderPanel(panel){
   if(panel==='curriculum') return renderCurriculum();
   if(panel==='sessions') return renderSessions();
   if(panel==='classes') return renderClassesArms();
+  if(panel==='departments') return renderDepartments();
   if(panel==='overview') return renderOverview();
   if(panel==='top') return renderTop();
   if(panel==='accounts') return renderAccounts();
@@ -147,6 +174,37 @@ function renderDashboard(){
     ${r==='teacher'?card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>30 + 70</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>${ic('checkcircle',16)}</strong></div>`):card('System status',`<div class="portal-kpi"><span>Database-backed portal</span><strong class="portal-badge ok">Online</strong></div><div class="portal-kpi"><span>Active announcements</span><strong>${state.stats.active_announcements||0}</strong></div>`)}`;
 }
 
+function renderDepartments(){
+  const canSeeAll=['admin','commandant'].includes(state.user.role);
+  const d=state.deptDetail;
+  // Admin/commandant get an overview of every department first; staff go
+  // straight into their own, since that is the only one they can access.
+  const overview = canSeeAll ? `<div class="portal-grid">${state.departments.map(x=>`<div class="portal-stat" style="cursor:pointer" data-open-dept="${x.id}"><span class="stat-icon">${ic('shield',16)}</span><small>${esc(x.dept_name)}</small><strong>${x.subject_count}</strong><div style="color:var(--text-secondary);font-size:.78rem;margin-top:.35rem">${x.teacher_count} teacher${x.teacher_count===1?'':'s'}${x.pending_count?` · <span style="color:var(--warning)">${x.pending_count} pending</span>`:''}</div><div style="color:var(--text-light);font-size:.75rem;margin-top:.2rem">HOD: ${esc(x.hod_name||'Not assigned')}</div></div>`).join('')}</div>` : '';
+
+  if(!d) return `<div class="portal-toolbar"><div><div class="eyebrow">Academic structure</div><h1>Departments</h1><p>Select a department to see its subjects, staff and performance.</p></div></div>${overview}`;
+
+  const s=d.stats||{};
+  const subjectRows=d.subjects.map(x=>`<tr><td><strong>${esc(x.subject_name)}</strong>${x.is_active?'':' <span class="portal-badge danger">Not offered</span>'}</td><td>${esc((x.tracks||[]).join(', ')||'—')}</td><td>${x.ca_max} / ${x.exam_max}</td><td>${x.result_count}</td></tr>`).join('');
+  const teacherRows=d.teachers.map(x=>`<tr><td><strong>${esc(x.full_name)}</strong><br><small>${esc(x.user_code)}</small></td><td>${esc(x.subjects||'—')}</td><td>${esc(x.qualification||'—')}</td><td>${x.date_joined?fmtDate(x.date_joined):'—'}</td></tr>`).join('');
+  const classRows=d.classes.map(x=>`<tr><td>${esc(x.class_name)} ${esc(x.arm_name)}</td><td>${x.student_count}</td><td>${x.avg_score!=null?`${x.avg_score}%`:'—'}</td></tr>`).join('');
+  const totalGraded=d.grade_distribution.reduce((a,g)=>a+g.n,0);
+  const gradeBars=totalGraded?d.grade_distribution.map(g=>`<div class="portal-kpi"><span><strong>${esc(g.grade)}</strong></span><span style="flex:1;margin:0 1rem"><span class="portal-progress"><span style="width:${Math.round(g.n/totalGraded*100)}%"></span></span></span><span>${g.n} (${Math.round(g.n/totalGraded*100)}%)</span></div>`).join(''):'<p style="color:var(--text-secondary)">No approved results yet.</p>';
+  const backBtn=canSeeAll?`<button class="btn btn-secondary btn-auto" id="deptBack">All departments</button>`:'';
+
+  return `<div class="portal-toolbar"><div><div class="eyebrow">${canSeeAll?'Department':'My department'}</div><h1>${esc(d.department.dept_name)}</h1><p>${esc(d.department.description||'Subjects, staff and performance for this department.')}</p></div>${backBtn}</div>
+    ${canSeeAll?overview:''}
+    <div class="portal-grid">${stat('Subjects',d.subjects.filter(x=>x.is_active).length,'book')}${stat('Teachers',d.teachers.length,'idbadge')}${stat('Awaiting approval',s.pending||0,'clock')}${stat('Department average',s.avg_score!=null?`${s.avg_score}%`:'—','trendingup')}</div>
+    ${card('Subjects',table(['Subject','Curriculum tracks','CA / Exam','Results recorded'],subjectRows,'No subjects assigned to this department.'))}
+    ${card('Teaching staff',table(['Teacher','Subjects','Qualification','Joined'],teacherRows,'No teachers assigned to this department.'))}
+    ${card('Performance by class',table(['Class','Students','Average'],classRows,'No results recorded for this department yet.'))}
+    ${card('Grade distribution (approved results)',gradeBars)}`;
+}
+function bindDepartments(){
+  document.querySelectorAll('[data-open-dept]').forEach(el=>el.onclick=async()=>{
+    state.activeDeptId=Number(el.dataset.openDept); render('departments');
+  });
+  $('#deptBack')?.addEventListener('click',()=>{ state.activeDeptId=null; state.deptDetail=null; render('departments'); });
+}
 function renderClassesArms(){
   const ARM_TYPES=['junior','science','technical','arts'];
   const classRows=state.classesArms.classes.map(c=>`<tr><td><strong>${esc(c.level_name)}</strong></td><td>${c.is_junior?'<span class="portal-badge">Junior</span>':'<span class="portal-badge">Senior</span>'}</td><td>${c.student_count}</td><td class="portal-actions"><button class="btn btn-secondary btn-sm" data-edit-class="${c.id}">Rename</button><button class="btn btn-danger btn-sm" data-delete-class="${c.id}" data-name="${esc(c.level_name)}" data-count="${c.student_count}">Delete</button></td></tr>`).join('');
@@ -269,7 +327,7 @@ function announcementModal(existing){
   };
 }
 function renderProfile(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Account</div><h1>My Profile</h1></div></div>${card('Account details',`<div class="portal-form-grid"><div class="info-item"><label>Full name</label><p>${esc(state.user.name)}</p></div><div class="info-item"><label>Role</label><p>${esc(roleName[state.user.role])}</p></div><div class="info-item"><label>User ID</label><p>${esc(state.user.user_code)}</p></div><div class="info-item"><label>Email</label><p>${esc(state.user.email||'Not provided')}</p></div></div>`)}
-    ${card('Change password',`<div class="portal-form-grid"><div class="form-group full"><label>Current password</label><input id="pwdCurrent" type="password" autocomplete="current-password"></div><div class="form-group"><label>New password (min. 8 characters)</label><input id="pwdNew" type="password" minlength="8" autocomplete="new-password"></div><div class="form-group"><label>Confirm new password</label><input id="pwdConfirm" type="password" minlength="8" autocomplete="new-password"></div><div class="full"><button class="btn btn-primary" id="changePasswordBtn">Update password</button></div></div>`)}`; }
+    ${card('Change password',`<div class="portal-form-grid">${pwdField("pwdCurrent","Current password","current-password")}${pwdField("pwdNew","New password (min. 8 characters)","new-password",'minlength="8"')}${pwdField("pwdConfirm","Confirm new password","new-password",'minlength="8"')}<div class="full"><button class="btn btn-primary" id="changePasswordBtn">Update password</button></div></div>`)}`; }
 function renderScoreEntry(){
   const assignmentOptions=state.assignments.map(a=>`<option value="${a.id}" data-class="${esc(a.class_name)}" data-arm="${esc(a.arm_name)}" data-subject="${esc(a.subject_name)}" data-session="${a.session_id}">${esc(a.class_name)} ${esc(a.arm_name)} — ${esc(a.subject_name)} (${esc(a.session_name)})</option>`).join('');
   return `<div class="portal-toolbar"><div><div class="eyebrow">Teacher workflow</div><h1>Score Entry</h1><p>Scores are validated by the server and sent to the HOD approval queue.</p></div></div>${card('Enter a result',`<div class="portal-form-grid"><div class="form-group full"><label>Teaching assignment</label><select id="scoreAssignment"><option value="">Select assignment…</option>${assignmentOptions}</select></div><div class="form-group"><label>Student</label><select id="scoreStudent"><option value="">Select assignment first…</option></select></div><div class="form-group"><label>Academic term</label><select id="scoreTerm"></select></div><div class="form-group"><label>CA score <small>(0–30)</small></label><input id="caScore" type="number" min="0" max="30" step="0.5" inputmode="decimal"></div><div class="form-group"><label>Exam score <small>(0–70)</small></label><input id="examScore" type="number" min="0" max="70" step="0.5" inputmode="decimal"></div><div class="full"><div class="portal-actions"><button class="btn btn-primary" id="saveScore">Save & submit for review</button><button class="btn btn-secondary" type="button" id="clearScore">Clear</button></div></div></div>`)}`;
@@ -361,6 +419,7 @@ function bindPanel(panel){
   if(panel==='curriculum' && ['admin','commandant'].includes(state.user.role)) bindCurriculum();
   if(panel==='sessions' && ['admin','commandant'].includes(state.user.role)) bindSessions();
   if(panel==='classes' && ['admin','commandant'].includes(state.user.role)) bindClassesArms();
+  if(panel==='departments') bindDepartments();
   if(panel==='students'){
     bindSearch('students', async q => { state.search.students=q; render('students'); });
     if(['admin','commandant'].includes(state.user.role)){
@@ -433,7 +492,7 @@ function bindProfile(){
   };
 }
 function resetPasswordModal(userId,name){
-  openModal(`Reset password — ${name}`,`<div class="portal-form-grid"><div class="form-group full"><label>New password (min. 8 characters)</label><input id="resetPwdNew" type="password" minlength="8" autocomplete="new-password"></div><div class="form-group full"><label>Confirm new password</label><input id="resetPwdConfirm" type="password" minlength="8" autocomplete="new-password"></div><p style="color:var(--text-secondary);font-size:.85rem">Share the new password with ${esc(name)} directly. They can change it themselves afterward from My Profile.</p><div class="full"><button class="btn btn-primary" id="confirmResetPwd">Set new password</button></div></div>`);
+  openModal(`Reset password — ${name}`,`<div class="portal-form-grid">${pwdField("resetPwdNew","New password (min. 8 characters)","new-password",'minlength="8"')}${pwdField("resetPwdConfirm","Confirm new password","new-password",'minlength="8"')}<p style="color:var(--text-secondary);font-size:.85rem">Share the new password with ${esc(name)} directly. They can change it themselves afterward from My Profile.</p><div class="full"><button class="btn btn-primary" id="confirmResetPwd">Set new password</button></div></div>`);
   $('#confirmResetPwd').onclick=async()=>{
     const next=$('#resetPwdNew').value, confirm=$('#resetPwdConfirm').value;
     if(next.length<8) return toast('New password must be at least 8 characters.','error');
@@ -455,7 +514,7 @@ async function approveOne(id){ if(!confirm('Approve this result? It will become 
 async function removeAccount(id){ if(!confirm('Remove portal access for this account? Academic history will be preserved.')) return; try{ await removeUser(id); toast('Portal access removed.','success'); state.accounts=[]; render('accounts'); }catch(e){ toast(e.message,'error'); } }
 
 async function loadMeta(){ if(!state.meta) state.meta=await getAdminMeta(); return state.meta; }
-async function userModal(){ const m=await loadMeta(); const classOpts=m.classes.map(x=>`<option value="${esc(x.level_name)}">${esc(x.level_name)}</option>`).join(''); const armOpts=m.arms.map(x=>`<option value="${esc(x.arm_name)}">${esc(x.arm_name)}</option>`).join(''); const deptOpts=m.departments.map(x=>`<option value="${x.id}">${esc(x.dept_name)}</option>`).join(''); const subOpts=m.subjects.map(x=>`<option value="${esc(x.subject_name)}">${esc(x.subject_name)}</option>`).join(''); openModal('Create portal account',`<div class="portal-form-grid"><div class="form-group"><label>User ID *</label><input id="uCode" maxlength="20" placeholder="e.g. STU004"></div><div class="form-group"><label>Initial password *</label><input id="uPass" type="password" minlength="8"></div><div class="form-group full"><label>Full name *</label><input id="uName"></div><div class="form-group"><label>Email</label><input id="uEmail" type="email"></div><div class="form-group"><label>Gender</label><select id="uGender"><option value="">Not specified</option><option value="M">Male</option><option value="F">Female</option></select></div><div class="form-group"><label>Role *</label><select id="uRole"><option value="student">Student</option><option value="teacher">Teacher</option><option value="hod">HOD</option>${state.user.role==='commandant'?'<option value="admin">Administrator</option><option value="commandant">Commandant</option>':''}</select></div><div id="studentFields" class="full"><div class="portal-form-grid"><div class="form-group"><label>Class</label><select id="uClass">${classOpts}</select></div><div class="form-group"><label>Arm</label><select id="uArm">${armOpts}</select></div><div class="form-group"><label>Track</label><select id="uTrack"><option>junior</option><option>science</option><option>technical</option><option>arts</option></select></div><div class="form-group"><label>Admission no.</label><input id="uAdmission"></div></div></div><div id="staffFields" class="full" style="display:none"><div class="portal-form-grid"><div class="form-group"><label>Department</label><select id="uDept">${deptOpts}</select></div><div class="form-group"><label>Subject (teacher)</label><select id="uSubject">${subOpts}</select></div></div></div><div class="full"><button class="btn btn-primary" id="createAccount">Create account</button></div></div>`); const role=$('#uRole'); const sync=()=>{ $('#studentFields').style.display=role.value==='student'?'block':'none'; $('#staffFields').style.display=['teacher','hod'].includes(role.value)?'block':'none'; $('#uSubject').closest('.form-group').style.display=role.value==='teacher'?'block':'none';}; role.onchange=sync;sync(); $('#createAccount').onclick=async()=>{const payload={user_code:$('#uCode').value.trim().toUpperCase(),password:$('#uPass').value,full_name:$('#uName').value.trim(),email:$('#uEmail').value.trim()||null,gender:$('#uGender').value||null,role:role.value};if(role.value==='student')Object.assign(payload,{class_level:$('#uClass').value,arm:$('#uArm').value,track:$('#uTrack').value,admission_no:$('#uAdmission').value.trim()||null});if(['teacher','hod'].includes(role.value))payload.department_id=Number($('#uDept').value);if(role.value==='teacher')payload.subjects=$('#uSubject').value ? [$('#uSubject').value] : [];if(!payload.user_code||!payload.password||!payload.full_name)return toast('Complete the required fields.','error');try{await createUser(payload);closeModal();toast('Account created successfully.','success');state.accounts=[];render('accounts')}catch(e){toast(e.message,'error')}}; }
+async function userModal(){ const m=await loadMeta(); const classOpts=m.classes.map(x=>`<option value="${esc(x.level_name)}">${esc(x.level_name)}</option>`).join(''); const armOpts=m.arms.map(x=>`<option value="${esc(x.arm_name)}">${esc(x.arm_name)}</option>`).join(''); const deptOpts=m.departments.map(x=>`<option value="${x.id}">${esc(x.dept_name)}</option>`).join(''); const subOpts=m.subjects.map(x=>`<option value="${esc(x.subject_name)}">${esc(x.subject_name)}</option>`).join(''); openModal('Create portal account',`<div class="portal-form-grid"><div class="form-group"><label>User ID *</label><input id="uCode" maxlength="20" placeholder="e.g. STU004"></div>${pwdField("uPass","Initial password *","new-password",'minlength="8"')}<div class="form-group full"><label>Full name *</label><input id="uName"></div><div class="form-group"><label>Email</label><input id="uEmail" type="email"></div><div class="form-group"><label>Gender</label><select id="uGender"><option value="">Not specified</option><option value="M">Male</option><option value="F">Female</option></select></div><div class="form-group"><label>Role *</label><select id="uRole"><option value="student">Student</option><option value="teacher">Teacher</option><option value="hod">HOD</option>${state.user.role==='commandant'?'<option value="admin">Administrator</option><option value="commandant">Commandant</option>':''}</select></div><div id="studentFields" class="full"><div class="portal-form-grid"><div class="form-group"><label>Class</label><select id="uClass">${classOpts}</select></div><div class="form-group"><label>Arm</label><select id="uArm">${armOpts}</select></div><div class="form-group"><label>Track</label><select id="uTrack"><option>junior</option><option>science</option><option>technical</option><option>arts</option></select></div><div class="form-group"><label>Admission no.</label><input id="uAdmission"></div></div></div><div id="staffFields" class="full" style="display:none"><div class="portal-form-grid"><div class="form-group"><label>Department</label><select id="uDept">${deptOpts}</select></div><div class="form-group"><label>Subject (teacher)</label><select id="uSubject">${subOpts}</select></div></div></div><div class="full"><button class="btn btn-primary" id="createAccount">Create account</button></div></div>`); const role=$('#uRole'); const sync=()=>{ $('#studentFields').style.display=role.value==='student'?'block':'none'; $('#staffFields').style.display=['teacher','hod'].includes(role.value)?'block':'none'; $('#uSubject').closest('.form-group').style.display=role.value==='teacher'?'block':'none';}; role.onchange=sync;sync(); $('#createAccount').onclick=async()=>{const payload={user_code:$('#uCode').value.trim().toUpperCase(),password:$('#uPass').value,full_name:$('#uName').value.trim(),email:$('#uEmail').value.trim()||null,gender:$('#uGender').value||null,role:role.value};if(role.value==='student')Object.assign(payload,{class_level:$('#uClass').value,arm:$('#uArm').value,track:$('#uTrack').value,admission_no:$('#uAdmission').value.trim()||null});if(['teacher','hod'].includes(role.value))payload.department_id=Number($('#uDept').value);if(role.value==='teacher')payload.subjects=$('#uSubject').value ? [$('#uSubject').value] : [];if(!payload.user_code||!payload.password||!payload.full_name)return toast('Complete the required fields.','error');try{await createUser(payload);closeModal();toast('Account created successfully.','success');state.accounts=[];render('accounts')}catch(e){toast(e.message,'error')}}; }
 
 // Admin can use the same student screen to create accounts. Keep the feature visible but controlled.
 window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
