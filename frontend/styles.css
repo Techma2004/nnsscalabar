@@ -540,3 +540,9 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
   .btn, .nav-links a, .sidebar-nav a, .modal-close, .hamburger, .mobile-toggle { -webkit-tap-highlight-color: transparent; }
   .btn, .sidebar-nav a, .nav-links a { min-height: 44px; }
 }
+
+/* ===== PASSWORD FIELDS (shared by login page and portal forms) ===== */
+.password-wrap{position:relative}
+.password-wrap input{width:100%;padding-right:44px}
+.password-toggle{position:absolute;right:6px;top:0;bottom:0;border:0;background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;width:36px}
+.password-toggle:hover{color:var(--text)}

@@ -312,11 +312,15 @@ router.patch('/students/:studentId/status', requireManagement, async (req, res) 
 // subject from the reference list new teacher assignments/account creation
 // draw from (GET /meta already filters is_active=1).
 router.get('/subjects', requireManagement, async (req, res) => {
+  const deptId = Number(req.query.dept_id);
+  const params = [];
+  let deptClause = '';
+  if (Number.isInteger(deptId) && deptId > 0) { deptClause = 'WHERE s.dept_id = ?'; params.push(deptId); }
   try {
     const [rows] = await db.query(`SELECT s.id, s.subject_name, s.dept_id, d.dept_name, s.ca_max, s.exam_max, s.is_active,
       GROUP_CONCAT(DISTINCT ts.track ORDER BY ts.track SEPARATOR ',') AS tracks
       FROM subjects s LEFT JOIN departments d ON d.id = s.dept_id LEFT JOIN track_subjects ts ON ts.subject_id = s.id
-      GROUP BY s.id ORDER BY s.subject_name`);
+      ${deptClause} GROUP BY s.id ORDER BY s.subject_name`, params);
     res.json(rows.map(r => ({ ...r, tracks: r.tracks ? r.tracks.split(',') : [] })));
   } catch (err) { console.error('[admin/subjects]', err); res.status(500).json({ error: 'Unable to load subjects.' }); }
 });
@@ -390,6 +394,95 @@ router.post('/curriculum/toggle', requireManagement, async (req, res) => {
       [req.user.id, enabled ? 'ADD_CURRICULUM_SUBJECT' : 'REMOVE_CURRICULUM_SUBJECT', 'track_subjects', subject_id, JSON.stringify({ track })]);
     res.json({ message: enabled ? 'Subject added to curriculum track.' : 'Subject removed from curriculum track.' });
   } catch (err) { console.error('[admin/curriculum/toggle]', err); res.status(500).json({ error: 'Unable to update curriculum.' }); }
+});
+
+// ---- DEPARTMENT WORKSPACE ----
+// Each department is isolated: an HOD (and the teachers in it) only ever see
+// their own department's subjects, staff, students and results. Admin and the
+// Commandant oversee every department and can pass ?dept_id= to inspect any of
+// them. This is the single source of truth for "what belongs to a department",
+// so scoping lives here rather than being re-derived in each panel.
+async function resolveDepartmentScope(req) {
+  if (['admin', 'commandant'].includes(req.user.role)) {
+    const requested = Number(req.query.dept_id);
+    return { deptId: Number.isInteger(requested) && requested > 0 ? requested : null, canSeeAll: true };
+  }
+  if (req.user.role === 'hod') {
+    const [[hod]] = await db.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1', [req.user.id]);
+    if (!hod) return { error: 'No department is assigned to your account. Contact an administrator.' };
+    return { deptId: hod.dept_id, canSeeAll: false };
+  }
+  if (req.user.role === 'teacher') {
+    const [[t]] = await db.query('SELECT dept_id FROM teachers WHERE user_id=? LIMIT 1', [req.user.id]);
+    if (!t) return { error: 'No department is assigned to your account. Contact an administrator.' };
+    return { deptId: t.dept_id, canSeeAll: false };
+  }
+  return { error: 'Forbidden.' };
+}
+
+router.get('/departments', requireStaffReference, async (req, res) => {
+  try {
+    const scope = await resolveDepartmentScope(req);
+    if (scope.error) return res.status(scope.error === 'Forbidden.' ? 403 : 404).json({ error: scope.error });
+    let where = '', params = [];
+    if (!scope.canSeeAll) { where = 'WHERE d.id = ?'; params = [scope.deptId]; }
+    const [rows] = await db.query(`SELECT d.id, d.dept_name, d.description,
+      (SELECT COUNT(*) FROM subjects s WHERE s.dept_id=d.id AND s.is_active=1) AS subject_count,
+      (SELECT COUNT(*) FROM teachers t JOIN users u ON u.id=t.user_id WHERE t.dept_id=d.id AND u.is_active=1) AS teacher_count,
+      (SELECT COUNT(*) FROM results r JOIN subjects s ON s.id=r.subject_id WHERE s.dept_id=d.id AND r.is_approved=0) AS pending_count,
+      (SELECT CONCAT(u.full_name,'|',u.user_code) FROM hods h JOIN users u ON u.id=h.user_id WHERE h.dept_id=d.id AND u.is_active=1 LIMIT 1) AS hod_info
+      FROM departments d ${where} ORDER BY d.dept_name`, params);
+    res.json(rows.map(r => {
+      const [hod_name, hod_code] = (r.hod_info || '|').split('|');
+      const { hod_info, ...rest } = r;
+      return { ...rest, hod_name: hod_name || null, hod_code: hod_code || null };
+    }));
+  } catch (err) { console.error('[admin/departments/list]', err); res.status(500).json({ error: 'Unable to load departments.' }); }
+});
+
+router.get('/departments/:deptId', requireStaffReference, async (req, res) => {
+  const deptId = Number(req.params.deptId);
+  if (!Number.isInteger(deptId) || deptId < 1) return res.status(400).json({ error: 'Invalid department ID.' });
+  try {
+    const scope = await resolveDepartmentScope(req);
+    if (scope.error) return res.status(scope.error === 'Forbidden.' ? 403 : 404).json({ error: scope.error });
+    if (!scope.canSeeAll && scope.deptId !== deptId) return res.status(403).json({ error: 'You can only view your own department.' });
+
+    const [[dept]] = await db.query('SELECT id, dept_name, description FROM departments WHERE id=? LIMIT 1', [deptId]);
+    if (!dept) return res.status(404).json({ error: 'Department not found.' });
+
+    const [subjects, teachers, [[resultStats]], grades, classes] = await Promise.all([
+      db.query(`SELECT s.id, s.subject_name, s.ca_max, s.exam_max, s.is_active,
+        GROUP_CONCAT(DISTINCT ts.track ORDER BY ts.track SEPARATOR ',') AS tracks,
+        (SELECT COUNT(*) FROM results r WHERE r.subject_id=s.id) AS result_count
+        FROM subjects s LEFT JOIN track_subjects ts ON ts.subject_id=s.id
+        WHERE s.dept_id=? GROUP BY s.id ORDER BY s.is_active DESC, s.subject_name`, [deptId]).then(r => r[0]),
+      db.query(`SELECT u.id AS user_id, u.user_code, u.full_name, u.email, t.staff_no, t.qualification, t.date_joined,
+        GROUP_CONCAT(DISTINCT sub.subject_name ORDER BY sub.subject_name SEPARATOR ', ') AS subjects
+        FROM teachers t JOIN users u ON u.id=t.user_id
+        LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects sub ON sub.id=ts.subject_id
+        WHERE t.dept_id=? AND u.is_active=1 GROUP BY u.id, t.id ORDER BY u.full_name`, [deptId]).then(r => r[0]),
+      db.query(`SELECT COUNT(*) total, COUNT(CASE WHEN r.is_approved=1 THEN 1 END) approved,
+        COUNT(CASE WHEN r.is_approved=0 THEN 1 END) pending, ROUND(AVG(CASE WHEN r.is_approved=1 THEN r.total_score END),1) avg_score
+        FROM results r JOIN subjects s ON s.id=r.subject_id WHERE s.dept_id=?`, [deptId]),
+      db.query(`SELECT r.grade, COUNT(*) AS n FROM results r JOIN subjects s ON s.id=r.subject_id
+        WHERE s.dept_id=? AND r.is_approved=1 GROUP BY r.grade ORDER BY r.grade`, [deptId]).then(r => r[0]),
+      db.query(`SELECT cl.level_name AS class_name, a.arm_name, COUNT(DISTINCT st.id) AS student_count,
+        ROUND(AVG(CASE WHEN r.is_approved=1 THEN r.total_score END),1) AS avg_score
+        FROM results r JOIN subjects s ON s.id=r.subject_id JOIN students st ON st.id=r.student_id
+        JOIN class_levels cl ON cl.id=st.class_level_id JOIN arms a ON a.id=st.arm_id
+        WHERE s.dept_id=? GROUP BY cl.id, a.id ORDER BY cl.sort_order, a.arm_name`, [deptId]).then(r => r[0])
+    ]);
+
+    res.json({
+      department: dept,
+      subjects: subjects.map(s => ({ ...s, tracks: s.tracks ? s.tracks.split(',') : [] })),
+      teachers,
+      stats: resultStats,
+      grade_distribution: grades,
+      classes
+    });
+  } catch (err) { console.error('[admin/departments/detail]', err); res.status(500).json({ error: 'Unable to load department.' }); }
 });
 
 router.post('/departments', requireManagement, async (req, res) => {

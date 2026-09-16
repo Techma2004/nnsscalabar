@@ -215,7 +215,12 @@ router.get('/pending', async (req, res) => {
   try {
     let deptFilter = '';
     const params = [];
-    if (req.user.role === 'hod') { deptFilter = 'AND tch.dept_id = (SELECT dept_id FROM hods WHERE user_id=?)'; params.push(req.user.id); }
+    // Scope by the SUBJECT's department, not the teacher's. A teacher may be
+    // attached to one department but teach a subject owned by another; the HOD
+    // who owns the subject is the one who should approve it. This also keeps
+    // the queue consistent with the count shown on the HOD dashboard, which is
+    // calculated from the subject's department.
+    if (req.user.role === 'hod') { deptFilter = 'AND sub.dept_id = (SELECT dept_id FROM hods WHERE user_id=?)'; params.push(req.user.id); }
     const [rows] = await db.query(`SELECT r.id,su.user_code AS student_code,su.full_name AS student_name,sub.subject_name,cl.level_name AS class_name,a.arm_name,
       t.term_name,ac.session_name,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.uploaded_at,tu.full_name AS teacher_name
       FROM results r JOIN students s ON s.id=r.student_id JOIN users su ON su.id=s.user_id JOIN subjects sub ON sub.id=r.subject_id JOIN teachers tch ON tch.id=r.teacher_id
@@ -231,7 +236,7 @@ router.put('/approve/:resultId', async (req, res) => {
   if (!Number.isInteger(resultId)) return res.status(400).json({ error: 'Invalid result ID.' });
   const conn = await db.getConnection();
   try {
-    const [[row]] = await conn.query(`SELECT r.id,r.is_approved,t.result_locked,tch.dept_id FROM results r JOIN terms t ON t.id=r.term_id JOIN teachers tch ON tch.id=r.teacher_id WHERE r.id=? LIMIT 1`, [resultId]);
+    const [[row]] = await conn.query(`SELECT r.id,r.is_approved,t.result_locked,sub.dept_id FROM results r JOIN terms t ON t.id=r.term_id JOIN subjects sub ON sub.id=r.subject_id WHERE r.id=? LIMIT 1`, [resultId]);
     const [[hod]] = await conn.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1', [req.user.id]);
     if (!row || !hod) return res.status(404).json({ error: 'Result or HOD record not found.' });
     if (row.dept_id !== hod.dept_id) return res.status(403).json({ error: 'This result belongs to another department.' });
