@@ -28,6 +28,36 @@ router.get('/student-summary', async (req,res) => {
   } catch(err){ console.error('[dashboard/student-summary]',err); res.status(500).json({error:'Unable to load student summary.'}); }
 });
 
+// HODs were shown the same school-wide counters as an administrator, with no
+// indication of which department they actually head — they had to infer it.
+// This returns their own department and the figures that are actually theirs.
+router.get('/hod-summary', async (req, res) => {
+  if (req.user.role !== 'hod') return res.status(403).json({ error: 'Forbidden.' });
+  try {
+    const [[hod]] = await db.query(`SELECT h.id, h.dept_id, h.appointed_date, d.dept_name, d.description
+      FROM hods h JOIN departments d ON d.id = h.dept_id WHERE h.user_id = ? LIMIT 1`, [req.user.id]);
+    if (!hod) return res.status(404).json({ error: 'No department is assigned to your account. Contact an administrator.' });
+
+    const [[[teachers]], [[subjects]], [[pending]], [[approved]]] = await Promise.all([
+      db.query('SELECT COUNT(*) total FROM teachers t JOIN users u ON u.id=t.user_id WHERE t.dept_id=? AND u.is_active=1', [hod.dept_id]),
+      db.query('SELECT COUNT(*) total FROM subjects WHERE dept_id=? AND is_active=1', [hod.dept_id]),
+      db.query(`SELECT COUNT(*) total FROM results r JOIN subjects s ON s.id=r.subject_id WHERE s.dept_id=? AND r.is_approved=0`, [hod.dept_id]),
+      db.query(`SELECT COUNT(*) total FROM results r JOIN subjects s ON s.id=r.subject_id WHERE s.dept_id=? AND r.is_approved=1`, [hod.dept_id])
+    ]);
+
+    res.json({
+      dept_id: hod.dept_id,
+      dept_name: hod.dept_name,
+      description: hod.description,
+      appointed_date: hod.appointed_date,
+      teachers: teachers.total,
+      subjects: subjects.total,
+      pending_results: pending.total,
+      approved_results: approved.total
+    });
+  } catch (err) { console.error('[dashboard/hod-summary]', err); res.status(500).json({ error: 'Unable to load department summary.' }); }
+});
+
 router.get('/top-performers', async (req, res) => {
   if (req.user.role !== 'commandant') return res.status(403).json({ error: 'Commandant access required.' });
   try {
