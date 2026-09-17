@@ -6,6 +6,27 @@ router.use(auth);
 
 router.get('/stats', async (req, res) => {
   try {
+    // School-wide figures are management information. A teacher or student was
+    // previously handed the whole school's headcounts and result totals, which
+    // contradicts departmental isolation. Each role now gets figures scoped to
+    // what it is actually responsible for.
+    if (req.user.role === 'teacher') {
+      const [[[students]], [[subjects]], [[pending]], [[approved]], [[announcements]]] = await Promise.all([
+        db.query(`SELECT COUNT(DISTINCT st.id) total FROM teacher_class_assignments tca
+          JOIN teachers t ON t.id=tca.teacher_id JOIN students st ON st.class_level_id=tca.class_level_id AND st.arm_id=tca.arm_id
+          JOIN users su ON su.id=st.user_id JOIN academic_sessions ac ON ac.id=tca.session_id
+          WHERE t.user_id=? AND su.is_active=1 AND st.status='active' AND ac.is_current=1`, [req.user.id]),
+        db.query(`SELECT COUNT(DISTINCT ts.subject_id) total FROM teacher_subjects ts JOIN teachers t ON t.id=ts.teacher_id WHERE t.user_id=?`, [req.user.id]),
+        db.query(`SELECT COUNT(*) total FROM results r JOIN teachers t ON t.id=r.teacher_id WHERE t.user_id=? AND r.is_approved=0`, [req.user.id]),
+        db.query(`SELECT COUNT(*) total FROM results r JOIN teachers t ON t.id=r.teacher_id WHERE t.user_id=? AND r.is_approved=1`, [req.user.id]),
+        db.query(`SELECT COUNT(*) total FROM announcements WHERE publish_at<=NOW() AND (expires_at IS NULL OR expires_at>NOW()) AND FIND_IN_SET('teacher', audience)>0`)
+      ]);
+      return res.json({ students: students.total, subjects: subjects.total, pending_results: pending.total, results: approved.total, active_announcements: announcements.total });
+    }
+    if (req.user.role === 'student') {
+      const [[announcements]] = await db.query(`SELECT COUNT(*) total FROM announcements WHERE publish_at<=NOW() AND (expires_at IS NULL OR expires_at>NOW()) AND FIND_IN_SET('student', audience)>0`);
+      return res.json({ active_announcements: announcements.total });
+    }
     const [[[students]],[[teachers]],[[hods]],[[results]],[[pending]],[[announcements]]] = await Promise.all([
       db.query('SELECT COUNT(*) total FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1'),
       db.query('SELECT COUNT(*) total FROM teachers t JOIN users u ON u.id=t.user_id WHERE u.is_active=1'),

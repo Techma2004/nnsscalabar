@@ -74,7 +74,7 @@ router.get('/assignments', async (req, res) => {
   if (!['teacher','admin','commandant','hod'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
   try {
     const teacher = req.user.role === 'teacher' ? await teacherIdForUser(req.user.id) : null;
-    const [rows] = await db.query(`SELECT tca.id,tca.teacher_id,tca.subject_id,s.subject_name,tca.class_level_id,cl.level_name AS class_name,tca.arm_id,a.arm_name,
+    const [rows] = await db.query(`SELECT tca.id,tca.teacher_id,tca.subject_id,s.subject_name,s.ca_max,s.exam_max,tca.class_level_id,cl.level_name AS class_name,tca.arm_id,a.arm_name,
       tca.session_id,ac.session_name FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id
       JOIN arms a ON a.id=tca.arm_id JOIN academic_sessions ac ON ac.id=tca.session_id
       WHERE s.is_active=1 AND (? IS NULL OR tca.teacher_id=?) ORDER BY ac.start_date DESC,cl.id,a.arm_name,s.subject_name`, [teacher?.id ?? null, teacher?.id ?? null]);
@@ -90,19 +90,25 @@ router.post('/upload', async (req, res) => {
   const ca_score = Number(req.body?.ca_score);
   const exam_score = Number(req.body?.exam_score);
   if (!student_code || !subject_name || !Number.isInteger(term_id) || !Number.isFinite(ca_score) || !Number.isFinite(exam_score)) return res.status(400).json({ error: 'Student, subject, term and numeric scores are required.' });
-  if (ca_score < 0 || ca_score > 30 || exam_score < 0 || exam_score > 70) return res.status(400).json({ error: 'CA must be 0–30 and exam must be 0–70.' });
+  if (ca_score < 0 || exam_score < 0) return res.status(400).json({ error: 'Scores cannot be negative.' });
+  // The upper bounds come from the subject itself (subjects.ca_max/exam_max are
+  // configurable per subject in the Curriculum panel), not a hardcoded 30/70 —
+  // otherwise a school that weights a subject differently cannot enter its marks.
 
   const conn = await db.getConnection();
   try {
     const [[teacher]] = await conn.query('SELECT id FROM teachers WHERE user_id=? LIMIT 1', [req.user.id]);
     const [[student]] = await conn.query('SELECT s.id,class_level_id,arm_id FROM students s JOIN users u ON u.id=s.user_id WHERE u.user_code=? AND u.is_active=1 LIMIT 1', [student_code]);
-    const [[subject]] = await conn.query('SELECT id FROM subjects WHERE subject_name=? AND is_active=1 LIMIT 1', [subject_name]);
+    const [[subject]] = await conn.query('SELECT id,ca_max,exam_max FROM subjects WHERE subject_name=? AND is_active=1 LIMIT 1', [subject_name]);
     const [[term]] = await conn.query('SELECT id,session_id,result_locked FROM terms WHERE id=? LIMIT 1', [term_id]);
     if (!teacher) return res.status(404).json({ error: 'Teacher record not found.' });
     if (!student) return res.status(404).json({ error: 'Student not found.' });
     if (!subject) return res.status(404).json({ error: 'Subject not found.' });
     if (!term) return res.status(404).json({ error: 'Academic term not found.' });
     if (term.result_locked) return res.status(409).json({ error: 'This term is locked and cannot be edited.' });
+    if (ca_score > subject.ca_max || exam_score > subject.exam_max) {
+      return res.status(400).json({ error: `For ${subject_name}, CA must be 0–${subject.ca_max} and exam must be 0–${subject.exam_max}.` });
+    }
 
     const [assignment] = await conn.query(`SELECT id FROM teacher_class_assignments WHERE teacher_id=? AND subject_id=? AND class_level_id=? AND arm_id=? AND session_id=? LIMIT 1`,
       [teacher.id, subject.id, student.class_level_id, student.arm_id, term.session_id]);
@@ -165,7 +171,7 @@ router.post('/ai-import', async (req, res) => {
 
   let tmpPath = null;
   try {
-    const [[assignment]] = await db.query(`SELECT tca.id,tca.subject_id,tca.class_level_id,tca.arm_id,tca.session_id,s.subject_name,cl.level_name AS class_name,a.arm_name
+    const [[assignment]] = await db.query(`SELECT tca.id,tca.subject_id,tca.class_level_id,tca.arm_id,tca.session_id,s.subject_name,s.ca_max,s.exam_max,cl.level_name AS class_name,a.arm_name
       FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id JOIN arms a ON a.id=tca.arm_id
       WHERE tca.id=? AND tca.teacher_id=? LIMIT 1`, [assignmentId, teacher.id]);
     if (!assignment) return res.status(403).json({ error: 'That assignment is not assigned to your account.' });
@@ -194,9 +200,9 @@ router.post('/ai-import', async (req, res) => {
         note: ''
       }))
       .filter(r => known.has(r.user_code))
-      .map(r => ({ ...r, valid_ca: Number.isFinite(r.ca_score) && r.ca_score >= 0 && r.ca_score <= 30, valid_exam: Number.isFinite(r.exam_score) && r.exam_score >= 0 && r.exam_score <= 70 }));
+      .map(r => ({ ...r, valid_ca: Number.isFinite(r.ca_score) && r.ca_score >= 0 && r.ca_score <= assignment.ca_max, valid_exam: Number.isFinite(r.exam_score) && r.exam_score >= 0 && r.exam_score <= assignment.exam_max }));
 
-    res.json({ assignment: { id: assignment.id, class_name: assignment.class_name, arm_name: assignment.arm_name, subject_name: assignment.subject_name }, term_id: term.id, term_name: term.term_name, rows, roster_count: students.length, extracted_count: rows.length, model: 'Tesseract OCR' });
+    res.json({ assignment: { id: assignment.id, class_name: assignment.class_name, arm_name: assignment.arm_name, subject_name: assignment.subject_name, ca_max: assignment.ca_max, exam_max: assignment.exam_max }, term_id: term.id, term_name: term.term_name, rows, roster_count: students.length, extracted_count: rows.length, model: 'Tesseract OCR' });
   } catch (err) {
     if (err.message && !err.message.includes('\n') && err.message.length < 200) {
       // A clean, user-safe message we raised deliberately (from runOcr or a validation check above).

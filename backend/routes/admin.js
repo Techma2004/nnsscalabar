@@ -332,6 +332,10 @@ router.post('/subjects', requireManagement, async (req, res) => {
   const exam_max = Number.isFinite(Number(req.body?.exam_max)) ? Number(req.body.exam_max) : 70;
   if (!subject_name || subject_name.length < 2) return res.status(400).json({ error: 'Subject name is required.' });
   if (ca_max < 0 || ca_max > 100 || exam_max < 0 || exam_max > 100) return res.status(400).json({ error: 'CA and exam maximums must be between 0 and 100.' });
+  // Grades and remarks are computed from (ca + exam) against a 100-point WAEC
+  // scale, so the two maximums must add up to 100 or every grade for the
+  // subject would be silently wrong.
+  if (ca_max + exam_max !== 100) return res.status(400).json({ error: `CA and exam maximums must add up to 100 (you entered ${ca_max} + ${exam_max} = ${ca_max + exam_max}).` });
   try {
     const [result] = await db.query('INSERT INTO subjects (subject_name, dept_id, ca_max, exam_max, is_active) VALUES (?, ?, ?, ?, 1)', [subject_name, dept_id, ca_max, exam_max]);
     await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
@@ -353,6 +357,14 @@ router.patch('/subjects/:subjectId', requireManagement, async (req, res) => {
   if (req.body?.ca_max != null) { fields.push('ca_max=?'); params.push(Number(req.body.ca_max)); }
   if (req.body?.exam_max != null) { fields.push('exam_max=?'); params.push(Number(req.body.exam_max)); }
   if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
+  try {
+    const [[current]] = await db.query('SELECT ca_max, exam_max FROM subjects WHERE id=? LIMIT 1', [subjectId]);
+    if (!current) return res.status(404).json({ error: 'Subject not found.' });
+    const nextCa = req.body?.ca_max != null ? Number(req.body.ca_max) : Number(current.ca_max);
+    const nextExam = req.body?.exam_max != null ? Number(req.body.exam_max) : Number(current.exam_max);
+    if (!Number.isFinite(nextCa) || !Number.isFinite(nextExam) || nextCa < 0 || nextExam < 0) return res.status(400).json({ error: 'CA and exam maximums must be positive numbers.' });
+    if (nextCa + nextExam !== 100) return res.status(400).json({ error: `CA and exam maximums must add up to 100 (you entered ${nextCa} + ${nextExam} = ${nextCa + nextExam}).` });
+  } catch (err) { console.error('[admin/subjects/update-validate]', err); return res.status(500).json({ error: 'Unable to update subject.' }); }
   params.push(subjectId);
   try {
     const [result] = await db.query(`UPDATE subjects SET ${fields.join(', ')} WHERE id=?`, params);

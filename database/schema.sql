@@ -287,8 +287,12 @@ CREATE TABLE results (
   subject_id      INT NOT NULL,
   term_id         INT NOT NULL,
   teacher_id      INT NOT NULL,
-  ca_score        DECIMAL(5,2) DEFAULT 0 CHECK (ca_score >= 0 AND ca_score <= 30),
-  exam_score      DECIMAL(5,2) DEFAULT 0 CHECK (exam_score >= 0 AND exam_score <= 70),
+  -- Upper bounds are NOT fixed at 30/70 here: each subject carries its own
+  -- ca_max/exam_max (which the app validates against, and which must total
+  -- 100 so the WAEC grade scale below stays correct). A hardcoded CHECK made
+  -- it impossible to enter marks for a differently-weighted subject.
+  ca_score        DECIMAL(5,2) DEFAULT 0 CHECK (ca_score >= 0 AND ca_score <= 100),
+  exam_score      DECIMAL(5,2) DEFAULT 0 CHECK (exam_score >= 0 AND exam_score <= 100),
   total_score     DECIMAL(5,2) GENERATED ALWAYS AS (ca_score + exam_score) STORED,
   grade           VARCHAR(5)   GENERATED ALWAYS AS (
     CASE
