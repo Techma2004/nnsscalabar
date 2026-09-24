@@ -547,3 +547,24 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
 .password-wrap input{width:100%;padding-right:44px}
 .password-toggle{position:absolute;right:6px;top:0;bottom:0;border:0;background:transparent;color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;width:36px}
 .password-toggle:hover{color:var(--text)}
+
+/* ===== CENTERED CAROUSEL CONTENT ===== */
+.carousel-overlay {
+  align-items: center;
+  text-align: center;
+}
+
+.carousel-overlay p {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 768px) {
+  .carousel-overlay .cta-btn {
+    width: auto;
+    max-width: 240px;
+    padding: 9px 18px;
+    font-size: .85rem;
+    border-radius: 40px;
+  }
+}
