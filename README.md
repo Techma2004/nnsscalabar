@@ -261,13 +261,11 @@ The schema is deliberately data-driven so these records can be maintained withou
 
 ## Upgrading an existing database
 
-Existing installations need one migration to pick up the student lifecycle-status feature (fresh installs get it automatically from `database/schema.sql`):
+Fresh installs get the current schema automatically from `database/schema.sql`. An existing database needs one migration, safe to run any number of times:
 
 ```bash
-mysql -u <user> -p nnss_calabar < database/migrations/001_student_status.sql
+mysql -u <user> -p nnss_calabar < database/migrations/001_upgrade.sql
 ```
-
-This adds the `status`, `status_reason`, and `status_updated_at` columns to `students` and backfills anyone whose account was already deactivated as `withdrawn`, so existing data stays consistent.
 
 ## License
 
