@@ -20,6 +20,7 @@ A production-oriented school management platform and public school website for *
   - [macOS](#macos)
   - [Windows](#windows)
 - [Database setup](#database-setup)
+- [MySQL access denied fix](#mysql-access-denied-fix)
 - [Configuration](#configuration)
 - [Create the first administrator](#create-the-first-administrator)
 - [Run the application](#run-the-application)
@@ -251,6 +252,66 @@ mysql -u nnss_user -p nnss_calabar < database/schema.sql
 4. Confirm that the `nnss_calabar` schema and its tables are visible.
 
 The schema includes current academic session/term seed records, departments, subjects, class levels, arms, curriculum mappings, indexes, and reporting views. Replace or extend those records for the real school calendar.
+
+## MySQL access denied fix
+
+If you see this error:
+
+```bash
+ERROR 1045 (28000): Access denied for user 'test'@'localhost' (using password: YES)
+ERROR 1045 (28000): Access denied for user 'temp'@'localhost' (using password: YES)
+```
+
+then the MySQL username/password you are trying to use does not exist or does not have permission. This is a MySQL authentication problem, not a schema problem.
+
+Use the local MySQL root account first:
+
+```bash
+sudo mysql
+```
+
+If the root account is protected, use:
+
+```bash
+sudo mysql -u root
+```
+
+Then create the application user and database:
+
+```sql
+CREATE DATABASE IF NOT EXISTS nnss_calabar
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'nnss_user'@'localhost'
+  IDENTIFIED BY 'replace-with-a-strong-password';
+
+GRANT ALL PRIVILEGES ON nnss_calabar.* TO 'nnss_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+After that, import the schema with the correct user:
+
+```bash
+mysql -u nnss_user -p nnss_calabar < database/schema.sql
+```
+
+This is the recommended setup for this project because the application config in `backend/.env.example` expects the database user to be `nnss_user`.
+
+If MySQL is not running, start it:
+
+```bash
+sudo systemctl start mysql
+```
+
+Check status:
+
+```bash
+sudo systemctl status mysql
+```
+
+Also remember that a Linux user account (`edima`, `root`, etc.) is different from a MySQL user account (`nnss_user`, `test`, `temp`, `root`). `sudo` gives you operating-system privileges, but it does not grant MySQL database permissions automatically.
 
 ## Configuration
 
