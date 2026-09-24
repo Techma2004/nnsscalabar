@@ -1,7 +1,7 @@
 -- =====================================================
---  NNSS CALABAR — DATABASE SCHEMA
---  Nigerian Navy Secondary School, Calabar
---  Engine: MySQL 8.0+ / MariaDB 10.6+
+-- NNSS CALABAR — CONSOLIDATED DATABASE SETUP + UPGRADE
+-- Safe for fresh installs and existing databases.
+-- This file merges the schema and all migration steps into one script.
 -- =====================================================
 
 CREATE DATABASE IF NOT EXISTS nnss_calabar CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -10,7 +10,7 @@ USE nnss_calabar;
 -- =====================================================
 -- 1. ACADEMIC SESSIONS & TERMS
 -- =====================================================
-CREATE TABLE academic_sessions (
+CREATE TABLE IF NOT EXISTS academic_sessions (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   session_name  VARCHAR(20) NOT NULL UNIQUE,
   is_current    BOOLEAN DEFAULT FALSE,
@@ -19,7 +19,7 @@ CREATE TABLE academic_sessions (
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE terms (
+CREATE TABLE IF NOT EXISTS terms (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   session_id    INT NOT NULL,
   term_number   TINYINT NOT NULL,
@@ -35,25 +35,41 @@ CREATE TABLE terms (
 -- =====================================================
 -- 2. DEPARTMENTS
 -- =====================================================
-CREATE TABLE departments (
+CREATE TABLE IF NOT EXISTS departments (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   dept_name   VARCHAR(80) NOT NULL UNIQUE,
   description TEXT,
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO departments (dept_name) VALUES
-  ('Sciences'),
-  ('Languages'),
-  ('Arts & Commercial'),
-  ('Technical'),
-  ('Social Studies'),
-  ('Administration');
+INSERT INTO departments (dept_name)
+SELECT 'Sciences'
+WHERE NOT EXISTS (SELECT 1 FROM departments WHERE dept_name = 'Sciences');
+
+INSERT INTO departments (dept_name)
+SELECT 'Languages'
+WHERE NOT EXISTS (SELECT 1 FROM departments WHERE dept_name = 'Languages');
+
+INSERT INTO departments (dept_name)
+SELECT 'Arts & Commercial'
+WHERE NOT EXISTS (SELECT 1 FROM departments WHERE dept_name = 'Arts & Commercial');
+
+INSERT INTO departments (dept_name)
+SELECT 'Technical'
+WHERE NOT EXISTS (SELECT 1 FROM departments WHERE dept_name = 'Technical');
+
+INSERT INTO departments (dept_name)
+SELECT 'Social Studies'
+WHERE NOT EXISTS (SELECT 1 FROM departments WHERE dept_name = 'Social Studies');
+
+INSERT INTO departments (dept_name)
+SELECT 'Administration'
+WHERE NOT EXISTS (SELECT 1 FROM departments WHERE dept_name = 'Administration');
 
 -- =====================================================
 -- 3. SUBJECTS
 -- =====================================================
-CREATE TABLE subjects (
+CREATE TABLE IF NOT EXISTS subjects (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   subject_name VARCHAR(80) NOT NULL UNIQUE,
   dept_id      INT,
@@ -63,60 +79,169 @@ CREATE TABLE subjects (
   FOREIGN KEY (dept_id) REFERENCES departments(id)
 );
 
--- FIXED: removed duplicate 'Igbo' (kept one, dept_id 1)
-INSERT INTO subjects (subject_name, dept_id) VALUES
-  ('English Language',             2),
-  ('Mathematics',                  1),
-  ('French',                       4),        -- junior & senior share this
-  ('National Values',              5),
-  ('Efik',                         1),
-  ('Intermediate science',         3),
-  ('Trade',                        5),
-  ('Cisco',                        1),
-  ('Digital technologies',         1),
-  ('Physics',                      1),
-  ('Chemistry',                    1),
-  ('Further Mathematics',          1),
-  ('Biology',                      1),
-  ('Computer Studies',             1),
-  ('Civic Education',              5),
-  ('Geography',                    5),
-  ('Technical Drawing',            4),
-  ('Food & Nutrition',             3),
-  ('Electrical Installation',      4),
-  ('Igbo',                         1),        -- only ONE Igbo entry
-  ('French Language',              2),        -- separate name for senior
-  ('Catering Craft Practice',      3),
-  ('Economics',                    3),
-  ('Visual Arts',                  3),
-  ('Christian Religious Studies',  5),
-  ('Accounting',                   3),
-  ('Commerce',                     3),
-  ('Literature in English',        2),
-  ('Government',                   5);
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'English Language', 2
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'English Language');
 
-INSERT INTO subjects (subject_name, dept_id) VALUES
-  ('Basic Science & Technology', 1),
-  ('Cultural & Creative Arts', 3),
-  ('History', 5);
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Mathematics', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Mathematics');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'French', 4
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'French');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'National Values', 5
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'National Values');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Efik', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Efik');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Intermediate science', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Intermediate science');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Trade', 5
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Trade');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Cisco', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Cisco');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Digital technologies', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Digital technologies');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Physics', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Physics');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Chemistry', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Chemistry');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Further Mathematics', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Further Mathematics');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Biology', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Biology');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Computer Studies', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Computer Studies');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Civic Education', 5
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Civic Education');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Geography', 5
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Geography');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Technical Drawing', 4
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Technical Drawing');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Food & Nutrition', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Food & Nutrition');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Electrical Installation', 4
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Electrical Installation');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Igbo', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Igbo');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'French Language', 2
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'French Language');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Catering Craft Practice', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Catering Craft Practice');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Economics', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Economics');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Visual Arts', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Visual Arts');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Christian Religious Studies', 5
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Christian Religious Studies');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Accounting', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Accounting');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Commerce', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Commerce');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Literature in English', 2
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Literature in English');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Government', 5
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Government');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Basic Science & Technology', 1
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Basic Science & Technology');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'Cultural & Creative Arts', 3
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'Cultural & Creative Arts');
+
+INSERT INTO subjects (subject_name, dept_id)
+SELECT 'History', 5
+WHERE NOT EXISTS (SELECT 1 FROM subjects WHERE subject_name = 'History');
 
 -- =====================================================
 -- 4. CLASS LEVELS & ARMS
 -- =====================================================
-CREATE TABLE class_levels (
+CREATE TABLE IF NOT EXISTS class_levels (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   level_name VARCHAR(20) NOT NULL UNIQUE,
-  -- Junior classes follow the junior curriculum regardless of which arm a
-  -- student sits in; senior classes take their track from the arm instead.
   is_junior  BOOLEAN NOT NULL DEFAULT FALSE,
   sort_order INT NOT NULL DEFAULT 0
 );
 
-INSERT INTO class_levels (level_name, is_junior, sort_order) VALUES
-  ('JSS1', 1, 1),('JSS2', 1, 2),('JSS3', 1, 3),
-  ('SS1', 0, 4),('SS2', 0, 5),('SS3', 0, 6);
+INSERT INTO class_levels (level_name, is_junior, sort_order)
+SELECT 'JSS1', 1, 1
+WHERE NOT EXISTS (SELECT 1 FROM class_levels WHERE level_name = 'JSS1');
 
-CREATE TABLE arms (
+INSERT INTO class_levels (level_name, is_junior, sort_order)
+SELECT 'JSS2', 1, 2
+WHERE NOT EXISTS (SELECT 1 FROM class_levels WHERE level_name = 'JSS2');
+
+INSERT INTO class_levels (level_name, is_junior, sort_order)
+SELECT 'JSS3', 1, 3
+WHERE NOT EXISTS (SELECT 1 FROM class_levels WHERE level_name = 'JSS3');
+
+INSERT INTO class_levels (level_name, is_junior, sort_order)
+SELECT 'SS1', 0, 4
+WHERE NOT EXISTS (SELECT 1 FROM class_levels WHERE level_name = 'SS1');
+
+INSERT INTO class_levels (level_name, is_junior, sort_order)
+SELECT 'SS2', 0, 5
+WHERE NOT EXISTS (SELECT 1 FROM class_levels WHERE level_name = 'SS2');
+
+INSERT INTO class_levels (level_name, is_junior, sort_order)
+SELECT 'SS3', 0, 6
+WHERE NOT EXISTS (SELECT 1 FROM class_levels WHERE level_name = 'SS3');
+
+CREATE TABLE IF NOT EXISTS arms (
   id        INT AUTO_INCREMENT PRIMARY KEY,
   arm_name  VARCHAR(30) NOT NULL UNIQUE,
   arm_type  ENUM('science','technical','arts','junior') NOT NULL,
@@ -124,18 +249,34 @@ CREATE TABLE arms (
   is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-INSERT INTO arms (arm_name, arm_type, category) VALUES
-  ('AGU',   'science',   'Senior Science'),
-  ('AYAM',  'science',   'Senior Science'),
-  ('DAMISA','science',   'Senior Science'),
-  ('EKUN',  'technical', 'Senior Technical'),
-  ('EKPE',  'technical', 'Senior Technical'),
-  ('SIRI',  'arts',      'Senior Arts & Commercial');
+INSERT INTO arms (arm_name, arm_type, category)
+SELECT 'AGU', 'science', 'Senior Science'
+WHERE NOT EXISTS (SELECT 1 FROM arms WHERE arm_name = 'AGU');
+
+INSERT INTO arms (arm_name, arm_type, category)
+SELECT 'AYAM', 'science', 'Senior Science'
+WHERE NOT EXISTS (SELECT 1 FROM arms WHERE arm_name = 'AYAM');
+
+INSERT INTO arms (arm_name, arm_type, category)
+SELECT 'DAMISA', 'science', 'Senior Science'
+WHERE NOT EXISTS (SELECT 1 FROM arms WHERE arm_name = 'DAMISA');
+
+INSERT INTO arms (arm_name, arm_type, category)
+SELECT 'EKUN', 'technical', 'Senior Technical'
+WHERE NOT EXISTS (SELECT 1 FROM arms WHERE arm_name = 'EKUN');
+
+INSERT INTO arms (arm_name, arm_type, category)
+SELECT 'EKPE', 'technical', 'Senior Technical'
+WHERE NOT EXISTS (SELECT 1 FROM arms WHERE arm_name = 'EKPE');
+
+INSERT INTO arms (arm_name, arm_type, category)
+SELECT 'SIRI', 'arts', 'Senior Arts & Commercial'
+WHERE NOT EXISTS (SELECT 1 FROM arms WHERE arm_name = 'SIRI');
 
 -- =====================================================
--- 5. TRACK-SUBJECT MAPPING (empty, fill later)
+-- 5. TRACK-SUBJECT MAPPING
 -- =====================================================
-CREATE TABLE track_subjects (
+CREATE TABLE IF NOT EXISTS track_subjects (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   track      ENUM('junior','science','technical','arts') NOT NULL,
   subject_id INT NOT NULL,
@@ -143,33 +284,54 @@ CREATE TABLE track_subjects (
   UNIQUE KEY (track, subject_id)
 );
 
--- Default curriculum mapping. This is intentionally data-driven so the school
--- can change subjects later without changing application code.
 INSERT INTO track_subjects (track, subject_id)
-SELECT 'junior', id FROM subjects WHERE subject_name IN (
+SELECT 'junior', s.id
+FROM subjects s
+WHERE s.subject_name IN (
   'English Language','Mathematics','National Values','Basic Science & Technology','Cultural & Creative Arts',
   'History','Cisco','Digital technologies','French','Efik','Igbo','Trade'
+)
+AND NOT EXISTS (
+  SELECT 1 FROM track_subjects ts WHERE ts.track = 'junior' AND ts.subject_id = s.id
 );
+
 INSERT INTO track_subjects (track, subject_id)
-SELECT 'science', id FROM subjects WHERE subject_name IN (
+SELECT 'science', s.id
+FROM subjects s
+WHERE s.subject_name IN (
   'English Language','Mathematics','Physics','Chemistry','Biology','Further Mathematics','Computer Studies',
   'Civic Education','Geography','Cisco','Technical Drawing'
+)
+AND NOT EXISTS (
+  SELECT 1 FROM track_subjects ts WHERE ts.track = 'science' AND ts.subject_id = s.id
 );
+
 INSERT INTO track_subjects (track, subject_id)
-SELECT 'technical', id FROM subjects WHERE subject_name IN (
+SELECT 'technical', s.id
+FROM subjects s
+WHERE s.subject_name IN (
   'English Language','Mathematics','Physics','Chemistry','Computer Studies','Civic Education','Technical Drawing',
   'Electrical Installation','Food & Nutrition','Catering Craft Practice'
+)
+AND NOT EXISTS (
+  SELECT 1 FROM track_subjects ts WHERE ts.track = 'technical' AND ts.subject_id = s.id
 );
+
 INSERT INTO track_subjects (track, subject_id)
-SELECT 'arts', id FROM subjects WHERE subject_name IN (
+SELECT 'arts', s.id
+FROM subjects s
+WHERE s.subject_name IN (
   'English Language','Mathematics','Christian Religious Studies','Literature in English','Economics','Accounting',
   'Commerce','Government','French Language','Visual Arts','Civic Education','Geography'
+)
+AND NOT EXISTS (
+  SELECT 1 FROM track_subjects ts WHERE ts.track = 'arts' AND ts.subject_id = s.id
 );
 
 -- =====================================================
 -- 6. USERS
 -- =====================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   user_code     VARCHAR(20) NOT NULL UNIQUE,
   full_name     VARCHAR(120) NOT NULL,
@@ -188,7 +350,7 @@ CREATE TABLE users (
 -- =====================================================
 -- 7. STUDENTS
 -- =====================================================
-CREATE TABLE students (
+CREATE TABLE IF NOT EXISTS students (
   id              INT AUTO_INCREMENT PRIMARY KEY,
   user_id         INT NOT NULL UNIQUE,
   admission_no    VARCHAR(20) UNIQUE,
@@ -200,13 +362,9 @@ CREATE TABLE students (
   date_admitted   DATE,
   is_boarder      BOOLEAN DEFAULT FALSE,
   track           ENUM('junior','science','technical','arts') NOT NULL,
-  -- Enrollment lifecycle, independent of users.is_active (which only gates login).
-  -- 'active': currently attending. 'pending': admitted/returning but yet to resume.
-  -- 'withdrawn': permanently left the school (transfer, expulsion, etc).
-  -- 'graduated': completed studies — record kept, no ongoing portal access.
-  status             ENUM('active','pending','withdrawn','graduated') NOT NULL DEFAULT 'active',
-  status_reason      VARCHAR(160) NULL,
-  status_updated_at  TIMESTAMP NULL,
+  status          ENUM('active','pending','withdrawn','graduated') NOT NULL DEFAULT 'active',
+  status_reason   VARCHAR(160) NULL,
+  status_updated_at TIMESTAMP NULL,
   FOREIGN KEY (user_id)        REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (class_level_id) REFERENCES class_levels(id),
   FOREIGN KEY (arm_id)         REFERENCES arms(id)
@@ -215,7 +373,7 @@ CREATE TABLE students (
 -- =====================================================
 -- 8. TEACHERS
 -- =====================================================
-CREATE TABLE teachers (
+CREATE TABLE IF NOT EXISTS teachers (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   user_id     INT NOT NULL UNIQUE,
   staff_no    VARCHAR(20) UNIQUE,
@@ -226,7 +384,7 @@ CREATE TABLE teachers (
   FOREIGN KEY (dept_id)  REFERENCES departments(id)
 );
 
-CREATE TABLE teacher_subjects (
+CREATE TABLE IF NOT EXISTS teacher_subjects (
   teacher_id  INT NOT NULL,
   subject_id  INT NOT NULL,
   PRIMARY KEY (teacher_id, subject_id),
@@ -234,7 +392,7 @@ CREATE TABLE teacher_subjects (
   FOREIGN KEY (subject_id) REFERENCES subjects(id)
 );
 
-CREATE TABLE teacher_class_assignments (
+CREATE TABLE IF NOT EXISTS teacher_class_assignments (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   teacher_id    INT NOT NULL,
   subject_id    INT NOT NULL,
@@ -250,9 +408,9 @@ CREATE TABLE teacher_class_assignments (
 );
 
 -- =====================================================
--- 9. HODs
+-- 9. HODS
 -- =====================================================
-CREATE TABLE hods (
+CREATE TABLE IF NOT EXISTS hods (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   user_id     INT NOT NULL UNIQUE,
   dept_id     INT NOT NULL UNIQUE,
@@ -264,7 +422,7 @@ CREATE TABLE hods (
 -- =====================================================
 -- 10. STUDENT SUBJECT ENROLLMENT
 -- =====================================================
-CREATE TABLE student_subject_enrollment (
+CREATE TABLE IF NOT EXISTS student_subject_enrollment (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   student_id  INT NOT NULL,
   subject_id  INT NOT NULL,
@@ -281,20 +439,16 @@ CREATE TABLE student_subject_enrollment (
 -- =====================================================
 -- 11. RESULTS
 -- =====================================================
-CREATE TABLE results (
+CREATE TABLE IF NOT EXISTS results (
   id              INT AUTO_INCREMENT PRIMARY KEY,
   student_id      INT NOT NULL,
   subject_id      INT NOT NULL,
   term_id         INT NOT NULL,
   teacher_id      INT NOT NULL,
-  -- Upper bounds are NOT fixed at 30/70 here: each subject carries its own
-  -- ca_max/exam_max (which the app validates against, and which must total
-  -- 100 so the WAEC grade scale below stays correct). A hardcoded CHECK made
-  -- it impossible to enter marks for a differently-weighted subject.
-  ca_score        DECIMAL(5,2) DEFAULT 0 CHECK (ca_score >= 0 AND ca_score <= 100),
-  exam_score      DECIMAL(5,2) DEFAULT 0 CHECK (exam_score >= 0 AND exam_score <= 100),
+  ca_score        DECIMAL(5,2) DEFAULT 0,
+  exam_score      DECIMAL(5,2) DEFAULT 0,
   total_score     DECIMAL(5,2) GENERATED ALWAYS AS (ca_score + exam_score) STORED,
-  grade           VARCHAR(5)   GENERATED ALWAYS AS (
+  grade           VARCHAR(5) GENERATED ALWAYS AS (
     CASE
       WHEN (ca_score + exam_score) >= 75 THEN 'A1'
       WHEN (ca_score + exam_score) >= 70 THEN 'B2'
@@ -333,7 +487,7 @@ CREATE TABLE results (
 -- =====================================================
 -- 12. RESULT APPROVAL LOG
 -- =====================================================
-CREATE TABLE result_approval_log (
+CREATE TABLE IF NOT EXISTS result_approval_log (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   result_id   INT NOT NULL,
   action      ENUM('approved','rejected','revised') NOT NULL,
@@ -347,7 +501,7 @@ CREATE TABLE result_approval_log (
 -- =====================================================
 -- 13. ATTENDANCE
 -- =====================================================
-CREATE TABLE attendance (
+CREATE TABLE IF NOT EXISTS attendance (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   student_id  INT NOT NULL,
   term_id     INT NOT NULL,
@@ -360,7 +514,7 @@ CREATE TABLE attendance (
   UNIQUE KEY (student_id, att_date)
 );
 
-CREATE VIEW attendance_summary AS
+CREATE VIEW IF NOT EXISTS attendance_summary AS
   SELECT
     s.id AS student_id,
     u.full_name,
@@ -381,7 +535,7 @@ CREATE VIEW attendance_summary AS
 -- =====================================================
 -- 14. ANNOUNCEMENTS
 -- =====================================================
-CREATE TABLE announcements (
+CREATE TABLE IF NOT EXISTS announcements (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   title       VARCHAR(200) NOT NULL,
   body        TEXT NOT NULL,
@@ -397,7 +551,7 @@ CREATE TABLE announcements (
 -- =====================================================
 -- 15. ACTIVITY LOG
 -- =====================================================
-CREATE TABLE activity_log (
+CREATE TABLE IF NOT EXISTS activity_log (
   id          BIGINT AUTO_INCREMENT PRIMARY KEY,
   user_id     INT,
   action      VARCHAR(100) NOT NULL,
@@ -412,7 +566,7 @@ CREATE TABLE activity_log (
 -- =====================================================
 -- 16. USEFUL VIEWS
 -- =====================================================
-CREATE VIEW student_result_sheet AS
+CREATE VIEW IF NOT EXISTS student_result_sheet AS
   SELECT
     u.user_code     AS student_id,
     u.full_name     AS student_name,
@@ -439,7 +593,7 @@ CREATE VIEW student_result_sheet AS
   JOIN teachers tch ON r.teacher_id = tch.id
   JOIN users tu     ON tch.user_id = tu.id;
 
-CREATE VIEW class_performance AS
+CREATE VIEW IF NOT EXISTS class_performance AS
   SELECT
     cl.level_name   AS class,
     a.arm_name      AS arm,
@@ -463,7 +617,7 @@ CREATE VIEW class_performance AS
   WHERE r.is_approved = TRUE
   GROUP BY cl.level_name, a.arm_name, sub.subject_name, t.id, ac.id;
 
-CREATE VIEW top_performers AS
+CREATE VIEW IF NOT EXISTS top_performers AS
   SELECT
     u.user_code     AS student_id,
     u.full_name     AS student_name,
@@ -485,7 +639,7 @@ CREATE VIEW top_performers AS
   WHERE r.is_approved = TRUE
   GROUP BY r.student_id, r.term_id;
 
-CREATE VIEW teacher_upload_progress AS
+CREATE VIEW IF NOT EXISTS teacher_upload_progress AS
   SELECT
     tu.full_name    AS teacher_name,
     tu.user_code    AS teacher_id,
@@ -507,31 +661,234 @@ CREATE VIEW teacher_upload_progress AS
   GROUP BY tch.id, sub.id, t.id;
 
 -- =====================================================
--- 18. SAMPLE DATA SEED
+-- 17. SAMPLE DATA SEED
+-- =====================================================
+INSERT INTO academic_sessions (session_name, is_current, start_date, end_date)
+SELECT '2025/2026', FALSE, '2025-09-01', '2026-07-31'
+WHERE NOT EXISTS (SELECT 1 FROM academic_sessions WHERE session_name = '2025/2026');
+
+INSERT INTO academic_sessions (session_name, is_current, start_date, end_date)
+SELECT '2026/2027', TRUE, '2026-09-01', '2027-07-31'
+WHERE NOT EXISTS (SELECT 1 FROM academic_sessions WHERE session_name = '2026/2027');
+
+INSERT INTO terms (session_id, term_number, term_name, start_date, end_date, is_current, result_locked)
+SELECT ac.id, 1, 'First Term', '2026-09-01', '2026-12-18', TRUE, FALSE
+FROM academic_sessions ac
+WHERE ac.session_name = '2026/2027'
+AND NOT EXISTS (SELECT 1 FROM terms t WHERE t.session_id = ac.id AND t.term_number = 1);
+
+INSERT INTO terms (session_id, term_number, term_name, start_date, end_date, is_current, result_locked)
+SELECT ac.id, 2, 'Second Term', '2027-01-11', '2027-04-09', FALSE, FALSE
+FROM academic_sessions ac
+WHERE ac.session_name = '2026/2027'
+AND NOT EXISTS (SELECT 1 FROM terms t WHERE t.session_id = ac.id AND t.term_number = 2);
+
+INSERT INTO terms (session_id, term_number, term_name, start_date, end_date, is_current, result_locked)
+SELECT ac.id, 3, 'Third Term', '2027-04-26', '2027-07-23', FALSE, FALSE
+FROM academic_sessions ac
+WHERE ac.session_name = '2026/2027'
+AND NOT EXISTS (SELECT 1 FROM terms t WHERE t.session_id = ac.id AND t.term_number = 3);
+
+-- =====================================================
+-- 18. INDEXES
+-- =====================================================
+CREATE INDEX IF NOT EXISTS idx_results_student ON results(student_id);
+CREATE INDEX IF NOT EXISTS idx_results_term ON results(term_id);
+CREATE INDEX IF NOT EXISTS idx_results_subject ON results(subject_id);
+CREATE INDEX IF NOT EXISTS idx_results_teacher ON results(teacher_id);
+CREATE INDEX IF NOT EXISTS idx_results_approved ON results(is_approved);
+CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance(student_id, att_date);
+CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id, logged_at);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role, is_active);
+CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
+
+-- =====================================================
+-- 19. MIGRATION UPGRADE BLOCKS
 -- =====================================================
 
-INSERT INTO academic_sessions (session_name, is_current, start_date, end_date) VALUES
-  ('2025/2026', FALSE, '2025-09-01', '2026-07-31'),
-  ('2026/2027', TRUE,  '2026-09-01', '2027-07-31');
+-- Migration 001: student lifecycle status
+-- Adds status fields and backfills existing inactive users as withdrawn.
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'students'
+    AND column_name = 'status'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE students ADD COLUMN status ENUM(\'active\',\'pending\',\'withdrawn\',\'graduated\') NOT NULL DEFAULT \'active\' AFTER track',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-INSERT INTO terms (session_id, term_number, term_name, start_date, end_date, is_current, result_locked) VALUES
-  (2, 1, 'First Term',  '2026-09-01', '2026-12-18', TRUE, FALSE),
-  (2, 2, 'Second Term', '2027-01-11', '2027-04-09', FALSE, FALSE),
-  (2, 3, 'Third Term',  '2027-04-26', '2027-07-23', FALSE, FALSE);
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'students'
+    AND column_name = 'status_reason'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE students ADD COLUMN status_reason VARCHAR(160) NULL AFTER status',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'students'
+    AND column_name = 'status_updated_at'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE students ADD COLUMN status_updated_at TIMESTAMP NULL AFTER status_reason',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+UPDATE students s
+JOIN users u ON u.id = s.user_id
+SET s.status = 'withdrawn', s.status_updated_at = NOW()
+WHERE u.is_active = 0
+  AND (s.status IS NULL OR s.status = 'active');
+
+SET @idx_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'students'
+    AND index_name = 'idx_students_status'
+);
+SET @sql := IF(@idx_exists = 0,
+  'CREATE INDEX idx_students_status ON students(status)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Migration 002: dynamic class levels and arms
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'class_levels'
+    AND column_name = 'is_junior'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE class_levels ADD COLUMN is_junior BOOLEAN NOT NULL DEFAULT FALSE AFTER level_name',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'class_levels'
+    AND column_name = 'sort_order'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE class_levels ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER is_junior',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+UPDATE class_levels
+SET is_junior = 1
+WHERE level_name LIKE 'JSS%'
+  AND is_junior = 0;
+
+UPDATE class_levels
+SET sort_order = id
+WHERE sort_order = 0;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'arms'
+    AND column_name = 'is_active'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE arms ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'arms'
+    AND index_name = 'idx_arms_active'
+);
+SET @sql := IF(@idx_exists = 0,
+  'CREATE INDEX idx_arms_active ON arms(is_active)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Migration 003: allow flexible score limits and keep totals valid
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'results'
+    AND column_name = 'ca_score'
+);
+SET @sql := IF(@col_exists = 1,
+  'ALTER TABLE results MODIFY ca_score DECIMAL(5,2) DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'results'
+    AND column_name = 'exam_score'
+);
+SET @sql := IF(@col_exists = 1,
+  'ALTER TABLE results MODIFY exam_score DECIMAL(5,2) DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @constraint_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.check_constraints cc
+  JOIN information_schema.table_constraints tc
+    ON cc.constraint_name = tc.constraint_name
+  WHERE tc.table_schema = DATABASE()
+    AND tc.table_name = 'results'
+    AND tc.constraint_name = 'chk_results_ca'
+);
+SET @sql := IF(@constraint_exists = 0,
+  'ALTER TABLE results ADD CONSTRAINT chk_results_ca CHECK (ca_score >= 0 AND ca_score <= 100)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @constraint_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.check_constraints cc
+  JOIN information_schema.table_constraints tc
+    ON cc.constraint_name = tc.constraint_name
+  WHERE tc.table_schema = DATABASE()
+    AND tc.table_name = 'results'
+    AND tc.constraint_name = 'chk_results_exam'
+);
+SET @sql := IF(@constraint_exists = 0,
+  'ALTER TABLE results ADD CONSTRAINT chk_results_exam CHECK (exam_score >= 0 AND exam_score <= 100)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+UPDATE subjects
+SET ca_max = 30, exam_max = 70
+WHERE (ca_max + exam_max) <> 100;
 
 -- =====================================================
--- INDEXES
--- =====================================================
-CREATE INDEX idx_results_student   ON results(student_id);
-CREATE INDEX idx_results_term      ON results(term_id);
-CREATE INDEX idx_results_subject   ON results(subject_id);
-CREATE INDEX idx_results_teacher   ON results(teacher_id);
-CREATE INDEX idx_results_approved  ON results(is_approved);
-CREATE INDEX idx_attendance_student ON attendance(student_id, att_date);
-CREATE INDEX idx_activity_user     ON activity_log(user_id, logged_at);
-CREATE INDEX idx_users_role        ON users(role, is_active);
-CREATE INDEX idx_students_status   ON students(status);
-
--- =====================================================
--- END OF SCHEMA
+-- END OF CONSOLIDATED DATABASE SETUP + UPGRADE
 -- =====================================================
