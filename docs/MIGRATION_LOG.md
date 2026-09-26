@@ -66,3 +66,13 @@ Before release, test with the demo/current database:
 ## Engineering principle
 
 Prefer small, isolated changes over rewriting working subsystems. Existing schema and role controls were reused wherever possible; new behavior is implemented behind focused endpoints and a small frontend module.
+
+
+### 4. Teacher assignment search and responsive layout repair
+
+- Added a dedicated teacher search field to the Teaching Assignments workspace.
+- The existing teacher select remains in place, including its native dropdown control, while the search field filters available teachers by name, department, or teacher code.
+- Reworked mobile portal layout rules so toolbar content, assignment forms, action buttons, badges, result headers, and table containers stack instead of overlapping.
+- Reworked public hero CTAs and quick-access cards to use normal HTML links rather than JavaScript `window.location` handlers.
+- Removed the hero CTA navigation override from `frontend/main.js`; result-card branding and printing remain handled there.
+- Mobile hero images now use a contained background treatment with reserved space for text and carousel controls.
