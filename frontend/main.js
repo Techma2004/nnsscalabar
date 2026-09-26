@@ -16,32 +16,13 @@ function initChromeIcons(){if(typeof window.Icon!=='function')return;[['#mobileT
 function initContentIcons(){if(typeof window.Icon!=='function')return;document.querySelectorAll('[data-icon]').forEach(el=>el.insertAdjacentHTML('afterbegin',window.Icon(el.dataset.icon,{size:15})));}
 
 function initHomeFixes(){
-  if(!document.querySelector('.hero-carousel')&&!document.querySelector('.result-card'))return;
+  if(!document.querySelector('.result-card'))return;
   const style=document.createElement('style');
-  style.textContent=`
-    @media (max-width: 768px){
-      .hero-carousel{height:auto;min-height:0;aspect-ratio:4/5;background:var(--primary);}
-      .carousel-slide{height:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:var(--primary);}
-      .carousel-overlay{background:linear-gradient(180deg,rgba(11,18,32,.2) 0%,rgba(11,18,32,.72) 100%);padding:1.25rem;justify-content:flex-end;}
-      .carousel-overlay h2{font-size:clamp(1.65rem,7vw,2.45rem);}
-      .carousel-overlay p{font-size:.95rem;max-width:100%;margin-bottom:1.1rem;}
-      .carousel-overlay .cta-btn{padding:11px 24px;font-size:.92rem;}
-    }
-    .result-card::before{content:"";display:block;width:88px;height:88px;margin:1.25rem auto .25rem;background:url("command-logo.png") center/contain no-repeat;}
-    @media print{
-      .result-card::before{width:92px;height:92px;margin:.15in auto .08in;}
-      .result-card{box-shadow:none!important;border-color:#ccc;break-inside:avoid;}
-    }
-  `;
+  style.textContent=[
+    '.result-card::before{content:"";display:block;width:88px;height:88px;margin:1.25rem auto .25rem;background:url("command-logo.png") center/contain no-repeat;}',
+    '@media print{.result-card::before{width:92px;height:92px;margin:.15in auto .08in;}.result-card{box-shadow:none!important;border-color:#ccc;break-inside:avoid;}}'
+  ].join('');
   document.head.appendChild(style);
-
-  const targets=['about.html','blog.html','login.html','newsletter.html','login.html'];
-  document.querySelectorAll('.hero-carousel .carousel-slide').forEach((slide,index)=>{
-    const btn=slide.querySelector('.cta-btn');
-    if(!btn||!targets[index])return;
-    btn.type='button';
-    btn.onclick=()=>{window.location.assign(new URL(targets[index],document.baseURI).href);};
-  });
 }
 
 document.addEventListener('DOMContentLoaded',()=>{
