@@ -37,6 +37,8 @@ import re
 try:
     import pytesseract
     from PIL import Image, ImageOps
+    import numpy as np
+    import cv2
 except ImportError as e:
     print(json.dumps({"error": f"Missing Python dependency: {e}. Run: uv sync"}))
     sys.exit(1)
@@ -58,13 +60,53 @@ def normalize_name(s):
     return re.sub(r"[^a-z ]", "", (s or "").lower()).strip()
     
 
+def remove_gridlines(img):
+    """Real score sheets almost always come as a bordered table, and a full
+    grid (row + column lines) badly corrupts Tesseract's character
+    segmentation — border pixels merge into adjacent letters and produce
+    garbage tokens instead of the actual text. This detects long straight
+    horizontal/vertical runs via morphology, then keeps only the ones that
+    span most of the image's width/height — a real table rule runs edge to
+    edge, but even a tightly-kerned run of digits never does, which is what
+    a plain length-based cutoff got wrong on smaller/denser text. Takes and
+    returns a grayscale PIL Image."""
+    arr = np.array(img)
+    h, w = arr.shape
+    bw = cv2.adaptiveThreshold(arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                cv2.THRESH_BINARY_INV, 25, 15)
+
+    def long_spanning_components(mask, axis, min_span_frac=0.5):
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        keep = np.zeros_like(mask)
+        dim = w if axis == "h" else h
+        span_col = cv2.CC_STAT_WIDTH if axis == "h" else cv2.CC_STAT_HEIGHT
+        for i in range(1, n):  # 0 is background
+            if stats[i, span_col] >= min_span_frac * dim:
+                keep[labels == i] = 255
+        return keep
+
+    h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(15, w // 40), 1))
+    horiz = cv2.morphologyEx(bw, cv2.MORPH_OPEN, h_kernel, iterations=1)
+    horiz = long_spanning_components(horiz, "h")
+
+    v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(15, h // 40)))
+    vert = cv2.morphologyEx(bw, cv2.MORPH_OPEN, v_kernel, iterations=1)
+    vert = long_spanning_components(vert, "v")
+
+    grid_mask = cv2.dilate(cv2.bitwise_or(horiz, vert), np.ones((3, 3), np.uint8), iterations=1)
+    cleaned = arr.copy()
+    cleaned[grid_mask > 0] = 255
+    return Image.fromarray(cleaned)
+
+
 def preprocess(image_path):
     """Light, dependency-free preprocessing to help OCR on real phone photos:
-    grayscale + autocontrast, and upscale small images since Tesseract does
-    noticeably better with more pixels per character."""
+    grayscale + autocontrast, grid-line removal, and upscale small images
+    since Tesseract does noticeably better with more pixels per character."""
     img = Image.open(image_path)
     img = img.convert("L")
     img = ImageOps.autocontrast(img)
+    img = remove_gridlines(img)
     if img.width < 1400:
         scale = 1400 / img.width
         img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
