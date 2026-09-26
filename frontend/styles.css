@@ -417,6 +417,30 @@ table tr:hover { background: var(--bg-card-hover); }
 
 /* ===== AI IMPORT + RESPONSIVE HARDENING ===== */
 .ai-dropzone{border:1.5px dashed var(--border);border-radius:var(--radius);padding:2rem;text-align:center;background:var(--bg)}.ai-drop-icon{width:44px;height:44px;border-radius:12px;margin:0 auto 1rem;display:flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent)}
+
+/* The scanner review table's inputs were plain, unstyled browser defaults —
+   no width, no padding, no border-radius — sitting inside an otherwise
+   consistently-styled table, which is what actually read as "misaligned".
+   These bring them in line with every other input in the portal. */
+.ai-score-input { width: 5.5ch; min-width: 64px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: .9rem; font-family: inherit; background: var(--bg); color: var(--text); text-align: center; }
+.ai-score-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ai-student-select { width: 100%; min-width: 200px; max-width: 260px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: .88rem; font-family: inherit; background: var(--bg); color: var(--text); }
+.ai-student-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ai-remove-btn { padding: 6px 10px; min-height: 0; }
+.ai-review-note { background: var(--accent-soft); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .75rem 1rem; font-size: .85rem; margin-bottom: 1rem; line-height: 1.5; }
+.ai-review-note.ai-review-warn { background: rgba(184,121,26,.08); border-color: rgba(184,121,26,.25); color: var(--warning); }
+.ai-note { display: block; margin-top: .3rem; color: var(--text-secondary); font-size: .76rem; }
+.ai-note.ai-note-danger { color: var(--danger); font-weight: 600; }
+.ai-row-duplicate { background: rgba(214,69,69,.05); }
+.portal-card-alert { border-color: rgba(184,121,26,.3); }
+.portal-card-alert .portal-card-head h3 { display: flex; align-items: center; gap: .4rem; color: var(--warning); }
+.ai-note-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem 0; border-bottom: 1px solid var(--border); font-size: .88rem; }
+.ai-note-row:last-child { border-bottom: 0; }
+.ai-note-row small { color: var(--text-secondary); }
+@media (max-width: 650px) {
+  .ai-note-row { flex-direction: column; align-items: stretch; }
+  .ai-student-select { max-width: 100%; }
+}
 .table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.portal-table{min-width:680px}.portal-card-body{overflow-wrap:anywhere}.portal-toolbar h1{line-height:1.15}.btn{min-height:42px}
 @media(max-width:900px){.navbar{padding:0 1rem}.nav-logo-text h1{font-size:.95rem}.nav-logo img{width:42px;height:42px}.nav-right #navUserBadge{display:none}.main-content{padding:1.25rem}.portal-toolbar{align-items:flex-start}}
 @media(max-width:650px){body{font-size:15px}.navbar{height:64px}.nav-logo-text span{display:none}.nav-logo img{width:38px;height:38px}.dashboard{margin-top:64px}.sidebar{top:64px;width:min(86vw,300px)}}
@@ -650,110 +674,5 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
   .carousel-overlay p {
     font-size: .88rem;
     margin-bottom: 1.25rem;
-  }
-}
-
-
-/* ===== RESPONSIVE REPAIR: PUBLIC + PORTAL ===== */
-.quick-link-card { display:flex; text-decoration:none; color:inherit; }
-.quick-link-card:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
-.assignment-teacher-picker { display:grid; grid-template-columns:minmax(220px,.75fr) minmax(260px,1.25fr); gap:1rem; align-items:end; }
-.assignment-teacher-search { width:100%; min-width:0; }
-.assignment-teacher-select { margin-bottom:0; min-width:0; }
-.assignment-search-note { grid-column:1 / -1; margin-top:-.55rem; color:var(--text-light); font-size:.78rem; }
-.assignment-add-action { display:flex; align-items:flex-end; }
-.assignment-add-action .btn { width:100%; }
-.assignment-editor-actions { margin-top:1.2rem; }
-.assignment-editor-actions .btn { min-width:140px; }
-
-@media (max-width: 768px) {
-  .navbar { height:64px; }
-  .hero-carousel { margin-top:64px; height:auto; min-height:0; aspect-ratio:4 / 5; max-height:none; }
-  .carousel-slide { background-size:contain; background-repeat:no-repeat; background-position:center; background-color:var(--primary); }
-  .carousel-overlay { inset:0; padding:4rem 3.75rem 4.25rem; justify-content:flex-end; align-items:center; text-align:center; }
-  .carousel-overlay h2 { width:100%; max-width:30rem; font-size:clamp(1.45rem,7vw,2.25rem); line-height:1.12; margin-bottom:.65rem; }
-  .carousel-overlay p { width:100%; max-width:34rem; font-size:.88rem; line-height:1.45; margin-bottom:.9rem; }
-  .carousel-overlay .cta-btn { width:auto; max-width:100%; padding:10px 20px; font-size:.84rem; white-space:nowrap; }
-  .carousel-arrows { top:50%; padding:0 .55rem; }
-  .carousel-arrows button { width:38px; height:38px; }
-  .carousel-dots { bottom:12px; }
-  .portal-toolbar { width:100%; display:block; }
-  .portal-toolbar > div:first-child { width:100%; }
-  .portal-toolbar h1 { font-size:1.5rem; line-height:1.15; }
-  .portal-toolbar p { max-width:100%; line-height:1.45; }
-  .portal-card { margin-bottom:1rem; }
-  .portal-card-head { flex-direction:column; align-items:stretch; gap:.7rem; }
-  .portal-card-head h3 { line-height:1.25; }
-  .portal-card-body { padding:1rem; overflow:hidden; }
-  .portal-form-grid { grid-template-columns:1fr !important; }
-  .portal-form-grid .full { grid-column:auto; }
-  .assignment-teacher-picker { grid-template-columns:1fr; gap:.75rem; }
-  .assignment-search-note { grid-column:auto; margin-top:-.25rem; }
-  .assignment-teacher-select { margin-bottom:0; }
-  .portal-kpi { flex-direction:column; align-items:flex-start; gap:.3rem; }
-  .portal-actions { width:100%; flex-direction:column; align-items:stretch; }
-  .portal-actions .btn, .portal-actions label.btn { width:100%; min-width:0; }
-  .portal-badge { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
-  .portal-badge button { flex:0 0 auto; }
-  .result-card-header { flex-direction:column; align-items:flex-start; gap:.6rem; }
-  .result-card-body { overflow-x:auto; padding:.9rem; }
-  .result-table { min-width:620px; }
-  .table-wrapper { overflow-x:auto; }
-  .dashboard-header { display:block; }
-  .dashboard-header > div:first-child { width:100%; }
-  .dashboard-header .btn { width:100%; margin-top:.75rem; }
-  .table-header { display:flex; flex-direction:column; align-items:stretch; }
-  .table-header > * { width:100%; }
-  .table-actions { width:100%; flex-direction:column; align-items:stretch; }
-  .table-actions > * { width:100%; min-width:0; }
-  .main-content { padding:.9rem .7rem 5.5rem; }
-  .nav-logo { max-width:calc(100vw - 120px); }
-  .nav-logo-text h1 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #logoutTop { min-height:40px; padding:7px 10px !important; font-size:.78rem; white-space:nowrap; }
-  #navUserBadge { display:none !important; }
-}
-
-@media (max-width: 520px) {
-  .hero-carousel { aspect-ratio:4 / 5; }
-  .carousel-overlay { padding:3.5rem 3.25rem 4rem; }
-  .carousel-overlay h2 { font-size:clamp(1.3rem,7.5vw,1.9rem); }
-  .carousel-overlay p { font-size:.82rem; }
-  .carousel-overlay .cta-btn { padding:9px 16px; font-size:.8rem; }
-  .portal-card-body { padding:.85rem; }
-  .portal-table { min-width:680px; }
-  .portal-search { min-width:0; }
-  .assignment-teacher-search input { min-height:44px; }
-  .assignment-teacher-select select { min-height:44px; }
-  .assignment-editor-actions { gap:.5rem; }
-}
-
-@media (max-width: 390px) {
-  .hero-carousel { aspect-ratio:3 / 4; }
-  .carousel-overlay { padding-left:3rem; padding-right:3rem; }
-  .carousel-overlay p { font-size:.78rem; }
-  .carousel-overlay .cta-btn { max-width:90%; overflow:hidden; text-overflow:ellipsis; }
-}
-
-
-/* Responsive hero repair */
-@media (max-width: 768px) {
-  .hero-carousel {
-    margin-top: 64px;
-    height: auto;
-    min-height: 0;
-    aspect-ratio: 4 / 5;
-    max-height: none;
-  }
-
-  .hero-carousel .carousel-slide {
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-  }
-}
-
-@media (max-width: 390px) {
-  .hero-carousel {
-    aspect-ratio: 3 / 4;
   }
 }

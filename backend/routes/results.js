@@ -116,7 +116,7 @@ router.post('/upload', async (req, res) => {
 
     await conn.beginTransaction();
     await conn.query(`INSERT INTO results (student_id,subject_id,term_id,teacher_id,ca_score,exam_score,is_approved)
-      VALUES (?,?,?,?,?,?,0) ON DUPLICATE KEY UPDATE ca_score=VALUES(ca_score),exam_score=VALUES(exam_score),teacher_id=VALUES(teacher_id),is_approved=0,approved_by=NULL,approved_at=NULL,updated_at=CURRENT_TIMESTAMP`,
+      VALUES (?,?,?,?,?,?,0) ON DUPLICATE KEY UPDATE ca_score=VALUES(ca_score),exam_score=VALUES(exam_score),teacher_id=VALUES(teacher_id),is_approved=0,approved_by=NULL,approved_at=NULL,rejected_at=NULL,rejected_by=NULL,rejection_note=NULL,updated_at=CURRENT_TIMESTAMP`,
       [student.id, subject.id, term.id, teacher.id, ca_score, exam_score]);
     await conn.query(`INSERT INTO result_approval_log(result_id,action,actor_id,note) SELECT r.id,'revised',?,? FROM results r WHERE r.student_id=? AND r.subject_id=? AND r.term_id=?`,
       [req.user.id, 'Score submitted/revised by teacher', student.id, subject.id, term.id]);
@@ -231,7 +231,7 @@ router.get('/pending', async (req, res) => {
       t.term_name,ac.session_name,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.uploaded_at,tu.full_name AS teacher_name
       FROM results r JOIN students s ON s.id=r.student_id JOIN users su ON su.id=s.user_id JOIN subjects sub ON sub.id=r.subject_id JOIN teachers tch ON tch.id=r.teacher_id
       JOIN users tu ON tu.id=tch.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
-      WHERE r.is_approved=0 ${deptFilter} ORDER BY r.updated_at ASC`, params);
+      WHERE r.is_approved=0 AND r.rejected_at IS NULL ${deptFilter} ORDER BY r.updated_at ASC`, params);
     res.json(rows);
   } catch (err) { console.error('[results/pending]', err); res.status(500).json({ error: 'Unable to load pending results.' }); }
 });
@@ -249,12 +249,66 @@ router.put('/approve/:resultId', async (req, res) => {
     if (row.result_locked) return res.status(409).json({ error: 'This term is locked.' });
     if (row.is_approved) return res.json({ message: 'Result was already approved.' });
     await conn.beginTransaction();
-    await conn.query('UPDATE results SET is_approved=1,approved_by=?,approved_at=NOW() WHERE id=?', [req.user.id, resultId]);
+    await conn.query('UPDATE results SET is_approved=1,approved_by=?,approved_at=NOW(),rejected_at=NULL,rejected_by=NULL,rejection_note=NULL WHERE id=?', [req.user.id, resultId]);
     await conn.query('INSERT INTO result_approval_log(result_id,action,actor_id,note) VALUES (?,?,?,?)', [resultId,'approved',req.user.id,req.body?.note || null]);
     await conn.commit();
     res.json({ message: 'Result approved.' });
   } catch (err) { await conn.rollback(); console.error('[results/approve]', err); res.status(500).json({ error: 'Unable to approve result.' }); }
   finally { conn.release(); }
+});
+
+// The schema always had a 'rejected' action in result_approval_log, but
+// nothing ever wrote or read it — HODs could only approve, never send a
+// result back for correction. This mirrors /approve but requires a reason
+// (the teacher and student both need to know *why*), and takes the result
+// out of the pending queue until the teacher resubmits corrected scores
+// (POST /upload already clears these same three columns on resubmission).
+router.put('/reject/:resultId', async (req, res) => {
+  if (req.user.role !== 'hod') return res.status(403).json({ error: 'Only HODs can disapprove results.' });
+  const resultId = Number(req.params.resultId);
+  const note = String(req.body?.note || '').trim();
+  if (!Number.isInteger(resultId)) return res.status(400).json({ error: 'Invalid result ID.' });
+  if (!note) return res.status(400).json({ error: 'A reason is required so the teacher knows what to correct.' });
+  const conn = await db.getConnection();
+  try {
+    const [[row]] = await conn.query(`SELECT r.id,r.is_approved,t.result_locked,sub.dept_id FROM results r JOIN terms t ON t.id=r.term_id JOIN subjects sub ON sub.id=r.subject_id WHERE r.id=? LIMIT 1`, [resultId]);
+    const [[hod]] = await conn.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1', [req.user.id]);
+    if (!row || !hod) return res.status(404).json({ error: 'Result or HOD record not found.' });
+    if (row.dept_id !== hod.dept_id) return res.status(403).json({ error: 'This result belongs to another department.' });
+    if (row.result_locked) return res.status(409).json({ error: 'This term is locked.' });
+    if (row.is_approved) return res.status(409).json({ error: 'This result is already approved. Nothing to disapprove.' });
+    await conn.beginTransaction();
+    await conn.query('UPDATE results SET rejected_at=NOW(),rejected_by=?,rejection_note=? WHERE id=?', [req.user.id, note, resultId]);
+    await conn.query('INSERT INTO result_approval_log(result_id,action,actor_id,note) VALUES (?,?,?,?)', [resultId,'rejected',req.user.id,note]);
+    await conn.commit();
+    res.json({ message: 'Result sent back to the teacher for correction.' });
+  } catch (err) { await conn.rollback(); console.error('[results/reject]', err); res.status(500).json({ error: 'Unable to disapprove result.' }); }
+  finally { conn.release(); }
+});
+
+// One rejected-results feed, scoped by role: a teacher sees results they
+// submitted that got sent back; a student sees their own. Both need the
+// same three facts — subject, term, and why — so one endpoint covers both.
+router.get('/rejections', async (req, res) => {
+  try {
+    if (req.user.role === 'teacher') {
+      const [rows] = await db.query(`SELECT r.id,su.full_name AS student_name,su.user_code AS student_code,sub.subject_name,
+        t.term_name,ac.session_name,r.rejection_note,r.rejected_at,ru.full_name AS rejected_by_name
+        FROM results r JOIN teachers tch ON tch.id=r.teacher_id JOIN students s ON s.id=r.student_id JOIN users su ON su.id=s.user_id
+        JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
+        LEFT JOIN users ru ON ru.id=r.rejected_by
+        WHERE tch.user_id=? AND r.rejected_at IS NOT NULL ORDER BY r.rejected_at DESC`, [req.user.id]);
+      return res.json(rows);
+    }
+    if (req.user.role === 'student') {
+      const [rows] = await db.query(`SELECT r.id,sub.subject_name,t.term_name,ac.session_name,r.rejected_at
+        FROM results r JOIN students s ON s.id=r.student_id JOIN users u ON u.id=s.user_id
+        JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
+        WHERE u.id=? AND r.rejected_at IS NOT NULL ORDER BY r.rejected_at DESC`, [req.user.id]);
+      return res.json(rows);
+    }
+    res.status(403).json({ error: 'Forbidden.' });
+  } catch (err) { console.error('[results/rejections]', err); res.status(500).json({ error: 'Unable to load rejected results.' }); }
 });
 
 router.get('/student/:studentCode', async (req, res) => {

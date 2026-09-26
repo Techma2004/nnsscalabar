@@ -8,15 +8,27 @@ async function apiFetch(endpoint, options = {}) {
   const response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers, credentials: 'include' });
   const contentType = response.headers.get('content-type') || '';
   const data = contentType.includes('application/json') ? await response.json() : { error: await response.text() };
-  if (response.status === 401) { currentUser = null; sessionStorage.removeItem('nnss_user'); }
+  if (response.status === 401) {
+    currentUser = null;
+    sessionStorage.removeItem('nnss_user');
+  }
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
   return data;
 }
 
-export async function login(user_code, password) { const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ user_code, password }) }); currentUser = data.user; sessionStorage.setItem('nnss_user', JSON.stringify(currentUser)); return currentUser; }
+export async function login(user_code, password) {
+  const data = await apiFetch('/auth/login', { method: 'POST', body: JSON.stringify({ user_code, password }) });
+  currentUser = data.user;
+  sessionStorage.setItem('nnss_user', JSON.stringify(currentUser));
+  return currentUser;
+}
 export async function logout() { try { await apiFetch('/auth/logout', { method: 'POST' }); } finally { currentUser = null; sessionStorage.removeItem('nnss_user'); } }
 export async function getCurrentUser() { currentUser = await apiFetch('/auth/me'); sessionStorage.setItem('nnss_user', JSON.stringify(currentUser)); return currentUser; }
-function qs(params) { const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''); return entries.length ? `?${new URLSearchParams(entries)}` : ''; }
+
+function qs(params) {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');
+  return entries.length ? `?${new URLSearchParams(entries)}` : '';
+}
 
 export const createUser = data => apiFetch('/admin/users', { method: 'POST', body: JSON.stringify(data) });
 export const getAdminMeta = () => apiFetch('/admin/meta');
@@ -41,6 +53,7 @@ export const updateSubjectStatus = (id, is_active) => apiFetch(`/admin/subjects/
 export const toggleCurriculum = (track, subject_id, enabled) => apiFetch('/admin/curriculum/toggle', { method: 'POST', body: JSON.stringify({ track, subject_id, enabled }) });
 export const getCurriculumHistory = () => apiFetch('/admin/curriculum/history');
 export const createDepartment = data => apiFetch('/admin/departments', { method: 'POST', body: JSON.stringify(data) });
+
 export const getDepartments = () => apiFetch('/admin/departments');
 export const getDepartmentDetail = id => apiFetch(`/admin/departments/${id}`);
 export const getClassesAndArms = () => apiFetch('/admin/classes');
@@ -62,11 +75,9 @@ export const getAssignments = () => apiFetch('/results/assignments');
 export const uploadResult = data => apiFetch('/results/upload', { method: 'POST', body: JSON.stringify(data) });
 export const getPendingResults = () => apiFetch('/results/pending');
 export const approveResult = (id, note) => apiFetch(`/results/approve/${id}`, { method: 'PUT', body: JSON.stringify({ note }) });
+export const rejectResult = (id, note) => apiFetch(`/results/reject/${id}`, { method: 'PUT', body: JSON.stringify({ note }) });
+export const getRejections = () => apiFetch('/results/rejections');
 export const getStudentResults = code => apiFetch(`/results/student/${encodeURIComponent(code)}`);
-
-export const getAssignmentMeta = () => apiFetch('/assignments/meta');
-export const getTeacherAssignments = teacherId => apiFetch(`/assignments/teacher/${teacherId}`);
-export const updateTeacherAssignments = (teacherId, data) => apiFetch(`/assignments/teacher/${teacherId}`, { method: 'PUT', body: JSON.stringify(data) });
 
 export const getAnnouncements = () => apiFetch('/announcements');
 export const createAnnouncement = data => apiFetch('/announcements', { method: 'POST', body: JSON.stringify(data) });
@@ -76,5 +87,6 @@ export const deleteAnnouncement = id => apiFetch(`/announcements/${id}`, { metho
 export const getStats = () => apiFetch('/dashboard/stats');
 export const getStudentSummary = () => apiFetch('/dashboard/student-summary');
 export const getTopPerformers = () => apiFetch('/dashboard/top-performers');
+
 export const getAiStatus = () => apiFetch('/results/ai-status');
 export const aiImportScores = data => apiFetch('/results/ai-import', { method: 'POST', body: JSON.stringify(data) });
