@@ -476,11 +476,15 @@ CREATE TABLE IF NOT EXISTS results (
   is_approved     BOOLEAN DEFAULT FALSE,
   approved_by     INT DEFAULT NULL,
   approved_at     TIMESTAMP DEFAULT NULL,
+  rejected_at     TIMESTAMP NULL DEFAULT NULL,
+  rejected_by     INT DEFAULT NULL,
+  rejection_note  TEXT DEFAULT NULL,
   FOREIGN KEY (student_id)  REFERENCES students(id) ON DELETE CASCADE,
   FOREIGN KEY (subject_id)  REFERENCES subjects(id),
   FOREIGN KEY (term_id)     REFERENCES terms(id),
   FOREIGN KEY (teacher_id)  REFERENCES teachers(id),
   FOREIGN KEY (approved_by) REFERENCES users(id),
+  FOREIGN KEY (rejected_by) REFERENCES users(id),
   UNIQUE KEY (student_id, subject_id, term_id)
 );
 

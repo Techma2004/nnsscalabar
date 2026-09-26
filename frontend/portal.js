@@ -1,7 +1,7 @@
 import {
   getCurrentUser, logout, getStats, getStudentSummary, getStudentResults, getStudentSubjects,
   getAllStudents, getAllTeachers, getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
-  getTeacherStudents, getAssignments, uploadResult, getPendingResults, approveResult,
+  getTeacherStudents, getAssignments, uploadResult, getPendingResults, approveResult, rejectResult, getRejections,
   getAnnouncements, createAnnouncement, getTopPerformers, removeUser, getAiStatus, aiImportScores,
   updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment, getCurriculumHistory,
   changeMyPassword, resetUserPassword, getManagedAnnouncements, updateAnnouncement, deleteAnnouncement,
@@ -9,7 +9,7 @@ import {
   getDepartments, getDepartmentDetail, getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
 } from './api.js';
 
-const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], curriculumHistory:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{} };
+const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], rejections:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], curriculumHistory:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{} };
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const roleName = {student:'Student',teacher:'Subject Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant'};
@@ -38,7 +38,22 @@ function fmtDate(v){ if(!v) return '—'; const d=new Date(v); return Number.isN
 function gradeClass(g){ return `grade-${String(g||'')[0] || 'C'}`; }
 function stat(label,value,icon){ return `<div class="portal-stat"><span class="stat-icon">${ic(icon,16)}</span><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`; }
 function table(headers,rows,empty='No records found.') { return `<div class="table-wrapper"><table class="portal-table"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headers.length}"><div class="portal-empty">${esc(empty)}</div></td></tr>`}</tbody></table></div>`; }
-function card(title,body,actions=''){ return `<section class="portal-card"><div class="portal-card-head"><h3>${title}</h3>${actions}</div><div class="portal-card-body">${body}</div></section>`; }
+function card(title,body,actions='',cls=''){ return `<section class="portal-card ${cls}"><div class="portal-card-head"><h3>${title}</h3>${actions}</div><div class="portal-card-body">${body}</div></section>`; }
+
+// A disapproved result previously vanished with no trace for either the
+// teacher who submitted it or the student it belongs to — the HOD's approval
+// queue was the only place it showed up, and only until they rejected it.
+// This surfaces it as a dashboard notice for both sides of that gap.
+function renderRejectionNotice(kind){
+  const list = state.rejections || [];
+  if(!list.length) return '';
+  if(kind === 'teacher'){
+    const rows = list.map(r=>`<div class="ai-note-row"><div><strong>${esc(r.student_name)}</strong> · ${esc(r.subject_name)} · ${esc(r.term_name)}, ${esc(r.session_name)}<br><small>${esc(r.rejection_note)}</small></div><button class="btn btn-secondary" data-go="scores">Fix now</button></div>`).join('');
+    return card(`${ic('alerttriangle',16)} Results sent back for correction (${list.length})`, rows, '', 'portal-card-alert');
+  }
+  const rows = list.map(r=>`<div class="ai-note-row"><div>${esc(r.subject_name)} · ${esc(r.term_name)}, ${esc(r.session_name)}<br><small>This result is being corrected by your teacher and will be updated soon.</small></div></div>`).join('');
+  return card(`${ic('alerttriangle',16)} Results under correction (${list.length})`, rows, '', 'portal-card-alert');
+}
 // Every password input in the portal is built through this helper so that all
 // of them get a show/hide toggle — people genuinely cannot tell what they are
 // typing otherwise, which is the main cause of "the password doesn't work"
@@ -102,11 +117,11 @@ async function render(panel,{silent=false}={}){
     if(state.user.role==='student'){
       if(panel==='results') state.results=await getStudentResults(state.user.user_code);
       if(panel==='subjects') state.subjects=await getStudentSubjects(state.user.user_code);
-      if(panel==='dashboard') state.studentSummary=await getStudentSummary();
+      if(panel==='dashboard') { state.studentSummary=await getStudentSummary(); state.rejections=await getRejections(); }
     }
     if(state.user.role==='teacher'){
       if(panel==='scores' || panel==='ai-import') { state.assignments=await getAssignments(); state.students=await getTeacherStudents(state.user.user_code); state.meta=await getAdminMeta(); }
-      if(panel==='dashboard') state.assignments=await getAssignments();
+      if(panel==='dashboard') { state.assignments=await getAssignments(); state.rejections=await getRejections(); }
       if(panel==='students') { const r=await getTeacherStudents(state.user.user_code,state.search.students); state.students=r; }
     }
     if(state.user.role==='hod'){
@@ -167,6 +182,7 @@ function renderPanel(panel){
 function renderDashboard(){
   const r=state.user.role;
   if(r==='student') return `<div class="portal-toolbar"><div><div class="eyebrow">Student workspace</div><h1>Welcome, ${esc(state.user.name.split(' ')[0])}</h1><p>Your academic information at a glance.</p></div></div>
+    ${renderRejectionNotice('student')}
     <div class="portal-grid">${stat('Approved subjects',state.studentSummary.subjects||0,'book')}${stat('Current average',state.studentSummary.average?`${state.studentSummary.average}%`:'—','trendingup')}${stat('Passed subjects',state.studentSummary.passes||0,'checkcircle')}${stat('Active notices',state.stats.active_announcements||0,'bell')}</div>
     ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">Active</strong></div><div class="portal-kpi"><span>Class</span><strong>${esc(state.user.class_name||'—')} ${esc(state.user.arm_name||'')}</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)} `;
   // An HOD sees their own department named explicitly, with figures scoped to
@@ -189,6 +205,7 @@ function renderDashboard(){
     (state.assignments||[]).forEach(a=>{ const key=`${a.class_name} ${a.arm_name}`; if(!byClass.has(key)) byClass.set(key,new Set()); byClass.get(key).add(a.subject_name); });
     const teachingRows=[...byClass.entries()].map(([cls,subs])=>`<div class="portal-kpi"><span>${esc(cls)}</span><strong>${[...subs].map(esc).join(', ')}</strong></div>`).join('') || '<p style="color:var(--text-secondary)">No teaching assignments yet.</p>';
     return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>Teacher workspace</h1><p>Manage score entry and your assigned students.</p></div></div>
+    ${renderRejectionNotice('teacher')}
     <div class="portal-grid">${stat('My students',state.stats.students??0,'users')}${stat('My subjects',state.stats.subjects??0,'book')}${stat('Awaiting approval',state.stats.pending_results??0,'clock')}${stat('Approved results',state.stats.results??0,'checkcircle')}</div>
     ${card('What I teach',teachingRows)}
     ${card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>${ic('pencil',16)}</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>${ic('checkcircle',16)}</strong></div>`)}`;
@@ -412,7 +429,7 @@ function renderStudents(){
   return `<div class="portal-toolbar"><div><div class="eyebrow">Student register</div><h1>${state.user.role==='teacher'?'My Students':'Students'}</h1>${manageable?'<p>Status changes preserve every academic record — nothing is deleted.</p>':''}</div><div class="portal-actions">${search}${statusFilter}</div></div>${card('Student register',table(headers,rows,'No students found for this filter.')+truncatedNote(state.studentsTruncated,'student'))}`;
 }
 function renderAccounts(){ const rows=state.accounts.map(a=>`<tr><td><strong>${esc(a.full_name)}</strong><br><small>${esc(a.user_code)}</small></td><td>${esc(roleName[a.role]||a.role)}</td><td>${esc(a.email||'—')}</td><td><span class="portal-badge ok">Active</span></td><td class="portal-actions">${a.user_id===state.user.id?'<span class="portal-badge">Current account</span>':`<button class="btn btn-secondary btn-sm" data-reset-password="${a.user_id}" data-reset-name="${esc(a.full_name)}">Reset password</button><button class="btn btn-danger btn-sm" data-remove-user="${a.user_id}">Remove access</button>`}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Access control</div><h1>Account Management</h1><p>Provision and revoke portal access while preserving academic and audit history.</p></div><div class="portal-actions">${searchBox('accounts','Search accounts by name or ID…')}<button class="btn btn-primary btn-auto" id="newUser">Create account</button></div></div>${card('Active portal accounts',table(['Account','Role','Email','Status','Action'],rows,'No accounts match this search.')+truncatedNote(state.accountsTruncated,'account'))}`; }
-function renderApproval(){ const rows=state.pending.map(r=>`<tr><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${esc(r.class_name)} ${esc(r.arm_name)}</td><td>${esc(r.subject_name)}</td><td>${esc(r.term_name)}</td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong> <span class="${gradeClass(r.grade)}">${esc(r.grade)}</span></td><td><button class="btn btn-primary" data-approve="${r.id}">Approve</button></td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Quality control</div><h1>Result Approval</h1><p>Review each submitted score before it becomes visible to students.</p></div></div>${card('Pending approval queue',table(['Student','Class','Subject','Term','CA','Exam','Total','Action'],rows,'No pending results. The department is up to date.'))}`; }
+function renderApproval(){ const rows=state.pending.map(r=>`<tr><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${esc(r.class_name)} ${esc(r.arm_name)}</td><td>${esc(r.subject_name)}</td><td>${esc(r.term_name)}</td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong> <span class="${gradeClass(r.grade)}">${esc(r.grade)}</span></td><td><div class="portal-actions"><button class="btn btn-primary" data-approve="${r.id}">Approve</button><button class="btn btn-danger" data-reject="${r.id}">Disapprove</button></div></td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Quality control</div><h1>Result Approval</h1><p>Review each submitted score before it becomes visible to students.</p></div></div>${card('Pending approval queue',table(['Student','Class','Subject','Term','CA','Exam','Total','Action'],rows,'No pending results. The department is up to date.'))}`; }
 function renderTeachers(){ const rows=state.teachers.map((t,i)=>`<tr><td>${i+1}</td><td><strong>${esc(t.full_name)}</strong><br><small>${esc(t.user_code)}</small></td><td>${esc(t.department||'—')}</td><td>${esc(t.subjects||'—')}</td><td>${esc(t.email||'—')}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Staff directory</div><h1>Teachers</h1></div>${searchBox('teachers','Search by name, ID or subject…')}</div>${card('Teaching staff',table(['#','Teacher','Department','Subjects','Email'],rows,'No teachers match this search.')+truncatedNote(state.teachersTruncated,'teacher'))}`; }
 function renderSystem(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Configuration</div><h1>System Administration</h1></div></div>${card('Academic configuration',`<p>Academic sessions, terms, departments, subjects and assignments are stored in the database.</p><p style="margin-top:.7rem">Use the account creation workflow to provision controlled portal access. Passwords are hashed server-side and are never returned to the browser.</p>`)}${card('Security posture',`<div class="portal-kpi"><span>Authentication</span><strong>HTTP-only session cookie</strong></div><div class="portal-kpi"><span>Role enforcement</span><strong>Server-side</strong></div><div class="portal-kpi"><span>Result publication</span><strong>HOD approval required</strong></div>`)}`; }
 function renderOverview(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Commandant</div><h1>School Overview</h1><p>High-level academic and operational indicators.</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'users')}${stat('Teachers',state.stats.teachers,'idbadge')}${stat('Approved results',state.stats.results,'barchart')}${stat('Pending review',state.stats.pending_results,'clock')}</div>${card('Operational picture','The dashboard is backed by live database queries rather than demo values. Use Top Performers for academic ranking and Announcements for official communications.')}`; }
@@ -457,6 +474,7 @@ function bindCurriculum(){
   };
   document.querySelectorAll('[data-track-toggle]').forEach(b=>b.onclick=async()=>{
     const subject_id=Number(b.dataset.trackToggle), track=b.dataset.track, enabled=b.dataset.on!=='1';
+    if(!enabled && !confirm(`Remove this subject from the ${track} track? Teachers on that track will no longer be able to enter new scores for it.`)) return;
     b.disabled=true;
     try{ await toggleCurriculum(track,subject_id,enabled); toast(enabled?`Added to the ${track} track.`:`Removed from the ${track} track.`,'success'); render('curriculum'); }
     catch(e){ toast(e.message,'error'); b.disabled=false; }
@@ -474,6 +492,7 @@ function studentStatusModal(id,currentStatus,name){
   openModal(`Change status — ${name}`,`<div class="portal-form-grid"><div class="form-group full"><label>New status</label><select id="newStudentStatus">${options}</select></div><div class="form-group full"><label>Reason (optional)</label><input id="statusReason" maxlength="160" placeholder="e.g. Transferred, yet to resume for the new term…"></div><div class="full"><button class="btn btn-primary" id="confirmStatus">Save status</button></div></div>`);
   $('#confirmStatus').onclick=async()=>{
     const status=$('#newStudentStatus').value, reason=$('#statusReason').value.trim()||null;
+    if(status!==currentStatus && !confirm(`Change ${name}'s status from ${currentStatus} to ${status}?`)) return;
     try{ await updateStudentStatus(id,status,reason); closeModal(); toast('Student status updated.','success'); render('students'); }
     catch(e){ toast(e.message,'error'); }
   };
@@ -488,13 +507,87 @@ function bindAiImport(){
   assignment.onchange=()=>{analyze.disabled=!selectedFile||!assignment.value||!term.value;};
   analyze.onclick=async()=>{if(!selectedFile||!assignment.value||!term.value)return; analyze.disabled=true; analyze.textContent='Analyzing…'; results.innerHTML=`<div class="portal-card"><div class="portal-loading"><span class="loading"></span><p>Reading the score sheet and matching rows against the class roster…</p></div></div>`; try{const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(selectedFile);}); const out=await aiImportScores({assignment_id:Number(assignment.value),term_id:Number(term.value),image:dataUrl}); renderAiReview(out,results); }catch(e){results.innerHTML=`<div class="portal-card"><div class="portal-empty"><h3>Scan could not be completed</h3><p>${esc(e.message)}</p><button class="btn btn-secondary" id="aiManualFallback" data-go="scores">Continue with manual score entry</button></div></div>`; document.querySelector('#aiManualFallback')?.addEventListener('click',()=>render('scores'));}finally{analyze.disabled=false;analyze.textContent='Analyze sheet';}};
 }
-function renderAiReview(data,target){ const rows=data.rows||[]; const CM=Number(data.assignment?.ca_max)||30, EM=Number(data.assignment?.exam_max)||70; const body=rows.map((r,i)=>`<tr><td>${esc(r.user_code)}<br><small>${esc(r.full_name||'Unmatched')}</small></td><td><input class="ai-score-input" data-ai-row="${i}" data-field="ca" type="number" min="0" max="${CM}" value="${r.ca_score??''}"></td><td><input class="ai-score-input" data-ai-row="${i}" data-field="exam" type="number" min="0" max="${EM}" value="${r.exam_score??''}"></td><td><span class="portal-badge ${r.confidence>=.9&&r.valid_ca&&r.valid_exam?'ok':'pending'}">${Math.round(r.confidence*100)}%</span>${r.note?`<small class="ai-note">${esc(r.note)}</small>`:''}</td></tr>`).join(''); target.innerHTML=`${card('3. Verify extracted scores',`<div class="ai-review-note"><strong>Nothing is published automatically.</strong> Review every value before submission. Invalid or unclear scores are highlighted for correction.</div>${table(['Student',`CA / ${CM}`,`Exam / ${EM}`,'Confidence'],body,'No roster rows were confidently extracted.')}${rows.length?`<div class="portal-actions"><button class="btn btn-primary" id="submitAiScores">Submit verified scores</button><button class="btn btn-secondary" id="discardAiScores">Discard and retry</button></div>`:''}`)}`; const submit=$('#submitAiScores'); if(submit)submit.onclick=async()=>{const values=rows.map((r,i)=>{const ca=Number(document.querySelector(`[data-ai-row="${i}"][data-field="ca"]`)?.value),exam=Number(document.querySelector(`[data-ai-row="${i}"][data-field="exam"]`)?.value);return {...r,ca_score:ca,exam_score:exam};}); const bad=values.filter(r=>!Number.isFinite(r.ca_score)||r.ca_score<0||r.ca_score>CM||!Number.isFinite(r.exam_score)||r.exam_score<0||r.exam_score>EM); if(bad.length)return toast(`${bad.length} row(s) need valid scores before submission.`,'error'); submit.disabled=true; submit.textContent='Submitting…'; try{for(const r of values)await uploadResult({student_code:r.user_code,subject_name:data.assignment.subject_name,term_id:Number(data.term_id),ca_score:r.ca_score,exam_score:r.exam_score}); toast(`${values.length} verified score(s) sent for HOD approval.`,'success'); render('scores');}catch(e){toast(e.message,'error');submit.disabled=false;submit.textContent='Submit verified scores';}}; $('#discardAiScores')?.addEventListener('click',()=>render('ai-import')); }
+// Working copy of the scanner's extracted rows, editable in the browser
+// before anything is submitted: teachers previously had no way to fix a
+// wrong/duplicate student match or add one the scan missed entirely — they
+// could only tweak the two score numbers. This keeps a live array and
+// re-renders just this section (never a full page reload) on every edit.
+let aiRows = [], aiCM = 30, aiEM = 70, aiAssignment = null, aiTermId = null;
+
+function renderAiReview(data, target){
+  aiRows = (data.rows || []).map(r => ({ ...r }));
+  aiCM = Number(data.assignment?.ca_max) || 30;
+  aiEM = Number(data.assignment?.exam_max) || 70;
+  aiAssignment = data.assignment;
+  aiTermId = data.term_id;
+  renderAiTable(target);
+}
+
+function syncAiInputs(target){
+  target.querySelectorAll('.ai-score-input').forEach(inp=>{
+    const i=Number(inp.dataset.aiRow), field=inp.dataset.field==='ca'?'ca_score':'exam_score';
+    aiRows[i][field] = inp.value===''?'':Number(inp.value);
+  });
+  target.querySelectorAll('.ai-student-select').forEach(sel=>{
+    const i=Number(sel.dataset.aiRow);
+    aiRows[i].user_code = sel.value || null;
+    aiRows[i].full_name = sel.value ? (state.students.find(s=>s.user_code===sel.value)?.full_name || null) : null;
+  });
+}
+
+function renderAiTable(target){
+  const counts = {};
+  aiRows.forEach(r=>{ if(r.user_code) counts[r.user_code]=(counts[r.user_code]||0)+1; });
+  const dupCount = Object.values(counts).filter(c=>c>1).length;
+  const studentOptions = code => `<option value="">— Select student —</option>${state.students.map(s=>`<option value="${esc(s.user_code)}" ${s.user_code===code?'selected':''}>${esc(s.full_name)} (${esc(s.user_code)})</option>`).join('')}`;
+  const body = aiRows.map((r,i)=>{
+    const isDup = r.user_code && counts[r.user_code] > 1;
+    return `<tr class="${isDup?'ai-row-duplicate':''}">
+      <td><select class="ai-student-select" data-ai-row="${i}">${studentOptions(r.user_code)}</select>
+        ${isDup?'<small class="ai-note ai-note-danger">Duplicate — remove one</small>':!r.user_code?'<small class="ai-note">Unmatched — pick the student</small>':''}</td>
+      <td><input class="ai-score-input" data-ai-row="${i}" data-field="ca" type="number" min="0" max="${aiCM}" value="${r.ca_score??''}"></td>
+      <td><input class="ai-score-input" data-ai-row="${i}" data-field="exam" type="number" min="0" max="${aiEM}" value="${r.exam_score??''}"></td>
+      <td><span class="portal-badge ${r.confidence>=.9&&r.valid_ca&&r.valid_exam?'ok':'pending'}">${r.confidence!=null?Math.round(r.confidence*100)+'%':'Manual'}</span>${r.note?`<small class="ai-note">${esc(r.note)}</small>`:''}</td>
+      <td><button class="btn btn-secondary ai-remove-btn" data-ai-remove="${i}" title="Remove this row">${ic('x',14)}</button></td>
+    </tr>`;
+  }).join('');
+  target.innerHTML = `${card('3. Verify extracted scores',
+    `<div class="ai-review-note"><strong>Nothing is published automatically.</strong> Review every row — reassign a wrong or unmatched student, remove duplicates, or add a row for a student the scan missed — before submitting.</div>
+    ${dupCount?`<div class="ai-review-note ai-review-warn">${dupCount} student${dupCount===1?' appears':'s appear'} more than once below. Remove the extra row(s) before submitting.</div>`:''}
+    ${table(['Student',`CA / ${aiCM}`,`Exam / ${aiEM}`,'Confidence',''], body, 'No rows yet — use "Add student row" below.')}
+    <div class="portal-actions"><button class="btn btn-secondary" id="addAiRow">${ic('plus',15)} Add student row</button></div>
+    <div class="portal-actions"><button class="btn btn-primary" id="submitAiScores">Submit verified scores</button><button class="btn btn-secondary" id="discardAiScores">Discard and retry</button></div>`
+  )}`;
+
+  target.querySelectorAll('.ai-student-select').forEach(sel=>sel.onchange=()=>{ syncAiInputs(target); renderAiTable(target); });
+  target.querySelectorAll('[data-ai-remove]').forEach(b=>b.onclick=()=>{ syncAiInputs(target); aiRows.splice(Number(b.dataset.aiRemove),1); renderAiTable(target); });
+  $('#addAiRow').onclick=()=>{ syncAiInputs(target); aiRows.push({ user_code:null, full_name:null, ca_score:'', exam_score:'', confidence:null, valid_ca:true, valid_exam:true, note:null }); renderAiTable(target); };
+
+  const submit = $('#submitAiScores');
+  submit.onclick = async () => {
+    syncAiInputs(target);
+    const unassigned = aiRows.filter(r=>!r.user_code);
+    if(unassigned.length) return toast(`${unassigned.length} row(s) still need a student selected.`,'error');
+    const hasDupes = aiRows.some((r,i)=>aiRows.findIndex(x=>x.user_code===r.user_code)!==i);
+    if(hasDupes) return toast('Remove duplicate student rows before submitting.','error');
+    const invalid = aiRows.filter(r=>!Number.isFinite(r.ca_score)||r.ca_score<0||r.ca_score>aiCM||!Number.isFinite(r.exam_score)||r.exam_score<0||r.exam_score>aiEM);
+    if(invalid.length) return toast(`${invalid.length} row(s) need valid scores before submission.`,'error');
+    submit.disabled=true; submit.textContent='Submitting…';
+    try{
+      for(const r of aiRows) await uploadResult({ student_code:r.user_code, subject_name:aiAssignment.subject_name, term_id:Number(aiTermId), ca_score:r.ca_score, exam_score:r.exam_score });
+      toast(`${aiRows.length} verified score(s) sent for HOD approval.`,'success');
+      render('scores');
+    }catch(e){ toast(e.message,'error'); submit.disabled=false; submit.textContent='Submit verified scores'; }
+  };
+  $('#discardAiScores').onclick=()=>render('ai-import');
+}
 
 function bindPanel(panel){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>render(b.dataset.go));
   if(panel==='scores') bindScores();
   if(panel==='ai-import') bindAiImport();
   if(panel==='approval') document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>approveOne(b.dataset.approve));
+  if(panel==='approval') document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>rejectOne(b.dataset.reject));
   if(panel==='announcements') bindAnnouncements();
   if(panel==='curriculum' && ['admin','commandant'].includes(state.user.role)) bindCurriculum();
   if(panel==='sessions' && ['admin','commandant'].includes(state.user.role)) bindSessions();
@@ -593,6 +686,20 @@ function bindScores(){
   $('#saveScore').onclick=async()=>{ const opt=assignment.selectedOptions[0]; if(!opt?.value||!student.value||!term.value) return toast('Select assignment, student and term.','error'); const cm=Number(opt.dataset.camax)||30, em=Number(opt.dataset.exammax)||70; const ca=Number($('#caScore').value),exam=Number($('#examScore').value); if(!Number.isFinite(ca)||!Number.isFinite(exam)||ca<0||ca>cm||exam<0||exam>em) return toast(`CA must be 0–${cm} and exam must be 0–${em}.`,'error'); try{ $('#saveScore').disabled=true; await uploadResult({student_code:student.value,subject_name:opt.dataset.subject,term_id:Number(term.value),ca_score:ca,exam_score:exam}); toast('Score saved and sent for HOD approval.','success'); $('#clearScore').click(); }catch(e){toast(e.message,'error')}finally{$('#saveScore').disabled=false;} };
 }
 async function approveOne(id){ if(!confirm('Approve this result? It will become visible to the student.')) return; try{await approveResult(id);toast('Result approved.','success');render('approval')}catch(e){toast(e.message,'error')} }
+// A reason is mandatory here (the teacher needs to know what to fix), and
+// requiring it doubles as the confirmation step the HOD has to deliberately
+// go through — same principle as "Approve"'s confirm(), just with a reason
+// attached instead of a bare yes/no.
+function rejectOne(id){
+  openModal('Disapprove result',`<div class="portal-form-grid"><div class="form-group full"><label>Reason for the teacher *</label><textarea id="rejectNote" rows="4" placeholder="e.g. Exam score looks like a typo — please re-check and resubmit."></textarea></div><div class="full"><button class="btn btn-danger" id="confirmReject">Disapprove result</button></div></div>`);
+  $('#confirmReject').onclick=async()=>{
+    const note=$('#rejectNote').value.trim();
+    if(!note) return toast('A reason is required so the teacher knows what to correct.','error');
+    if(!confirm('Send this result back to the teacher for correction? The student will not see it until it is resubmitted and re-approved.')) return;
+    try{ await rejectResult(id,note); closeModal(); toast('Result sent back for correction.','success'); render('approval'); }
+    catch(e){ toast(e.message,'error'); }
+  };
+}
 
 async function removeAccount(id){ if(!confirm('Remove portal access for this account? Academic history will be preserved.')) return; try{ await removeUser(id); toast('Portal access removed.','success'); state.accounts=[]; render('accounts'); }catch(e){ toast(e.message,'error'); } }
 
