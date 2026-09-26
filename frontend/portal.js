@@ -3,13 +3,13 @@ import {
   getAllStudents, getAllTeachers, getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
   getTeacherStudents, getAssignments, uploadResult, getPendingResults, approveResult,
   getAnnouncements, createAnnouncement, getTopPerformers, removeUser, getAiStatus, aiImportScores,
-  updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment,
+  updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment, getCurriculumHistory,
   changeMyPassword, resetUserPassword, getManagedAnnouncements, updateAnnouncement, deleteAnnouncement,
   getSessions, createSession, activateSession, createTerm, updateTerm,
   getDepartments, getDepartmentDetail, getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
 } from './api.js';
 
-const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{} };
+const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], curriculumHistory:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{} };
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const roleName = {student:'Student',teacher:'Subject Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant'};
@@ -86,8 +86,17 @@ async function init(){
 async function signOut(){ try{await logout();}finally{location.href='login.html';} }
 
 async function loadCommon(){ state.stats=await getStats(); }
-async function render(panel){
-  activeNav(panel); $('#appRoot').innerHTML='<div class="portal-loading"><span class="loading"></span><p>Loading secure portal data…</p></div>';
+async function render(panel,{silent=false}={}){
+  // A search keystroke used to call render() the normal way: the whole panel
+  // (loading spinner included) got wiped and rebuilt, which threw focus off
+  // the search box and felt like the page had reloaded. "silent" skips the
+  // loading flash and restores focus/cursor afterwards, for search-driven
+  // re-renders only — a real panel switch still shows the loading state.
+  const focused=document.activeElement;
+  const focusedId=focused && focused.id && focused.id.startsWith('search-') ? focused.id : null;
+  const selStart=focusedId?focused.selectionStart:null, selEnd=focusedId?focused.selectionEnd:null;
+  activeNav(panel);
+  if(!silent) $('#appRoot').innerHTML='<div class="portal-loading"><span class="loading"></span><p>Loading secure portal data…</p></div>';
   try {
     if(panel==='dashboard') await loadCommon();
     if(state.user.role==='student'){
@@ -97,6 +106,7 @@ async function render(panel){
     }
     if(state.user.role==='teacher'){
       if(panel==='scores' || panel==='ai-import') { state.assignments=await getAssignments(); state.students=await getTeacherStudents(state.user.user_code); state.meta=await getAdminMeta(); }
+      if(panel==='dashboard') state.assignments=await getAssignments();
       if(panel==='students') { const r=await getTeacherStudents(state.user.user_code,state.search.students); state.students=r; }
     }
     if(state.user.role==='hod'){
@@ -114,7 +124,7 @@ async function render(panel){
       if(panel==='teachers') { const r=await getAllTeachers(state.search.teachers); state.teachers=r.rows; state.teachersTruncated=r.truncated; }
       if(panel==='results') { const r=await getAllResults(state.search.results); state.results=r.rows; state.resultsTruncated=r.truncated; }
     }
-    if(['admin','commandant'].includes(state.user.role) && panel==='curriculum'){ state.curriculum=await getSubjects(); await loadMeta(); }
+    if(['admin','commandant'].includes(state.user.role) && panel==='curriculum'){ state.curriculum=await getSubjects(); state.curriculumHistory=await getCurriculumHistory(); await loadMeta(); }
     if(panel==='announcements'){
       state.announcements=await getAnnouncements();
       if(['admin','commandant','hod'].includes(state.user.role)) state.manageAnnouncements=await getManagedAnnouncements(state.search.announcements);
@@ -129,6 +139,7 @@ async function render(panel){
     if(panel==='top') state.top=await getTopPerformers();
     $('#appRoot').innerHTML=renderPanel(panel);
     bindPanel(panel);
+    if(focusedId){ const el=$('#'+focusedId); if(el){ el.focus(); el.setSelectionRange(selStart,selEnd); } }
   } catch(err){ console.error(err); $('#appRoot').innerHTML=`<div class="portal-card"><div class="portal-empty"><h3>We couldn't load this section</h3><p>${esc(err.message)}</p><button class="btn btn-primary" id="retryPanel">Retry</button></div></div>`; $('#retryPanel').onclick=()=>render(panel); if(err.message.toLowerCase().includes('session')) setTimeout(()=>location.href='login.html',1000); }
 }
 function renderPanel(panel){
@@ -157,7 +168,7 @@ function renderDashboard(){
   const r=state.user.role;
   if(r==='student') return `<div class="portal-toolbar"><div><div class="eyebrow">Student workspace</div><h1>Welcome, ${esc(state.user.name.split(' ')[0])}</h1><p>Your academic information at a glance.</p></div></div>
     <div class="portal-grid">${stat('Approved subjects',state.studentSummary.subjects||0,'book')}${stat('Current average',state.studentSummary.average?`${state.studentSummary.average}%`:'—','trendingup')}${stat('Passed subjects',state.studentSummary.passes||0,'checkcircle')}${stat('Active notices',state.stats.active_announcements||0,'bell')}</div>
-    ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">Active</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)} `;
+    ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">Active</strong></div><div class="portal-kpi"><span>Class</span><strong>${esc(state.user.class_name||'—')} ${esc(state.user.arm_name||'')}</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)} `;
   // An HOD sees their own department named explicitly, with figures scoped to
   // that department, rather than school-wide counters they have to interpret.
   if(r==='hod'){
@@ -170,9 +181,18 @@ function renderDashboard(){
   }
   // A teacher's dashboard reflects their own teaching load, not school-wide
   // totals they have no responsibility for (and should not see).
-  if(r==='teacher') return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>Teacher workspace</h1><p>Manage score entry and your assigned students.</p></div></div>
+  if(r==='teacher'){
+    // A teacher previously only saw a bare count of "my subjects" with no
+    // indication of what those subjects actually were, or which class/arm
+    // each is taught in — they had to open Score Entry just to check.
+    const byClass=new Map();
+    (state.assignments||[]).forEach(a=>{ const key=`${a.class_name} ${a.arm_name}`; if(!byClass.has(key)) byClass.set(key,new Set()); byClass.get(key).add(a.subject_name); });
+    const teachingRows=[...byClass.entries()].map(([cls,subs])=>`<div class="portal-kpi"><span>${esc(cls)}</span><strong>${[...subs].map(esc).join(', ')}</strong></div>`).join('') || '<p style="color:var(--text-secondary)">No teaching assignments yet.</p>';
+    return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>Teacher workspace</h1><p>Manage score entry and your assigned students.</p></div></div>
     <div class="portal-grid">${stat('My students',state.stats.students??0,'users')}${stat('My subjects',state.stats.subjects??0,'book')}${stat('Awaiting approval',state.stats.pending_results??0,'clock')}${stat('Approved results',state.stats.results??0,'checkcircle')}</div>
+    ${card('What I teach',teachingRows)}
     ${card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>${ic('pencil',16)}</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>${ic('checkcircle',16)}</strong></div>`)}`;
+  }
   if(r==='student') return '';
   const title={admin:'Administration control centre',commandant:'Commandant overview'}[r];
   const subtitle={admin:'Manage accounts, academic records and school communications.',commandant:'Monitor school-wide academic performance and activity.'}[r];
@@ -277,13 +297,55 @@ function bindClassesArms(){
 }
 function renderResults(){
   const isOwn = state.user.role==='student';
+  if(isOwn) return renderReportCards();
   const rows=state.results.map((r,i)=>{
-    if(isOwn) return `<tr><td>${i+1}</td><td><strong>${esc(r.subject_name)}</strong></td><td>${esc(r.term_name)}<br><small>${esc(r.session_name)}</small></td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${r.is_approved?'<span class="portal-badge ok">Approved</span>':'<span class="portal-badge pending">Pending</span>'}</td></tr>`;
     return `<tr><td>${i+1}</td><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${esc(r.subject_name)}</td><td>${esc(r.term_name)}<br><small>${esc(r.session_name)}</small></td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${r.is_approved?'<span class="portal-badge ok">Approved</span>':'<span class="portal-badge pending">Pending</span>'}</td></tr>`;
   }).join('');
-  const headers = isOwn ? ['#','Subject','Term','CA','Exam','Total','Grade','Status'] : ['#','Student','Subject','Term','CA','Exam','Total','Grade','Status'];
-  if(isOwn) return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" onclick="window.print()">${ic('printer',16)}Print</button></div>${card('Published results',table(headers,rows,'No approved results have been published yet.'))}`;
+  const headers = ['#','Student','Subject','Term','CA','Exam','Total','Grade','Status'];
   return `<div class="portal-toolbar"><div><div class="eyebrow">Academic oversight</div><h1>Results</h1><p>Every submitted result across the school, most recent first.</p></div>${searchBox('results','Search by student, code or subject…')}</div>${card('All results',table(headers,rows,'No results match this search.')+truncatedNote(state.resultsTruncated,'results'))}`;
+}
+// A student's own results used to be one flat admin-style table with a
+// "Print" button that just ran window.print() on it — on paper it looked
+// like a raw data dump, not a report card. This groups approved results by
+// term/session and lays each term out as its own printable report-card
+// sheet: school header, student bio, subject breakdown, summary and a
+// grading key, with a page break between terms.
+function renderReportCards(){
+  const u=state.user;
+  const groups=new Map();
+  state.results.forEach(r=>{
+    const key=`${r.session_name}|${r.term_name}`;
+    if(!groups.has(key)) groups.set(key,{session_name:r.session_name,term_name:r.term_name,rows:[]});
+    groups.get(key).rows.push(r);
+  });
+  const printedOn=fmtDate(new Date());
+  const legend='Grading key: A1/B2/B3 Excellent–Very Good · C4/C5/C6 Credit · D7/E8 Pass · F9 Fail';
+  const cards=[...groups.values()].map(g=>{
+    const subjectRows=g.rows.map(r=>`<tr><td>${esc(r.subject_name)}</td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${esc(r.remark||'—')}</td></tr>`).join('');
+    const count=g.rows.length;
+    const average=count?(g.rows.reduce((a,r)=>a+Number(r.total_score),0)/count).toFixed(1):'0.0';
+    const passes=g.rows.filter(r=>Number(r.total_score)>=50).length;
+    return `<section class="report-card">
+      <div class="report-card-head"><h2>NNSS Calabar</h2><p>Termly Report Card</p></div>
+      <div class="report-card-bio">
+        <span>Student<strong>${esc(u.name)}</strong></span>
+        <span>Student ID<strong>${esc(u.user_code)}</strong></span>
+        <span>Class<strong>${esc(u.class_name||'—')} ${esc(u.arm_name||'')}</strong></span>
+        <span>Term<strong>${esc(g.term_name)}</strong></span>
+        <span>Session<strong>${esc(g.session_name)}</strong></span>
+        <span>Printed<strong>${esc(printedOn)}</strong></span>
+      </div>
+      ${table(['Subject','CA','Exam','Total','Grade','Remark'],subjectRows,'No approved results for this term.')}
+      <div class="report-card-summary">
+        <span>Subjects offered<strong>${count}</strong></span>
+        <span>Average score<strong>${average}%</strong></span>
+        <span>Subjects passed<strong>${passes}/${count}</strong></span>
+      </div>
+      <p class="report-card-legend">${esc(legend)}</p>
+      <div class="report-card-signatures"><div>Class Teacher</div><div>Principal / Commandant</div></div>
+    </section>`;
+  }).join('') || card('Published results','<div class="portal-empty">No approved results have been published yet.</div>');
+  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" onclick="window.print()">${ic('printer',16)}Print</button></div>${cards}`;
 }
 function renderSubjects(){ const rows=state.subjects.map((s,i)=>`<tr><td>${i+1}</td><td><strong>${esc(s.subject_name)}</strong></td><td>${s.ca_max}</td><td>${s.exam_max}</td><td>${s.ca_max+s.exam_max}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic programme</div><h1>My Subjects</h1></div></div>${card('Enrolled subjects',table(['#','Subject','CA max','Exam max','Total'],rows,'No subjects have been enrolled for this session.'))}`; }
 function renderAnnouncements(){
@@ -300,7 +362,7 @@ function renderAnnouncements(){
 }
 function bindAnnouncements(){
   $('#newAnnouncement')?.addEventListener('click',()=>announcementModal());
-  bindSearch('announcements', q => { state.search.announcements=q; render('announcements'); });
+  bindSearch('announcements', q => { state.search.announcements=q; render('announcements',{silent:true}); });
   document.querySelectorAll('[data-edit-announcement]').forEach(b=>b.onclick=()=>{
     const a = state.manageAnnouncements.find(x=>x.id===Number(b.dataset.editAnnouncement));
     if(a) announcementModal(a);
@@ -367,9 +429,21 @@ function renderCurriculum(){
     }).join(' ');
     return `<tr><td><strong>${esc(s.subject_name)}</strong><br><small>${esc(s.dept_name||'Unassigned')} · CA ${s.ca_max} / Exam ${s.exam_max}</small></td><td><span class="portal-badge ${s.is_active?'ok':'danger'}">${s.is_active?'Offered':'Not offered'}</span></td><td><div class="portal-actions">${trackCells}</div></td><td><button class="btn btn-sm ${s.is_active?'btn-danger':'btn-secondary'}" data-subject-toggle="${s.id}" data-active="${s.is_active?'1':'0'}">${s.is_active?'Stop offering':'Re-offer'}</button></td></tr>`;
   }).join('');
+  // Every curriculum change (created, renamed, CA/exam split changed,
+  // retired, track added/removed) is now logged server-side — this is the
+  // only place that history is visible, so a change made months ago (and
+  // any student results recorded under the curriculum at that time) can
+  // still be traced back to who changed what and when.
+  const historyRows=(state.curriculumHistory||[]).map(h=>`<div class="portal-kpi"><span>${esc(curriculumActionLabel(h))}<br><small>${esc(h.actor||'System')} · ${fmtDate(h.logged_at)}</small></span></div>`).join('') || '<p style="color:var(--text-secondary)">No curriculum changes recorded yet.</p>';
   return `<div class="portal-toolbar"><div><div class="eyebrow">Academic configuration</div><h1>Curriculum & Subjects</h1><p>Add subjects, retire ones the school no longer offers, and choose which curriculum track teaches each subject. Nothing here touches past results.</p></div></div>
     ${card('Add a subject', addForm)}
-    ${card('Subjects & curriculum tracks', table(['Subject','Status','Curriculum tracks','Action'], rows, 'No subjects found.'))}`;
+    ${card('Subjects & curriculum tracks', table(['Subject','Status','Curriculum tracks','Action'], rows, 'No subjects found.'))}
+    ${card('Recent curriculum changes', historyRows)}`;
+}
+function curriculumActionLabel(h){
+  const d=h.detail||{};
+  const labels={CREATE_SUBJECT:`Added subject "${d.subject_name||''}"`,UPDATE_SUBJECT:`Edited subject #${h.entity_id}${d.after?.subject_name?` — renamed to "${d.after.subject_name}"`:''}`,DEACTIVATE_SUBJECT:`Marked "${d.subject_name||''}" as no longer offered`,REACTIVATE_SUBJECT:`Re-offered "${d.subject_name||''}"`,ADD_CURRICULUM_SUBJECT:`Added subject #${h.entity_id} to the ${d.track||''} track`,REMOVE_CURRICULUM_SUBJECT:`Removed subject #${h.entity_id} from the ${d.track||''} track`};
+  return labels[h.action]||h.action;
 }
 function bindCurriculum(){
   $('#addSubjectBtn').onclick=async()=>{
@@ -427,17 +501,17 @@ function bindPanel(panel){
   if(panel==='classes' && ['admin','commandant'].includes(state.user.role)) bindClassesArms();
   if(panel==='departments') bindDepartments();
   if(panel==='students'){
-    bindSearch('students', async q => { state.search.students=q; render('students'); });
+    bindSearch('students', async q => { state.search.students=q; render('students',{silent:true}); });
     if(['admin','commandant'].includes(state.user.role)){
       $('#studentStatusFilter')?.addEventListener('change',async e=>{ state.studentStatusFilter=e.target.value; render('students'); });
       document.querySelectorAll('[data-status-student]').forEach(b=>b.onclick=()=>studentStatusModal(Number(b.dataset.statusStudent),b.dataset.statusCurrent,b.dataset.statusName));
     }
   }
-  if(panel==='teachers') bindSearch('teachers', q => { state.search.teachers=q; render('teachers'); });
-  if(panel==='results' && ['admin','commandant'].includes(state.user.role)) bindSearch('results', q => { state.search.results=q; render('results'); });
+  if(panel==='teachers') bindSearch('teachers', q => { state.search.teachers=q; render('teachers',{silent:true}); });
+  if(panel==='results' && ['admin','commandant'].includes(state.user.role)) bindSearch('results', q => { state.search.results=q; render('results',{silent:true}); });
   if(panel==='accounts' && ['admin','commandant'].includes(state.user.role)) {
     $('#newUser')?.addEventListener('click',userModal);
-    bindSearch('accounts', q => { state.search.accounts=q; render('accounts'); });
+    bindSearch('accounts', q => { state.search.accounts=q; render('accounts',{silent:true}); });
     document.querySelectorAll('[data-remove-user]').forEach(b=>b.onclick=()=>removeAccount(b.dataset.removeUser));
     document.querySelectorAll('[data-reset-password]').forEach(b=>b.onclick=()=>resetPasswordModal(Number(b.dataset.resetPassword),b.dataset.resetName));
   }

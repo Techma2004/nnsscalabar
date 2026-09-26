@@ -357,8 +357,9 @@ router.patch('/subjects/:subjectId', requireManagement, async (req, res) => {
   if (req.body?.ca_max != null) { fields.push('ca_max=?'); params.push(Number(req.body.ca_max)); }
   if (req.body?.exam_max != null) { fields.push('exam_max=?'); params.push(Number(req.body.exam_max)); }
   if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
+  let current;
   try {
-    const [[current]] = await db.query('SELECT ca_max, exam_max FROM subjects WHERE id=? LIMIT 1', [subjectId]);
+    [[current]] = await db.query('SELECT subject_name, dept_id, ca_max, exam_max FROM subjects WHERE id=? LIMIT 1', [subjectId]);
     if (!current) return res.status(404).json({ error: 'Subject not found.' });
     const nextCa = req.body?.ca_max != null ? Number(req.body.ca_max) : Number(current.ca_max);
     const nextExam = req.body?.exam_max != null ? Number(req.body.exam_max) : Number(current.exam_max);
@@ -369,11 +370,33 @@ router.patch('/subjects/:subjectId', requireManagement, async (req, res) => {
   try {
     const [result] = await db.query(`UPDATE subjects SET ${fields.join(', ')} WHERE id=?`, params);
     if (!result.affectedRows) return res.status(404).json({ error: 'Subject not found.' });
+    // Curriculum edits (rename, CA/exam split, department move) were never
+    // recorded anywhere, unlike create/deactivate/track-toggle below — so a
+    // school reorganising its curriculum had no history of what changed or
+    // when. Existing results are untouched (they store raw scores, not the
+    // subject's max values), this only makes the change itself traceable.
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'UPDATE_SUBJECT', 'subject', subjectId, JSON.stringify({ before: current, after: req.body })]);
     res.json({ message: 'Subject updated.' });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A subject with this name already exists.' });
     console.error('[admin/subjects/update]', err); res.status(500).json({ error: 'Unable to update subject.' });
   }
+});
+
+// Surfaces the activity_log entries curriculum edits already write (and now
+// all write, see above) so admins/commandant can actually see the history
+// instead of it only sitting silently in the table.
+router.get('/curriculum/history', requireManagement, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT al.id, al.action, al.entity_id, al.detail, al.logged_at, u.full_name AS actor
+       FROM activity_log al LEFT JOIN users u ON u.id = al.user_id
+       WHERE al.action IN ('CREATE_SUBJECT','UPDATE_SUBJECT','DEACTIVATE_SUBJECT','REACTIVATE_SUBJECT','ADD_CURRICULUM_SUBJECT','REMOVE_CURRICULUM_SUBJECT')
+       ORDER BY al.logged_at DESC LIMIT 30`
+    );
+    res.json(rows);
+  } catch (err) { console.error('[admin/curriculum/history]', err); res.status(500).json({ error: 'Unable to load curriculum history.' }); }
 });
 
 router.patch('/subjects/:subjectId/status', requireManagement, async (req, res) => {
