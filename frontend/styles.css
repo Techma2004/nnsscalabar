@@ -327,6 +327,25 @@ table tr:hover { background: var(--bg-card-hover); }
 /* ===== PRINT ===== */
 @media print { .sidebar, .navbar, .no-print { display: none !important; } .main-content { margin-left: 0 !important; } }
 
+/* ===== REPORT CARD ===== */
+.report-card { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-card); padding: 1.5rem; margin-bottom: 1.5rem; }
+.report-card-head { text-align: center; border-bottom: 2px solid var(--accent); padding-bottom: .75rem; margin-bottom: 1rem; }
+.report-card-head h2 { margin: 0; font-size: 1.25rem; letter-spacing: .02em; }
+.report-card-head p { margin: .2rem 0 0; color: var(--text-secondary); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+.report-card-bio { display: flex; flex-wrap: wrap; gap: .6rem 2rem; margin-bottom: 1rem; font-size: .85rem; color: var(--text-secondary); }
+.report-card-bio strong { display: block; color: var(--text); font-size: .95rem; }
+.report-card-summary { display: flex; flex-wrap: wrap; gap: .6rem 2rem; margin-top: 1rem; padding-top: .75rem; border-top: 1px dashed var(--border); font-size: .85rem; color: var(--text-secondary); }
+.report-card-summary strong { display: block; color: var(--text); font-size: 1rem; }
+.report-card-legend { margin-top: 1rem; font-size: .76rem; color: var(--text-light); }
+.report-card-signatures { display: flex; gap: 2.5rem; margin-top: 2.5rem; }
+.report-card-signatures div { flex: 1; text-align: center; font-size: .8rem; color: var(--text-secondary); border-top: 1px solid var(--text-light); padding-top: .4rem; }
+@media print {
+  .report-card { border: 1px solid #999; page-break-inside: avoid; page-break-after: always; }
+  .report-card:last-of-type { page-break-after: auto; }
+  .portal-toolbar p, .portal-toolbar .eyebrow { display: none; }
+}
+@media (max-width: 650px) { .report-card-bio, .report-card-summary { gap: .5rem 1.2rem; } .report-card-signatures { flex-direction: column; gap: 1.5rem; } }
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1024px) {
   .features-grid { grid-template-columns: repeat(2, 1fr); }
@@ -485,8 +504,10 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
   .dashboard-header h1, .portal-toolbar h1 { font-size: 1.6rem; }
   .portal-actions, .table-actions { flex-direction: column; }
   .portal-actions .btn, .portal-actions label.btn, .table-actions .btn, .table-actions select, .table-actions input { width: 100%; flex: 1 1 auto; }
+  .portal-search { width: 100%; flex: 1 1 auto; min-width: 0; }
   .table-actions { align-items: stretch; }
   .table-actions select, .table-actions input { min-height: 44px; }
+  .portal-search input { min-height: 44px; }
   .portal-form-grid { grid-template-columns: 1fr; }
   .portal-form-grid .full { grid-column: auto; }
   .portal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }

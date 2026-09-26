@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const mysql = require('../backend/node_modules/mysql2/promise');
 const bcrypt = require('../backend/node_modules/bcryptjs');
-require('dotenv').config({ path: path.join(__dirname, '..', 'backend', '.env') });
+require('../backend/node_modules/dotenv').config({ path: path.join(__dirname, '..', 'backend', '.env') });
 
 const DB_NAME = 'nnss_calabar_demo';
 const STUDENT_COUNT = Math.max(1, Number(process.env.STUDENT_COUNT || 600));

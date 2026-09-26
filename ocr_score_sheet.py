@@ -50,7 +50,13 @@ _CONFUSIONS = [
 ]
 
 NUMERIC_RE = re.compile(r"^\d{1,3}$")
+NAME_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z.'-]*$")
 
+
+def normalize_name(s):
+    """Collapse whitespace/punctuation so 'Jane  Doe.' and 'jane doe' compare equal."""
+    return re.sub(r"[^a-z ]", "", (s or "").lower()).strip()
+    
 
 def preprocess(image_path):
     """Light, dependency-free preprocessing to help OCR on real phone photos:
@@ -104,17 +110,60 @@ def match_roster_code(token, roster):
     return None
 
 
+def match_roster_name(words, start, roster_by_name, max_words=4):
+    """Real score sheets almost always list the student's full name, not the
+    system's internal user_code — try consuming 1..max_words consecutive
+    word tokens starting at `start` and match the joined, normalised text
+    against the roster's names. Returns (end_index, user_code) for the
+    longest exact match, or (None, None)."""
+    n = len(words)
+    best = None
+    for length in range(min(max_words, n - start), 0, -1):
+        chunk = words[start:start + length]
+        if not all(NAME_TOKEN_RE.match(w["text"]) for w in chunk):
+            continue
+        norm = normalize_name(" ".join(w["text"] for w in chunk))
+        if norm in roster_by_name:
+            best = (start + length - 1, roster_by_name[norm])
+            break  # longest match wins (checked longest-first)
+    return best or (None, None)
+
+
 def parse_rows(lines, roster):
+    # Build a name -> code lookup once. A duplicate name across two students
+    # is genuinely ambiguous from a name-only sheet, so the first one wins
+    # rather than guessing.
+    roster_by_name = {}
+    for code, full_name in roster.items():
+        norm = normalize_name(full_name)
+        if norm and norm not in roster_by_name:
+            roster_by_name[norm] = code
+
     rows = []
     for words in lines:
         code_idx = None
         matched_code = None
+
+        # 1) Older / ID-labelled sheets: a token that IS the user_code.
         for i, w in enumerate(words):
             candidate = match_roster_code(w["text"], roster)
             if candidate:
                 code_idx = i
                 matched_code = candidate
                 break
+
+        # 2) The common case: the sheet has no ID column at all, just an
+        # S/N and the student's name. NAME_TOKEN_RE already rejects a
+        # leading "1"/"3." S/N token as part of the name, so just try the
+        # first few word positions in order and take the first that lines
+        # up with a roster name — no need to specifically detect the S/N.
+        if matched_code is None:
+            for start in range(min(3, len(words))):
+                end_idx, name_code = match_roster_name(words, start, roster_by_name)
+                if name_code:
+                    code_idx, matched_code = end_idx, name_code
+                    break
+
         if matched_code is None:
             continue  # not a data row (header, title, blank line, unmatched noise)
 

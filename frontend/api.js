@@ -51,6 +51,7 @@ export const createSubject = data => apiFetch('/admin/subjects', { method: 'POST
 export const updateSubject = (id, data) => apiFetch(`/admin/subjects/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 export const updateSubjectStatus = (id, is_active) => apiFetch(`/admin/subjects/${id}/status`, { method: 'PATCH', body: JSON.stringify({ is_active }) });
 export const toggleCurriculum = (track, subject_id, enabled) => apiFetch('/admin/curriculum/toggle', { method: 'POST', body: JSON.stringify({ track, subject_id, enabled }) });
+export const getCurriculumHistory = () => apiFetch('/admin/curriculum/history');
 export const createDepartment = data => apiFetch('/admin/departments', { method: 'POST', body: JSON.stringify(data) });
 
 export const getDepartments = () => apiFetch('/admin/departments');

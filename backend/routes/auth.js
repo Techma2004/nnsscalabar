@@ -68,7 +68,20 @@ router.get('/me', auth, async (req, res) => {
        FROM users WHERE id = ? LIMIT 1`, [req.user.id]
     );
     if (!rows.length || !rows[0].is_active) return res.status(401).json({ error: 'Account unavailable.' });
-    res.json(safeUser(rows[0]));
+    const user = rows[0];
+    // Students previously had no way to see their own class and arm anywhere
+    // in the portal. This is identity info, not a sensitive figure, so it
+    // rides on /me (already fetched once per session) rather than a new call.
+    let placement = {};
+    if (user.role === 'student') {
+      const [[p]] = await db.query(
+        `SELECT cl.level_name AS class_name, a.arm_name FROM students s
+         JOIN class_levels cl ON cl.id = s.class_level_id JOIN arms a ON a.id = s.arm_id
+         WHERE s.user_id = ? LIMIT 1`, [user.id]
+      );
+      if (p) placement = p;
+    }
+    res.json({ ...safeUser(user), ...placement });
   } catch (err) {
     console.error('[auth/me]', err);
     res.status(500).json({ error: 'Unable to load account.' });
