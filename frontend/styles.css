@@ -733,3 +733,27 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
   .carousel-overlay p { font-size:.78rem; }
   .carousel-overlay .cta-btn { max-width:90%; overflow:hidden; text-overflow:ellipsis; }
 }
+
+
+/* Responsive hero repair */
+@media (max-width: 768px) {
+  .hero-carousel {
+    margin-top: 64px;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 4 / 5;
+    max-height: none;
+  }
+
+  .hero-carousel .carousel-slide {
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+}
+
+@media (max-width: 390px) {
+  .hero-carousel {
+    aspect-ratio: 3 / 4;
+  }
+}
