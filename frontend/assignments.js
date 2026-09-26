@@ -1,23 +1,34 @@
 import { getAssignmentMeta, getTeacherAssignments, updateTeacherAssignments } from './api.js';
 
-const A = { meta:null, teacher:null, subjects:[], assignments:[] };
+const A = { meta:null, teacher:null, subjects:[], assignments:[], teacherQuery:'' };
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const $ = s => document.querySelector(s);
 const toast = (m,t='info') => window.showToast?.(m,t);
+
+function filteredTeachers() {
+  const q=A.teacherQuery.trim().toLowerCase();
+  const teachers=A.meta?.teachers||[];
+  if(!q)return teachers;
+  return teachers.filter(t=>[t.full_name,t.department,t.teacher_code].filter(Boolean).join(' ').toLowerCase().includes(q));
+}
+
+function teacherOptionsForPanel() {
+  return filteredTeachers().map(t=>'<option value="'+t.teacher_id+'">'+esc(t.full_name)+' · '+esc(t.department||'')+'</option>').join('');
+}
 
 function assignmentPanel() {
   const teachers=A.meta?.teachers||[];
   const subjects=A.meta?.subjects||[];
   const classes=A.meta?.classes||[];
   const arms=A.meta?.arms||[];
-  const teacherOptions=teachers.map(t=>`<option value="${t.teacher_id}">${esc(t.full_name)} · ${esc(t.department||'')}</option>`).join('');
+  const teacherOptions=teacherOptionsForPanel();
   const subjectOptions=subjects.map(s=>`<option value="${s.id}">${esc(s.subject_name)}</option>`).join('');
   const classOptions=classes.map(c=>`<option value="${c.id}">${esc(c.level_name)}</option>`).join('');
   const armOptions=arms.map(a=>`<option value="${a.id}">${esc(a.arm_name)} · ${esc(a.category||a.arm_type||'')}</option>`).join('');
   const chips=A.assignments.map((x,i)=>`<span class="portal-badge ok" data-assignment-chip="${i}">${esc(x.subject_name)} · ${esc(x.level_name)} ${esc(x.arm_name)} <button type="button" data-remove-assignment="${i}" aria-label="Remove assignment">×</button></span>`).join('');
   const subjectChips=A.subjects.map((s,i)=>`<span class="portal-badge" data-subject-chip="${i}">${esc(s.subject_name)} <button type="button" data-remove-subject="${i}" aria-label="Remove subject">×</button></span>`).join('');
   return `<div class="portal-toolbar"><div><div class="eyebrow">Teaching workload</div><h1>Teaching Assignments</h1><p>Set exactly which subjects and class/arm combinations a teacher is responsible for in ${esc(A.meta?.session?.session_name||'the current session')}.</p></div></div>
-  <section class="portal-card"><div class="portal-card-head"><h3>Teacher</h3></div><div class="portal-card-body"><div class="portal-form-grid"><div class="form-group full"><label for="assignmentTeacher">Teacher</label><select id="assignmentTeacher"><option value="">Select a teacher</option>${teacherOptions}</select></div></div><div id="assignmentEditor" class="assignment-editor" style="display:none;margin-top:1rem"></div></div></section>
+  <section class="portal-card"><div class="portal-card-head"><h3>Teacher</h3></div><div class="portal-card-body">\n    <div class="assignment-teacher-picker">\n      <div class="portal-search assignment-teacher-search"><span class="portal-search-icon">⌕</span><input type="search" id="assignmentTeacherSearch" placeholder="Search teachers by name or department" autocomplete="off"></div>\n      <div class="form-group assignment-teacher-select"><label for="assignmentTeacher">Teacher</label><select id="assignmentTeacher"><option value="">Select a teacher</option></select></div>\n      <p class="assignment-search-note" id="assignmentTeacherCount"></p>\n    </div>\n    <div id="assignmentEditor" class="assignment-editor" style="display:none;margin-top:1rem"></div>\n  </div></section>
   <section class="portal-card" id="assignmentHelp"><div class="portal-card-body"><p><strong>How it works:</strong> select a teacher, add one or more subjects, then add as many class/arm assignments as needed. Saving replaces only that teacher's assignments for the current academic session.</p></div></section>`;
 }
 
@@ -39,7 +50,12 @@ function editor() {
 async function loadTeacher(id){try{const data=await getTeacherAssignments(id);A.teacher=data.teacher;A.subjects=data.subjects||[];A.assignments=(data.assignments||[]).map(x=>({...x}));editor();}catch(e){toast(e.message,'error');}}
 
 async function openAssignments(){
-  try{A.meta=await getAssignmentMeta();A.teacher=null;A.subjects=[];A.assignments=[];$('#appRoot').innerHTML=assignmentPanel();document.querySelectorAll('#assignmentTeacher').forEach(s=>s.onchange=()=>{const id=Number(s.value);if(id)loadTeacher(id);});}
+  try{A.meta=await getAssignmentMeta();A.teacher=null;A.subjects=[];A.assignments=[];A.teacherQuery='';$('#appRoot').innerHTML=assignmentPanel();
+    const search=$('#assignmentTeacherSearch'),select=$('#assignmentTeacher'),note=$('#assignmentTeacherCount');
+    const refreshTeacherList=()=>{const total=A.meta?.teachers?.length||0,matched=filteredTeachers();select.innerHTML='<option value="">Select a teacher</option>'+teacherOptionsForPanel();if(note)note.textContent=A.teacherQuery?matched.length+' of '+total+' teachers match your search.':total+' teachers available.';};
+    search.oninput=()=>{A.teacherQuery=search.value;refreshTeacherList();};
+    select.onchange=()=>{const id=Number(select.value);if(id)loadTeacher(id);};
+    refreshTeacherList();}
   catch(e){$('#appRoot').innerHTML=`<div class="portal-card"><div class="portal-empty"><h3>Teaching assignments unavailable</h3><p>${esc(e.message)}</p></div></div>`;}
 }
 
