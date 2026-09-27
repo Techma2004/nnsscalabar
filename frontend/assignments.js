@@ -1,4 +1,4 @@
-import { getAssignmentMeta, getTeacherAssignments, updateTeacherAssignments } from './api.js';
+import { getAssignmentMeta, getTeacherAssignments, updateTeacherAssignments, migrateTeacherDepartment } from './api.js';
 
 const A = { meta:null, teacher:null, subjects:[], assignments:[], teacherQuery:'' };
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -34,8 +34,17 @@ function assignmentPanel() {
 
 function editor() {
   const subjects=A.meta.subjects||[], classes=A.meta.classes||[], arms=A.meta.arms||[];
+  // Moving a teacher between departments is restricted to admin/commandant
+  // in the UI too, not just enforced server-side — an HOD shouldn't even
+  // see the control to pull a teacher out from under another department's
+  // oversight (or their own).
+  const role=JSON.parse(sessionStorage.getItem('nnss_user')||'null')?.role;
+  const canMigrate=['admin','commandant'].includes(role);
+  const departments=A.meta.departments||[];
+  const deptControl=canMigrate?`<div class="portal-form-grid" style="margin-top:.75rem"><div class="form-group"><label for="migrateDept">Department</label><select id="migrateDept">${departments.map(d=>`<option value="${d.id}" ${d.id===A.teacher?.dept_id?'selected':''}>${esc(d.dept_name)}</option>`).join('')}</select></div><div class="form-group" style="align-self:end"><button type="button" class="btn btn-secondary" id="migrateDeptBtn">Move teacher</button></div></div>`:'';
   $('#assignmentEditor').style.display='block';
   $('#assignmentEditor').innerHTML=`<div class="portal-kpi"><span>Teacher</span><strong>${esc(A.teacher?.full_name)} · ${esc(A.teacher?.department||'')}</strong></div>
+  ${deptControl}
   <div class="form-group" style="margin-top:1rem"><label>Subjects</label><div class="portal-actions" id="selectedSubjects">${A.subjects.length?A.subjects.map((s,i)=>`<span class="portal-badge">${esc(s.subject_name)} <button type="button" data-remove-subject="${i}" aria-label="Remove subject">×</button></span>`).join(''):'<span class="portal-badge pending">No subjects selected</span>'}</div></div>
   <div class="portal-form-grid" style="margin-top:1rem"><div class="form-group"><label for="assignmentSubject">Subject</label><select id="assignmentSubject"><option value="">Select subject</option>${subjects.map(s=>`<option value="${s.id}">${esc(s.subject_name)}</option>`).join('')}</select></div><div class="form-group"><label for="assignmentClass">Class</label><select id="assignmentClass"><option value="">Select class</option>${classes.map(c=>`<option value="${c.id}">${esc(c.level_name)}</option>`).join('')}</select></div><div class="form-group"><label for="assignmentArm">Arm</label><select id="assignmentArm"><option value="">Select arm</option>${arms.map(a=>`<option value="${a.id}">${esc(a.arm_name)} · ${esc(a.category||a.arm_type||'')}</option>`).join('')}</select></div><div class="form-group" style="align-self:end"><button type="button" class="btn btn-secondary" id="addAssignment">Add assignment</button></div></div>
   <div class="form-group" style="margin-top:1rem"><label>Current class/arm assignments</label><div class="portal-actions" id="selectedAssignments">${A.assignments.length?A.assignments.map((x,i)=>`<span class="portal-badge ok">${esc(x.subject_name)} · ${esc(x.level_name)} ${esc(x.arm_name)} <button type="button" data-remove-assignment="${i}" aria-label="Remove assignment">×</button></span>`).join(''):'<span class="portal-badge pending">No class/arm assignments selected</span>'}</div></div>
@@ -45,6 +54,15 @@ function editor() {
   $('#addAssignment').onclick=()=>{const subjectId=Number($('#assignmentSubject').value),classId=Number($('#assignmentClass').value),armId=Number($('#assignmentArm').value);if(!subjectId||!classId||!armId)return toast('Select a subject, class and arm.','error');const subject=subjects.find(s=>s.id===subjectId),cl=classes.find(c=>c.id===classId),arm=arms.find(a=>a.id===armId);if(A.assignments.some(x=>x.subject_id===subjectId&&x.class_level_id===classId&&x.arm_id===armId))return toast('That assignment is already listed.','warning');if(!A.subjects.some(s=>s.id===subjectId))A.subjects.push(subject);A.assignments.push({subject_id:subjectId,class_level_id:classId,arm_id:armId,subject_name:subject.subject_name,level_name:cl.level_name,arm_name:arm.arm_name});editor();};
   $('#saveAssignments').onclick=async()=>{const btn=$('#saveAssignments');btn.disabled=true;try{const out=await updateTeacherAssignments(A.teacher.teacher_id,{subject_ids:A.subjects.map(s=>s.id),assignments:A.assignments.map(x=>({subject_id:x.subject_id,class_level_id:x.class_level_id,arm_id:x.arm_id}))});toast(out.message||'Teaching assignments updated.','success');await loadTeacher(A.teacher.teacher_id);}catch(e){toast(e.message,'error');}finally{btn.disabled=false;}};
   $('#reloadAssignments').onclick=()=>loadTeacher(A.teacher.teacher_id);
+  $('#migrateDeptBtn')?.addEventListener('click',async()=>{
+    const deptId=Number($('#migrateDept').value);
+    if(!deptId)return;
+    if(deptId===A.teacher.dept_id)return toast('That teacher is already in this department.','info');
+    const deptName=departments.find(d=>d.id===deptId)?.dept_name||'this department';
+    if(!confirm(`Move ${A.teacher.full_name} to ${deptName}? Their existing subject and class assignments will not be changed automatically — review them afterward.`))return;
+    try{const out=await migrateTeacherDepartment(A.teacher.teacher_id,deptId);toast(out.message||'Teacher moved.','success');A.meta=await getAssignmentMeta();await loadTeacher(A.teacher.teacher_id);}
+    catch(e){toast(e.message,'error');}
+  });
 }
 
 async function loadTeacher(id){try{const data=await getTeacherAssignments(id);A.teacher=data.teacher;A.subjects=data.subjects||[];A.assignments=(data.assignments||[]).map(x=>({...x}));editor();}catch(e){toast(e.message,'error');}}

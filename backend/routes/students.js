@@ -12,7 +12,7 @@ router.get('/', async (req, res) => {
   // of what they actually teach, which was a real privilege overreach.
   if (!['admin','commandant'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
   const requested = String(req.query.status || 'active').toLowerCase();
-  const validStatuses = ['active', 'pending', 'withdrawn', 'graduated'];
+  const validStatuses = ['active', 'pending', 'withdrawn', 'graduated', 'repeating'];
   const q = String(req.query.q || '').trim();
   let statusClause = "AND s.status = 'active' AND u.is_active = 1";
   let params = [];

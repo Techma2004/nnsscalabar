@@ -53,6 +53,9 @@ export const updateSubjectStatus = (id, is_active) => apiFetch(`/admin/subjects/
 export const toggleCurriculum = (track, subject_id, enabled) => apiFetch('/admin/curriculum/toggle', { method: 'POST', body: JSON.stringify({ track, subject_id, enabled }) });
 export const getCurriculumHistory = () => apiFetch('/admin/curriculum/history');
 export const createDepartment = data => apiFetch('/admin/departments', { method: 'POST', body: JSON.stringify(data) });
+export const deleteDepartment = id => apiFetch(`/admin/departments/${id}`, { method: 'DELETE' });
+export const migrateTeacherDepartment = (teacherId, dept_id) => apiFetch(`/admin/teachers/${teacherId}/department`, { method: 'PATCH', body: JSON.stringify({ dept_id }) });
+export const promoteStudents = (sessionId, dry_run, force) => apiFetch(`/admin/sessions/${sessionId}/promote`, { method: 'POST', body: JSON.stringify({ dry_run, force }) });
 
 export const getDepartments = () => apiFetch('/admin/departments');
 export const getDepartmentDetail = id => apiFetch(`/admin/departments/${id}`);

@@ -3,7 +3,7 @@ import {
   getAllStudents, getAllTeachers, getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
   getTeacherStudents, getAssignments, uploadResult, getPendingResults, approveResult, rejectResult, getRejections,
   getAnnouncements, createAnnouncement, getTopPerformers, removeUser, getAiStatus, aiImportScores,
-  updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment, getCurriculumHistory,
+  updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment, deleteDepartment, promoteStudents, getCurriculumHistory,
   changeMyPassword, resetUserPassword, getManagedAnnouncements, updateAnnouncement, deleteAnnouncement,
   getSessions, createSession, activateSession, createTerm, updateTerm,
   getDepartments, getDepartmentDetail, getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
@@ -14,7 +14,7 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const roleName = {student:'Student',teacher:'Subject Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant'};
 const TRACKS = ['junior','science','technical','arts'];
-const STUDENT_STATUSES = ['active','pending','withdrawn','graduated'];
+const STUDENT_STATUSES = ['active','pending','withdrawn','graduated','repeating'];
 const statusBadgeClass = {active:'ok', pending:'pending', withdrawn:'danger', graduated:''};
 const menus = {
   student:[['Dashboard','dashboard'],['My Results','results'],['My Subjects','subjects'],['Announcements','announcements'],['My Profile','profile']],
@@ -222,9 +222,10 @@ function renderDepartments(){
   const d=state.deptDetail;
   // Admin/commandant get an overview of every department first; staff go
   // straight into their own, since that is the only one they can access.
-  const overview = canSeeAll ? `<div class="portal-grid">${state.departments.map(x=>`<div class="portal-stat" style="cursor:pointer" data-open-dept="${x.id}"><span class="stat-icon">${ic('shield',16)}</span><small>${esc(x.dept_name)}</small><strong>${x.subject_count}</strong><div style="color:var(--text-secondary);font-size:.78rem;margin-top:.35rem">${x.teacher_count} teacher${x.teacher_count===1?'':'s'}${x.pending_count?` · <span style="color:var(--warning)">${x.pending_count} pending</span>`:''}</div><div style="color:var(--text-light);font-size:.75rem;margin-top:.2rem">HOD: ${esc(x.hod_name||'Not assigned')}</div></div>`).join('')}</div>` : '';
+  const overview = canSeeAll ? `<div class="portal-grid">${state.departments.map(x=>`<div class="portal-stat" style="cursor:pointer;position:relative" data-open-dept="${x.id}"><span class="stat-icon">${ic('shield',16)}</span><small>${esc(x.dept_name)}</small><strong>${x.subject_count}</strong><div style="color:var(--text-secondary);font-size:.78rem;margin-top:.35rem">${x.teacher_count} teacher${x.teacher_count===1?'':'s'}${x.pending_count?` · <span style="color:var(--warning)">${x.pending_count} pending</span>`:''}</div><div style="color:var(--text-light);font-size:.75rem;margin-top:.2rem">HOD: ${esc(x.hod_name||'Not assigned')}</div><button class="btn btn-danger btn-sm" style="position:absolute;top:.6rem;right:.6rem" data-delete-dept="${x.id}" data-name="${esc(x.dept_name)}" onclick="event.stopPropagation()">Delete</button></div>`).join('')}</div>` : '';
+  const addDept = canSeeAll ? card('Add a department',`<div class="portal-form-grid"><div class="form-group"><label>Department name</label><input id="newDeptName" maxlength="60" placeholder="e.g. Languages"></div><div class="form-group full"><label>Description (optional)</label><input id="newDeptDesc" maxlength="160" placeholder="What this department covers"></div><div class="full"><button class="btn btn-primary" id="addDeptBtn">Add department</button></div></div>`) : '';
 
-  if(!d) return `<div class="portal-toolbar"><div><div class="eyebrow">Academic structure</div><h1>Departments</h1><p>Select a department to see its subjects, staff and performance.</p></div></div>${overview}`;
+  if(!d) return `<div class="portal-toolbar"><div><div class="eyebrow">Academic structure</div><h1>Departments</h1><p>Select a department to see its subjects, staff and performance.</p></div></div>${addDept}${overview}`;
 
   const s=d.stats||{};
   const subjectRows=d.subjects.map(x=>`<tr><td><strong>${esc(x.subject_name)}</strong>${x.is_active?'':' <span class="portal-badge danger">Not offered</span>'}</td><td>${esc((x.tracks||[]).join(', ')||'—')}</td><td>${x.ca_max} / ${x.exam_max}</td><td>${x.result_count}</td></tr>`).join('');
@@ -247,6 +248,18 @@ function bindDepartments(){
     state.activeDeptId=Number(el.dataset.openDept); render('departments');
   });
   $('#deptBack')?.addEventListener('click',()=>{ state.activeDeptId=null; state.deptDetail=null; render('departments'); });
+  $('#addDeptBtn')?.addEventListener('click',async()=>{
+    const dept_name=$('#newDeptName').value.trim();
+    if(!dept_name) return toast('Enter a department name.','error');
+    try{ await createDepartment({dept_name,description:$('#newDeptDesc').value.trim()||null}); toast('Department added.','success'); render('departments'); }
+    catch(e){ toast(e.message,'error'); }
+  });
+  document.querySelectorAll('[data-delete-dept]').forEach(b=>b.onclick=async(e)=>{
+    e.stopPropagation();
+    if(!confirm(`Delete ${b.dataset.name}? This only works if no subjects, teachers or HOD are still assigned to it.`)) return;
+    try{ await deleteDepartment(Number(b.dataset.deleteDept)); toast('Department removed.','success'); render('departments'); }
+    catch(e2){ toast(e2.message,'error'); }
+  });
 }
 function renderClassesArms(){
   const ARM_TYPES=['junior','science','technical','arts'];
@@ -424,7 +437,7 @@ function renderStudents(){
     return `<tr><td>${i+1}</td><td><strong>${esc(s.full_name)}</strong><br><small>${esc(s.user_code)}</small></td><td>${esc(s.class)}</td><td>${esc(s.arm)}</td><td>${esc(s.track)}</td>${statusCell}</tr>`;
   }).join('');
   const headers = manageable ? ['#','Student','Class','Arm','Track','Status','Action'] : ['#','Student','Class','Arm','Track'];
-  const statusFilter = manageable ? `<select id="studentStatusFilter" class="btn-auto"><option value="active" ${state.studentStatusFilter==='active'?'selected':''}>Active</option><option value="pending" ${state.studentStatusFilter==='pending'?'selected':''}>Pending (yet to resume)</option><option value="withdrawn" ${state.studentStatusFilter==='withdrawn'?'selected':''}>Withdrawn</option><option value="graduated" ${state.studentStatusFilter==='graduated'?'selected':''}>Graduated</option><option value="all" ${state.studentStatusFilter==='all'?'selected':''}>All statuses</option></select>` : '';
+  const statusFilter = manageable ? `<select id="studentStatusFilter" class="btn-auto"><option value="active" ${state.studentStatusFilter==='active'?'selected':''}>Active</option><option value="repeating" ${state.studentStatusFilter==='repeating'?'selected':''}>Repeating</option><option value="pending" ${state.studentStatusFilter==='pending'?'selected':''}>Pending (yet to resume)</option><option value="withdrawn" ${state.studentStatusFilter==='withdrawn'?'selected':''}>Withdrawn</option><option value="graduated" ${state.studentStatusFilter==='graduated'?'selected':''}>Graduated</option><option value="all" ${state.studentStatusFilter==='all'?'selected':''}>All statuses</option></select>` : '';
   const search = searchBox('students', state.user.role==='teacher'?'Search your students…':'Search by name, code or admission no…');
   return `<div class="portal-toolbar"><div><div class="eyebrow">Student register</div><h1>${state.user.role==='teacher'?'My Students':'Students'}</h1>${manageable?'<p>Status changes preserve every academic record — nothing is deleted.</p>':''}</div><div class="portal-actions">${search}${statusFilter}</div></div>${card('Student register',table(headers,rows,'No students found for this filter.')+truncatedNote(state.studentsTruncated,'student'))}`;
 }
@@ -505,7 +518,33 @@ function bindAiImport(){
   let selectedFile=null;
   file.onchange=()=>{selectedFile=file.files?.[0]||null; fileName.textContent=selectedFile?`${selectedFile.name} · ${(selectedFile.size/1024/1024).toFixed(1)} MB`:'No image selected'; analyze.disabled=!selectedFile||!assignment.value||!term.value;};
   assignment.onchange=()=>{analyze.disabled=!selectedFile||!assignment.value||!term.value;};
-  analyze.onclick=async()=>{if(!selectedFile||!assignment.value||!term.value)return; analyze.disabled=true; analyze.textContent='Analyzing…'; results.innerHTML=`<div class="portal-card"><div class="portal-loading"><span class="loading"></span><p>Reading the score sheet and matching rows against the class roster…</p></div></div>`; try{const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(selectedFile);}); const out=await aiImportScores({assignment_id:Number(assignment.value),term_id:Number(term.value),image:dataUrl}); renderAiReview(out,results); }catch(e){results.innerHTML=`<div class="portal-card"><div class="portal-empty"><h3>Scan could not be completed</h3><p>${esc(e.message)}</p><button class="btn btn-secondary" id="aiManualFallback" data-go="scores">Continue with manual score entry</button></div></div>`; document.querySelector('#aiManualFallback')?.addEventListener('click',()=>render('scores'));}finally{analyze.disabled=false;analyze.textContent='Analyze sheet';}};
+  analyze.onclick=async()=>{
+    if(!selectedFile||!assignment.value||!term.value)return;
+    analyze.disabled=true; analyze.textContent='Analyzing…';
+    // A single OCR call has no real progress events to report, so this
+    // advances through honest, descriptive stages on a timer and caps short
+    // of 100% until the actual response lands — a linear bar with a
+    // percentage reads far more informative than an indefinite spinner for
+    // something that can take several seconds on modest hardware.
+    const stages=[[10,'Uploading photo…'],[30,'Correcting lighting and tilt…'],[60,'Reading the score sheet…'],[85,'Matching rows to the class roster…']];
+    let stageIdx=0;
+    results.innerHTML=`<div class="portal-card"><div class="ai-progress"><div class="ai-progress-track"><div class="ai-progress-bar" id="aiProgressBar" style="width:0%">0%</div></div><p id="aiProgressLabel">Starting…</p></div></div>`;
+    const bar=$('#aiProgressBar'), label=$('#aiProgressLabel');
+    const timer=setInterval(()=>{
+      if(stageIdx<stages.length){ const [pct,text]=stages[stageIdx++]; bar.style.width=pct+'%'; bar.textContent=pct+'%'; label.textContent=text; }
+    },700);
+    try{
+      const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(selectedFile);});
+      const out=await aiImportScores({assignment_id:Number(assignment.value),term_id:Number(term.value),image:dataUrl});
+      clearInterval(timer);
+      bar.style.width='100%'; bar.textContent='100%'; label.textContent='Done';
+      setTimeout(()=>renderAiReview(out,results),200);
+    }catch(e){
+      clearInterval(timer);
+      results.innerHTML=`<div class="portal-card"><div class="portal-empty"><h3>Scan could not be completed</h3><p>${esc(e.message)}</p><button class="btn btn-secondary" id="aiManualFallback" data-go="scores">Continue with manual score entry</button></div></div>`;
+      document.querySelector('#aiManualFallback')?.addEventListener('click',()=>render('scores'));
+    }finally{analyze.disabled=false;analyze.textContent='Analyze sheet';}
+  };
 }
 // Working copy of the scanner's extracted rows, editable in the browser
 // before anything is submitted: teachers previously had no way to fix a
@@ -615,7 +654,7 @@ function renderSessions(){
     const termsHtml = s.terms.map(t=>`<div class="portal-kpi"><span>${esc(t.term_name)} ${t.is_current?'<span class="portal-badge ok">Current</span>':''} ${t.result_locked?'<span class="portal-badge danger">Locked</span>':''}</span><span class="portal-actions"><button class="btn btn-sm btn-secondary" data-term-current="${t.id}" ${t.is_current?'disabled':''}>Set current</button><button class="btn btn-sm ${t.result_locked?'btn-secondary':'btn-danger'}" data-term-lock="${t.id}" data-locked="${t.result_locked?'1':'0'}">${t.result_locked?'Unlock':'Lock'} results</button></span></div>`).join('') || '<p style="color:var(--text-secondary);font-size:.85rem">No terms added yet.</p>';
     const missingTerms = [1,2,3].filter(n=>!s.terms.some(t=>t.term_number===n));
     const addTermForm = missingTerms.length ? `<div class="portal-actions" style="margin-top:.6rem"><select id="newTermNumber-${s.id}">${missingTerms.map(n=>`<option value="${n}">${['','First','Second','Third'][n]} Term</option>`).join('')}</select><button class="btn btn-sm btn-secondary" data-add-term="${s.id}">Add term</button></div>` : '';
-    return `<div class="portal-card" style="margin-bottom:1rem"><div class="portal-card-head"><h3>${esc(s.session_name)} ${s.is_current?'<span class="portal-badge ok">Current session</span>':''}</h3>${!s.is_current?`<button class="btn btn-sm btn-primary" data-session-current="${s.id}">Make current</button>`:''}</div><div class="portal-card-body">${termsHtml}${addTermForm}</div></div>`;
+    return `<div class="portal-card" style="margin-bottom:1rem"><div class="portal-card-head"><h3>${esc(s.session_name)} ${s.is_current?'<span class="portal-badge ok">Current session</span>':''}</h3><div class="portal-actions">${!s.is_current?`<button class="btn btn-sm btn-primary" data-session-current="${s.id}">Make current</button>`:''}<button class="btn btn-sm btn-secondary" data-promote="${s.id}" data-promoted-at="${s.promoted_at||''}">Promote students</button></div></div><div class="portal-card-body">${termsHtml}${addTermForm}${s.promoted_at?`<p style="color:var(--text-secondary);font-size:.8rem;margin-top:.6rem">Students were last promoted for this session on ${fmtDate(s.promoted_at)}.</p>`:''}</div></div>`;
   }).join('') || '<div class="portal-empty">No academic sessions yet.</div>';
   const addSessionForm = `<div class="portal-form-grid"><div class="form-group"><label>Session name</label><input id="newSessionName" placeholder="e.g. 2027/2028"></div><div class="form-group"><label>Start date</label><input id="newSessionStart" type="date"></div><div class="form-group"><label>End date</label><input id="newSessionEnd" type="date"></div><div class="form-group" style="align-self:end"><label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-weight:500"><input type="checkbox" id="newSessionCurrent" style="width:auto"> Make this the current session</label></div><div class="full"><button class="btn btn-primary" id="addSessionBtn">Create session</button></div></div>`;
   return `<div class="portal-toolbar"><div><div class="eyebrow">Academic calendar</div><h1>Academic Sessions</h1><p>Roll into a new session each year and control which term is open for scoring.</p></div></div>${card('Start a new session',addSessionForm)}${rows}`;
@@ -650,6 +689,31 @@ function bindSessions(){
     if(!locked && !confirm('Lock this term? Teachers will no longer be able to submit or edit scores for it.')) return;
     try{ await updateTerm(Number(b.dataset.termLock),{result_locked:!locked}); toast(locked?'Term unlocked.':'Term locked.','success'); render('sessions'); }
     catch(e){ toast(e.message,'error'); }
+  });
+  // Promotion previews before it commits anything — a mass, one-way change
+  // to every active student's class (and possibly status) is exactly the
+  // kind of action that should show its real effect before being confirmed,
+  // not just ask a bare yes/no.
+  document.querySelectorAll('[data-promote]').forEach(b=>b.onclick=async()=>{
+    const sessionId=Number(b.dataset.promote), alreadyPromoted=!!b.dataset.promotedAt;
+    try{
+      const preview=await promoteStudents(sessionId,true,false);
+      const byClass=Object.entries(preview.by_class||{}).map(([k,v])=>`<div class="portal-kpi"><span>${esc(k)}</span><strong>${v}</strong></div>`).join('') || '';
+      openModal(`Promote students — ${esc(preview.session_name)}`,
+        `<p style="margin-bottom:1rem;color:var(--text-secondary)">Every active student moves up one class level; anyone at the top level graduates; anyone marked "repeating" stays in their current class and returns to active status.</p>
+        ${alreadyPromoted?`<div class="ai-review-note ai-review-warn">Students were already promoted for this session on a previous run. Anyone still active today will be promoted again — this does not skip students automatically.</div>`:''}
+        <div class="portal-kpi"><span>Will be promoted</span><strong>${preview.promoted}</strong></div>
+        <div class="portal-kpi"><span>Will graduate</span><strong>${preview.graduated}</strong></div>
+        <div class="portal-kpi"><span>Repeating — returning to active</span><strong>${preview.repeating}</strong></div>
+        ${byClass}
+        <div class="full" style="margin-top:1rem"><button class="btn btn-danger" id="confirmPromote">Confirm promotion</button></div>`);
+      $('#confirmPromote').onclick=async()=>{
+        const total=preview.promoted+preview.graduated+preview.repeating;
+        if(!confirm(`This changes the class and/or status of ${total} student(s) immediately and cannot be undone automatically. Continue?`)) return;
+        try{ const result=await promoteStudents(sessionId,false,alreadyPromoted); closeModal(); toast(result.message,'success'); render('sessions'); }
+        catch(e){ toast(e.message,'error'); }
+      };
+    }catch(e){ toast(e.message,'error'); }
   });
 }
 function bindProfile(){

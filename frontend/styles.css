@@ -441,6 +441,10 @@ table tr:hover { background: var(--bg-card-hover); }
   .ai-note-row { flex-direction: column; align-items: stretch; }
   .ai-student-select { max-width: 100%; }
 }
+.ai-progress { padding: 1.5rem 0; text-align: center; }
+.ai-progress-track { width: 100%; height: 22px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.ai-progress-bar { height: 100%; background: var(--accent); color: #fff; font-size: .72rem; font-weight: 600; line-height: 22px; text-align: right; padding-right: 8px; box-sizing: border-box; white-space: nowrap; transition: width .5s ease; border-radius: 999px; }
+.ai-progress p { margin: .75rem 0 0; color: var(--text-secondary); font-size: .88rem; }
 .table-wrapper{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.portal-table{min-width:680px}.portal-card-body{overflow-wrap:anywhere}.portal-toolbar h1{line-height:1.15}.btn{min-height:42px}
 @media(max-width:900px){.navbar{padding:0 1rem}.nav-logo-text h1{font-size:.95rem}.nav-logo img{width:42px;height:42px}.nav-right #navUserBadge{display:none}.main-content{padding:1.25rem}.portal-toolbar{align-items:flex-start}}
 @media(max-width:650px){body{font-size:15px}.navbar{height:64px}.nav-logo-text span{display:none}.nav-logo img{width:38px;height:38px}.dashboard{margin-top:64px}.sidebar{top:64px;width:min(86vw,300px)}}
@@ -632,8 +636,7 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
   }
 
   .carousel-slide {
-    background-size: contain;
-    background-color: var(--primary);
+    background-size: cover;
     background-position: center center;
   }
 
