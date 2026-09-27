@@ -632,7 +632,8 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
   }
 
   .carousel-slide {
-    background-size: cover;
+    background-size: contain;
+    background-color: var(--primary);
     background-position: center center;
   }
 
