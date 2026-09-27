@@ -72,6 +72,15 @@ export const createTerm = (sessionId, data) => apiFetch(`/admin/sessions/${sessi
 export const updateTerm = (id, data) => apiFetch(`/admin/terms/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 
 export const getAssignments = () => apiFetch('/results/assignments');
+// The Teaching Assignments workspace (frontend/assignments.js) imports these
+// three by name — without them the whole module fails to load in the
+// browser (a missing named ES-module export is a hard error, not a warning),
+// which is why the "Teaching Assignments" nav link has never actually
+// appeared for anyone despite the backend route and the UI module both
+// being fully built.
+export const getAssignmentMeta = () => apiFetch('/assignments/meta');
+export const getTeacherAssignments = teacherId => apiFetch(`/assignments/teacher/${teacherId}`);
+export const updateTeacherAssignments = (teacherId, data) => apiFetch(`/assignments/teacher/${teacherId}`, { method: 'PUT', body: JSON.stringify(data) });
 export const uploadResult = data => apiFetch('/results/upload', { method: 'POST', body: JSON.stringify(data) });
 export const getPendingResults = () => apiFetch('/results/pending');
 export const approveResult = (id, note) => apiFetch(`/results/approve/${id}`, { method: 'PUT', body: JSON.stringify({ note }) });
