@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS academic_sessions (
   is_current    BOOLEAN DEFAULT FALSE,
   start_date    DATE,
   end_date      DATE,
+  promoted_at   TIMESTAMP NULL DEFAULT NULL,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -362,7 +363,7 @@ CREATE TABLE IF NOT EXISTS students (
   date_admitted   DATE,
   is_boarder      BOOLEAN DEFAULT FALSE,
   track           ENUM('junior','science','technical','arts') NOT NULL,
-  status          ENUM('active','pending','withdrawn','graduated') NOT NULL DEFAULT 'active',
+  status          ENUM('active','pending','withdrawn','graduated','repeating') NOT NULL DEFAULT 'active',
   status_reason   VARCHAR(160) NULL,
   status_updated_at TIMESTAMP NULL,
   FOREIGN KEY (user_id)        REFERENCES users(id) ON DELETE CASCADE,

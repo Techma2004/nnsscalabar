@@ -27,13 +27,14 @@ router.get('/meta', async (req, res) => {
     const subjectWhere = deptId ? 'AND (s.dept_id=? OR s.dept_id IS NULL)' : '';
     const params = deptId ? [deptId] : [];
     const subjectParams = deptId ? [deptId] : [];
-    const [teachers, subjects, classes, arms] = await Promise.all([
+    const [teachers, subjects, classes, arms, departments] = await Promise.all([
       db.query(`SELECT t.id teacher_id,u.user_code,u.full_name,d.dept_name department FROM teachers t JOIN users u ON u.id=t.user_id LEFT JOIN departments d ON d.id=t.dept_id WHERE u.is_active=1 ${teacherWhere} ORDER BY u.full_name`, params),
       db.query(`SELECT s.id,s.subject_name,s.dept_id,d.dept_name department FROM subjects s LEFT JOIN departments d ON d.id=s.dept_id WHERE s.is_active=1 ${subjectWhere} ORDER BY s.subject_name`, subjectParams),
       db.query('SELECT id,level_name,is_junior FROM class_levels ORDER BY sort_order,id'),
-      db.query('SELECT id,arm_name,arm_type,category FROM arms WHERE is_active=1 ORDER BY arm_name')
+      db.query('SELECT id,arm_name,arm_type,category FROM arms WHERE is_active=1 ORDER BY arm_name'),
+      db.query('SELECT id,dept_name FROM departments ORDER BY dept_name')
     ]);
-    res.json({session:current,teachers:teachers[0],subjects:subjects[0],classes:classes[0],arms:arms[0]});
+    res.json({session:current,teachers:teachers[0],subjects:subjects[0],classes:classes[0],arms:arms[0],departments:departments[0]});
   } catch (err) { console.error('[assignments/meta]',err); res.status(500).json({error:'Unable to load assignment configuration.'}); }
 });
 

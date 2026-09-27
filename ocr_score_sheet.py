@@ -36,7 +36,7 @@ import re
 
 try:
     import pytesseract
-    from PIL import Image, ImageOps
+    from PIL import Image
     import numpy as np
     import cv2
 except ImportError as e:
@@ -99,24 +99,64 @@ def remove_gridlines(img):
     return Image.fromarray(cleaned)
 
 
+def enhance_contrast(arr):
+    """Global autocontrast treats the whole image as one lighting condition,
+    which real phone photos of paper rarely are — a shadow across half the
+    page, or glare in one corner, means faint pencil/pen strokes in the dim
+    area stay faint no matter how the brightest pixels are stretched. CLAHE
+    equalizes contrast in local tiles instead, so a dim corner and a bright
+    corner both get proper contrast independently."""
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    return clahe.apply(arr)
+
+
+def deskew(arr):
+    """A few degrees of camera tilt is enough to throw off Tesseract's
+    line-grouping, which assumes roughly horizontal rows. Estimate the tilt
+    from the text mask and correct it — but only when the estimate is both
+    clearly non-zero and small enough to trust as real skew rather than
+    noise from a sparse or near-empty image, since a bad correction is worse
+    than none."""
+    bw = cv2.adaptiveThreshold(arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                cv2.THRESH_BINARY_INV, 25, 15)
+    coords = cv2.findNonZero(bw)
+    if coords is None or len(coords) < 200:
+        return arr
+    angle = cv2.minAreaRect(coords)[-1]
+    if angle < -45:
+        angle = -(90 + angle)
+    elif angle > 45:
+        angle = angle - 90
+    else:
+        angle = -angle
+    if abs(angle) < 0.4 or abs(angle) > 12:
+        return arr
+    h, w = arr.shape
+    M = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
+    return cv2.warpAffine(arr, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+
+
 def preprocess(image_path):
-    """Light, dependency-free preprocessing to help OCR on real phone photos:
-    grayscale + autocontrast, grid-line removal, and upscale small images
+    """Preprocessing tuned for real phone photos of paper, including messy
+    handwriting: local contrast correction for uneven lighting, light
+    denoising, deskewing, grid-line removal, then upscaling small images
     since Tesseract does noticeably better with more pixels per character."""
-    img = Image.open(image_path)
-    img = img.convert("L")
-    img = ImageOps.autocontrast(img)
-    img = remove_gridlines(img)
+    img = Image.open(image_path).convert("L")
+    arr = np.array(img)
+    arr = enhance_contrast(arr)
+    arr = cv2.medianBlur(arr, 3)
+    arr = deskew(arr)
+    img = remove_gridlines(Image.fromarray(arr))
     if img.width < 1400:
         scale = 1400 / img.width
         img = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
     return img
 
 
-def extract_words(image):
+def extract_words(image, psm=6):
     """Run Tesseract in word-level data mode and group words into lines,
     preserving left-to-right reading order within each line."""
-    data = pytesseract.image_to_data(image, config="--psm 6", output_type=pytesseract.Output.DICT)
+    data = pytesseract.image_to_data(image, config=f"--psm {psm}", output_type=pytesseract.Output.DICT)
     lines = {}
     n = len(data["text"])
     for i in range(n):
@@ -263,16 +303,35 @@ def main():
         print(json.dumps({"error": f"Could not read the image: {e}"}))
         sys.exit(1)
 
-    try:
-        lines = extract_words(image)
-    except pytesseract.TesseractNotFoundError:
-        print(json.dumps({"error": "Tesseract is not installed on this server. Ask an administrator to install tesseract-ocr."}))
-        sys.exit(1)
-    except Exception as e:
-        print(json.dumps({"error": f"OCR failed: {e}"}))
-        sys.exit(1)
+    # Try the fast, structured-table config first; only spend time on the
+    # sparser/less-structured configs if it clearly under-performed against
+    # the class roster. Selection is by how many rows come out with BOTH
+    # scores actually valid, not raw row count — a sparse-text config can
+    # produce more matched names by fragmenting the table into extra rows,
+    # while losing the adjacent CA/exam pairing on every one of them, which
+    # raw-count selection would wrongly prefer.
+    def count_valid(rows):
+        return sum(1 for r in rows if r["valid_ca"] and r["valid_exam"])
 
-    rows = parse_rows(lines, roster)
+    best_rows, best_valid = [], -1
+    for psm in (6, 4, 11):
+        try:
+            lines = extract_words(image, psm=psm)
+        except pytesseract.TesseractNotFoundError:
+            print(json.dumps({"error": "Tesseract is not installed on this server. Ask an administrator to install tesseract-ocr."}))
+            sys.exit(1)
+        except Exception as e:
+            if not best_rows and psm == 6:
+                print(json.dumps({"error": f"OCR failed: {e}"}))
+                sys.exit(1)
+            continue
+        rows = parse_rows(lines, roster)
+        valid = count_valid(rows)
+        if valid > best_valid or (valid == best_valid and len(rows) > len(best_rows)):
+            best_rows, best_valid = rows, valid
+        if best_valid >= len(roster):
+            break
+    rows = best_rows
     print(json.dumps({
         "rows": rows,
         "roster_count": len(roster),

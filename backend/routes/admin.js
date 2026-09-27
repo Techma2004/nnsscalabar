@@ -276,7 +276,7 @@ router.patch('/users/:userId/password', requireManagement, async (req, res) => {
 // students can log in; pending/withdrawn/graduated students are locked out
 // of the portal but their account, admission record and academic history are
 // never deleted.
-const STUDENT_STATUSES = ['active', 'pending', 'withdrawn', 'graduated'];
+const STUDENT_STATUSES = ['active', 'pending', 'withdrawn', 'graduated', 'repeating'];
 router.patch('/students/:studentId/status', requireManagement, async (req, res) => {
   const studentId = Number(req.params.studentId);
   const status = String(req.body?.status || '').toLowerCase();
@@ -293,9 +293,11 @@ router.patch('/students/:studentId/status', requireManagement, async (req, res) 
 
     await conn.beginTransaction();
     await conn.query('UPDATE students SET status=?, status_reason=?, status_updated_at=NOW() WHERE id=?', [status, reason, studentId]);
-    // Only an 'active' student may log in. Every other lifecycle state locks the account
-    // without touching admission records, results, or attendance history.
-    await conn.query('UPDATE users SET is_active=? WHERE id=?', [status === 'active' ? 1 : 0, row.user_id]);
+    // 'active' and 'repeating' students may both log in — repeating just
+    // means they won't move up at the next promotion, not that they've left
+    // the school. Every other lifecycle state locks the account without
+    // touching admission records, results, or attendance history.
+    await conn.query('UPDATE users SET is_active=? WHERE id=?', [['active', 'repeating'].includes(status) ? 1 : 0, row.user_id]);
     await conn.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
       [req.user.id, 'STUDENT_STATUS_CHANGE', 'student', studentId, JSON.stringify({ user_code: row.user_code, from: row.current_status, to: status, reason })]);
     await conn.commit();
@@ -526,11 +528,63 @@ router.post('/departments', requireManagement, async (req, res) => {
   if (!dept_name || dept_name.length < 2) return res.status(400).json({ error: 'Department name is required.' });
   try {
     const [result] = await db.query('INSERT INTO departments (dept_name, description) VALUES (?, ?)', [dept_name, description]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'CREATE_DEPARTMENT', 'department', result.insertId, JSON.stringify({ dept_name })]);
     res.status(201).json({ message: 'Department created.', id: result.insertId });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A department with this name already exists.' });
     console.error('[admin/departments]', err); res.status(500).json({ error: 'Unable to create department.' });
   }
+});
+
+// Departments are only hard-deleted when genuinely unused — like classes and
+// arms above, anything still pointing at one (a subject, a teacher, an HOD)
+// blocks the delete rather than silently orphaning those rows.
+router.delete('/departments/:deptId', requireManagement, async (req, res) => {
+  const deptId = Number(req.params.deptId);
+  if (!Number.isInteger(deptId) || deptId < 1) return res.status(400).json({ error: 'Invalid department ID.' });
+  try {
+    const [[dept]] = await db.query('SELECT id, dept_name FROM departments WHERE id=? LIMIT 1', [deptId]);
+    if (!dept) return res.status(404).json({ error: 'Department not found.' });
+    const [[usage]] = await db.query(`SELECT
+      (SELECT COUNT(*) FROM subjects WHERE dept_id=?) AS subjects,
+      (SELECT COUNT(*) FROM teachers WHERE dept_id=?) AS teachers,
+      (SELECT COUNT(*) FROM hods WHERE dept_id=?) AS hods`, [deptId, deptId, deptId]);
+    const blockers = [];
+    if (usage.subjects) blockers.push(`${usage.subjects} subject(s)`);
+    if (usage.teachers) blockers.push(`${usage.teachers} teacher(s)`);
+    if (usage.hods) blockers.push(`${usage.hods} HOD(s)`);
+    if (blockers.length) return res.status(409).json({ error: `${dept.dept_name} still has ${blockers.join(' and ')} assigned. Move them to another department first.` });
+    await db.query('DELETE FROM departments WHERE id=?', [deptId]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'DELETE_DEPARTMENT', 'department', deptId, JSON.stringify({ dept_name: dept.dept_name })]);
+    res.json({ message: `${dept.dept_name} removed.` });
+  } catch (err) { console.error('[admin/departments/delete]', err); res.status(500).json({ error: 'Unable to remove department.' }); }
+});
+
+// Migrating a teacher to another department is deliberately admin/commandant
+// only (not HOD) — it can move a teacher out from under their current HOD's
+// oversight entirely, which is a different level of decision than day-to-day
+// department management. Existing subject/class assignments are left as-is
+// rather than silently wiped, since some may still be intentional (a
+// cross-department elective, for instance); the response says so plainly so
+// whoever runs this knows to go check.
+router.patch('/teachers/:teacherId/department', requireManagement, async (req, res) => {
+  const teacherId = Number(req.params.teacherId);
+  const dept_id = Number(req.body?.dept_id);
+  if (!Number.isInteger(teacherId) || teacherId < 1) return res.status(400).json({ error: 'Invalid teacher ID.' });
+  if (!Number.isInteger(dept_id) || dept_id < 1) return res.status(400).json({ error: 'A destination department is required.' });
+  try {
+    const [[teacher]] = await db.query(`SELECT t.id, t.dept_id, u.full_name FROM teachers t JOIN users u ON u.id=t.user_id WHERE t.id=? LIMIT 1`, [teacherId]);
+    if (!teacher) return res.status(404).json({ error: 'Teacher not found.' });
+    const [[dept]] = await db.query('SELECT id, dept_name FROM departments WHERE id=? LIMIT 1', [dept_id]);
+    if (!dept) return res.status(404).json({ error: 'Destination department not found.' });
+    if (teacher.dept_id === dept_id) return res.json({ message: `${teacher.full_name} is already in ${dept.dept_name}.` });
+    await db.query('UPDATE teachers SET dept_id=? WHERE id=?', [dept_id, teacherId]);
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'MIGRATE_TEACHER_DEPARTMENT', 'teacher', teacherId, JSON.stringify({ teacher: teacher.full_name, from_dept: teacher.dept_id, to_dept: dept_id })]);
+    res.json({ message: `${teacher.full_name} moved to ${dept.dept_name}. Review their subject and class assignments — existing ones were not changed automatically.` });
+  } catch (err) { console.error('[admin/teachers/migrate-department]', err); res.status(500).json({ error: 'Unable to move teacher.' }); }
 });
 
 // ---- ACADEMIC SESSIONS & TERMS ----
@@ -542,7 +596,7 @@ router.post('/departments', requireManagement, async (req, res) => {
 // transaction.
 router.get('/sessions', requireManagement, async (req, res) => {
   try {
-    const [sessions] = await db.query('SELECT id, session_name, is_current, start_date, end_date FROM academic_sessions ORDER BY start_date DESC, id DESC');
+    const [sessions] = await db.query('SELECT id, session_name, is_current, start_date, end_date, promoted_at FROM academic_sessions ORDER BY start_date DESC, id DESC');
     const [terms] = await db.query('SELECT id, session_id, term_number, term_name, start_date, end_date, is_current, result_locked FROM terms ORDER BY session_id DESC, term_number');
     const bySession = {};
     for (const t of terms) { (bySession[t.session_id] = bySession[t.session_id] || []).push(t); }
@@ -631,6 +685,61 @@ router.patch('/terms/:termId', requireManagement, async (req, res) => {
     res.json({ message: `${term.term_name} updated.` });
   } catch (err) { await conn.rollback(); console.error('[admin/terms/update]', err); res.status(500).json({ error: 'Unable to update term.' }); }
   finally { conn.release(); }
+});
+
+// ---- END-OF-SESSION PROMOTION ----
+// Rolling into a new session should move every active student up a class
+// level, graduate whoever is at the top level (however many class levels
+// the school actually has — this reads sort_order rather than hardcoding
+// "SS3", so it still works if a level is renamed or added), and leave
+// anyone repeating a class right where they are. This is deliberately its
+// own explicit action rather than something that fires automatically off
+// POST /sessions — a mass, hard-to-reverse update to every student's class
+// and status is exactly the kind of thing that should never be a silent
+// side effect of an unrelated create-a-record call. dry_run lets the admin
+// see the real counts before committing to anything.
+router.post('/sessions/:sessionId/promote', requireManagement, async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const dryRun = !!req.body?.dry_run;
+  const force = !!req.body?.force;
+  if (!Number.isInteger(sessionId) || sessionId < 1) return res.status(400).json({ error: 'Invalid session ID.' });
+  try {
+    const [[session]] = await db.query('SELECT id, session_name, promoted_at FROM academic_sessions WHERE id=? LIMIT 1', [sessionId]);
+    if (!session) return res.status(404).json({ error: 'Session not found.' });
+    if (session.promoted_at && !dryRun && !force) {
+      return res.status(409).json({ error: `Students were already promoted for ${session.session_name} on ${new Date(session.promoted_at).toISOString().slice(0, 10)}. Pass force to run it again anyway.` });
+    }
+
+    const [preview] = await db.query(`SELECT s.id, s.status, cl.level_name AS current_class, nxt.level_name AS next_class
+      FROM students s JOIN class_levels cl ON cl.id = s.class_level_id LEFT JOIN class_levels nxt ON nxt.sort_order = cl.sort_order + 1
+      WHERE s.status IN ('active','repeating')`);
+    const summary = { promoted: 0, graduated: 0, repeating: 0, by_class: {} };
+    for (const row of preview) {
+      if (row.status === 'repeating') { summary.repeating++; continue; }
+      if (row.next_class) { const key = `${row.current_class} → ${row.next_class}`; summary.promoted++; summary.by_class[key] = (summary.by_class[key] || 0) + 1; }
+      else { summary.graduated++; }
+    }
+
+    if (dryRun) return res.json({ dry_run: true, session_name: session.session_name, ...summary });
+
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query(`UPDATE students s JOIN class_levels cl ON cl.id = s.class_level_id LEFT JOIN class_levels nxt ON nxt.sort_order = cl.sort_order + 1
+        SET s.class_level_id = COALESCE(nxt.id, s.class_level_id),
+            s.status = CASE WHEN nxt.id IS NULL THEN 'graduated' ELSE 'active' END,
+            s.status_reason = CASE WHEN nxt.id IS NULL THEN 'Graduated at the end of the session' ELSE NULL END,
+            s.status_updated_at = NOW()
+        WHERE s.status = 'active'`);
+      await conn.query(`UPDATE students SET status='active', status_reason='Repeated the same class', status_updated_at=NOW() WHERE status='repeating'`);
+      await conn.query('UPDATE academic_sessions SET promoted_at=NOW() WHERE id=?', [sessionId]);
+      await conn.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
+        [req.user.id, 'PROMOTE_STUDENTS', 'academic_session', sessionId, JSON.stringify({ session_name: session.session_name, ...summary })]);
+      await conn.commit();
+      res.json({ message: `Promotion complete for ${session.session_name}: ${summary.promoted} promoted, ${summary.graduated} graduated, ${summary.repeating} kept in their current class.`, ...summary });
+    } catch (err) { await conn.rollback(); throw err; }
+    finally { conn.release(); }
+  } catch (err) { console.error('[admin/sessions/promote]', err); res.status(500).json({ error: 'Unable to run promotion.' }); }
 });
 
 // ---- CLASS LEVELS & ARMS ----
