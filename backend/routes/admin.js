@@ -215,7 +215,7 @@ router.delete('/users/:userId', requireManagement, async (req, res) => {
     // Preserve academic history and the audit trail. Account removal in the
     // management UI therefore means revoking portal access, not destroying
     // historical records.
-    const [result] = await db.query('UPDATE users SET is_active=0 WHERE id=? AND is_active=1', [targetId]);
+    const [result] = await db.query('UPDATE users SET is_active=0, session_version=session_version+1 WHERE id=? AND is_active=1', [targetId]);
     if (!result.affectedRows) return res.status(409).json({ error: 'Account is already inactive.' });
 
     await db.query(
@@ -237,7 +237,7 @@ router.patch('/users/:userId/status', requireManagement, async (req, res) => {
     const [[target]] = await db.query('SELECT id,role FROM users WHERE id=? LIMIT 1', [targetId]);
     if (!target) return res.status(404).json({ error: 'User not found.' });
     if (['admin','commandant'].includes(target.role) && req.user.role !== 'commandant') return res.status(403).json({ error: 'Only the Commandant can change management-level account status.' });
-    const [result] = await db.query('UPDATE users SET is_active=? WHERE id=?', [active, targetId]);
+    const [result] = await db.query('UPDATE users SET is_active=?, session_version=session_version+1 WHERE id=?', [active, targetId]);
     if (!result.affectedRows) return res.status(409).json({ error: active ? 'Account is already active.' : 'Account is already inactive.' });
     res.json({ message: active ? 'Account activated.' : 'Account deactivated.' });
   } catch (err) { console.error('[admin/status]', err); res.status(500).json({ error: 'Unable to update account status.' }); }
@@ -263,7 +263,7 @@ router.patch('/users/:userId/password', requireManagement, async (req, res) => {
     if (!target) return res.status(404).json({ error: 'User not found.' });
     if (['admin','commandant'].includes(target.role) && req.user.role !== 'commandant') return res.status(403).json({ error: 'Only the Commandant can reset a management-level account password.' });
     const hash = await bcrypt.hash(newPassword, 12);
-    await db.query('UPDATE users SET password_hash=? WHERE id=?', [hash, targetId]);
+    await db.query('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?', [hash, targetId]);
     await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
       [req.user.id, 'RESET_PASSWORD', 'user', targetId, JSON.stringify({ user_code: target.user_code })]);
     res.json({ message: `Password reset for ${target.full_name} (${target.user_code}).` });
@@ -297,7 +297,7 @@ router.patch('/students/:studentId/status', requireManagement, async (req, res) 
     // means they won't move up at the next promotion, not that they've left
     // the school. Every other lifecycle state locks the account without
     // touching admission records, results, or attendance history.
-    await conn.query('UPDATE users SET is_active=? WHERE id=?', [['active', 'repeating'].includes(status) ? 1 : 0, row.user_id]);
+    await conn.query('UPDATE users SET is_active=?, session_version=session_version+1 WHERE id=?', [['active', 'repeating'].includes(status) ? 1 : 0, row.user_id]);
     await conn.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
       [req.user.id, 'STUDENT_STATUS_CHANGE', 'student', studentId, JSON.stringify({ user_code: row.user_code, from: row.current_status, to: status, reason })]);
     await conn.commit();

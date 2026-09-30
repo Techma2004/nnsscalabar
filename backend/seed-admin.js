@@ -17,7 +17,7 @@ const db = require('./db');
   const [existing] = await db.query('SELECT id FROM users WHERE user_code=? LIMIT 1',[code]);
   const hash = await bcrypt.hash(password,12);
   if (existing.length) {
-    await db.query('UPDATE users SET full_name=?,email=?,password_hash=?,role=?,is_active=1 WHERE id=?',[name,email,hash,role,existing[0].id]);
+    await db.query('UPDATE users SET full_name=?,email=?,password_hash=?,role=?,is_active=1,session_version=session_version+1 WHERE id=?',[name,email,hash,role,existing[0].id]);
     console.log(`Updated ${role} account ${code}.`);
   } else {
     await db.query('INSERT INTO users(user_code,full_name,email,password_hash,role,is_active) VALUES(?,?,?,?,?,1)',[code,name,email,hash,role]);

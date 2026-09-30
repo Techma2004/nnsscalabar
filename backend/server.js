@@ -18,13 +18,72 @@ app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 
 app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Permissions-Policy','camera=(self), microphone=(), geolocation=()');if(isProduction)res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');next();});
 const explicitOrigins=(process.env.FRONTEND_ORIGIN||'').split(',').map(v=>v.trim()).filter(Boolean);
-function isPrivateNetworkOrigin(origin){try{const {hostname}=new URL(origin);return hostname==='localhost'||hostname==='127.0.0.1'||hostname==='::1'||/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)||/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)||/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);}catch{return false;}}
-app.use(cors({origin(origin,callback){if(!origin||explicitOrigins.includes(origin)||isPrivateNetworkOrigin(origin))return callback(null,true);return callback(new Error('Origin not allowed by CORS'));},credentials:true,methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],allowedHeaders:['Content-Type','Authorization']}));
-app.use(express.json({limit:'12mb'}));
+function getAllowedOrigins(){
+  const origins=new Set([
+    `http://localhost:${PORT}`,
+    `http://127.0.0.1:${PORT}`,
+    `http://[::1]:${PORT}`,
+    ...explicitOrigins
+  ]);
+  for(const address of getLanAddresses()) origins.add(`http://${address}:${PORT}`);
+  return origins;
+}
+app.use(cors({
+  origin(origin,callback){
+    if(!origin||getAllowedOrigins().has(origin)) return callback(null,true);
+    return callback(new Error('Origin not allowed by CORS'));
+  },
+  credentials:true,
+  methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders:['Content-Type','Authorization']
+}));
+// OCR score-sheet images are sent as base64 JSON and need a larger body limit.
+// Keep this route-specific parser before the global parser so normal API requests
+// remain tightly bounded without breaking score-sheet import.
+app.use('/api/results/ai-import', express.json({limit:'11mb'}));
+
+app.use(express.json({limit:'1mb'}));
 app.use(express.urlencoded({extended:true,limit:'1mb'}));
 app.use((req,res,next)=>{const raw=req.headers.cookie||'';req.cookies={};for(const part of raw.split(';')){const i=part.indexOf('=');if(i<1)continue;const key=decodeURIComponent(part.slice(0,i).trim());const value=decodeURIComponent(part.slice(i+1).trim());req.cookies[key]=value;}next();});
 const authAttempts=new Map();
-function loginRateLimit(req,res,next){const key=`${req.ip}:${String(req.body?.user_code||'').toUpperCase()}`;const now=Date.now();const entry=authAttempts.get(key)||{count:0,resetAt:now+15*60*1000};if(now>entry.resetAt){entry.count=0;entry.resetAt=now+15*60*1000;}entry.count+=1;authAttempts.set(key,entry);if(entry.count>10)return res.status(429).json({error:'Too many login attempts. Please try again later.'});next();}
+const LOGIN_WINDOW_MS=15*60*1000;
+const LOGIN_MAX_ATTEMPTS=10;
+const LOGIN_MAX_ENTRIES=5000;
+
+function cleanupAuthAttempts(now=Date.now()){
+  for(const [key,entry] of authAttempts){
+    if(now>=entry.resetAt) authAttempts.delete(key);
+  }
+}
+
+function loginRateLimit(req,res,next){
+  const now=Date.now();
+
+  if(authAttempts.size>=LOGIN_MAX_ENTRIES) cleanupAuthAttempts(now);
+
+  const userCode=String(req.body?.user_code||'').trim().toUpperCase();
+  const key=`${req.ip}:${userCode}`;
+  const entry=authAttempts.get(key);
+
+  if(!entry||now>=entry.resetAt){
+    authAttempts.set(key,{count:1,resetAt:now+LOGIN_WINDOW_MS});
+    return next();
+  }
+
+  entry.count+=1;
+
+  if(entry.count>LOGIN_MAX_ATTEMPTS){
+    return res.status(429).json({
+      error:'Too many login attempts. Please try again later.'
+    });
+  }
+
+  next();
+}
+
+const authCleanupTimer=setInterval(()=>cleanupAuthAttempts(),LOGIN_WINDOW_MS);
+authCleanupTimer.unref();
+
 app.use('/api/auth/login',loginRateLimit);
 app.get('/api/health',async(req,res)=>{try{await db.query('SELECT 1');res.json({status:'ok',service:'nnss-calabar-api',database:'connected',time:new Date().toISOString()});}catch(err){res.status(503).json({status:'degraded',service:'nnss-calabar-api',database:'unavailable'});}});
 app.use('/api/auth',require('./routes/auth'));
