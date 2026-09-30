@@ -34,7 +34,7 @@ router.post('/login', async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      `SELECT id, user_code, full_name, email, role, password_hash, is_active
+      `SELECT id, user_code, full_name, email, role, password_hash, is_active, session_version
        FROM users WHERE user_code = ? LIMIT 1`, [user_code]
     );
     const user = rows[0];
@@ -42,7 +42,7 @@ router.post('/login', async (req, res) => {
     if (!user || !valid || !user.is_active) return res.status(401).json({ error: 'Invalid user ID or password.' });
 
     const token = jwt.sign(
-      { id: user.id, user_code: user.user_code, role: user.role, name: user.full_name },
+      { id: user.id, user_code: user.user_code, role: user.role, name: user.full_name, sv: user.session_version },
       process.env.JWT_SECRET,
       { expiresIn: '8h', algorithm: 'HS256' }
     );
@@ -117,7 +117,7 @@ router.patch('/password', auth, async (req, res) => {
     const valid = await bcrypt.compare(currentPassword, row.password_hash);
     if (!valid) return res.status(401).json({ error: 'Current password is incorrect.' });
     const hash = await bcrypt.hash(newPassword, 12);
-    await db.query('UPDATE users SET password_hash=? WHERE id=?', [hash, req.user.id]);
+    await db.query('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?', [hash, req.user.id]);
     res.json({ message: 'Password updated successfully.' });
   } catch (err) {
     console.error('[auth/password]', err);
