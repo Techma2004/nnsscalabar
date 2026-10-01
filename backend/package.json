@@ -1,11 +1,12 @@
 {
   "name": "nnss-calabar-backend",
-  "version": "1.0.0",
+  "version": "1.7.0",
   "description": "NNSS Calabar School Management API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "private": "true",
     "seed:admin": "node seed-admin.js"
   },
   "dependencies": {
