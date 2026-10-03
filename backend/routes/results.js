@@ -20,6 +20,32 @@ const OCR_RUNNER = String(process.env.OCR_RUNNER || 'uv').toLowerCase();
 const OCR_PYTHON_BIN = process.env.OCR_PYTHON_BIN || 'python3';
 const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 20000);
 
+// SECURITY FIX: OCR (Tesseract, now with multiple preprocessing/PSM passes)
+// is genuinely CPU-expensive, and this route had no rate limiting at all —
+// unlike /auth/login, any authenticated teacher account (or a buggy client
+// stuck retrying) could fire off requests back-to-back and tie up the
+// server for everyone, including on the modest hardware this app is meant
+// to run on. Keyed by user ID since this route is already authenticated.
+const OCR_RATE_WINDOW_MS = 5 * 60 * 1000;
+const OCR_RATE_MAX = 6;
+const OCR_RATE_MAX_ENTRIES = 5000;
+const ocrAttempts = new Map();
+function cleanupOcrAttempts(now = Date.now()) {
+  for (const [key, entry] of ocrAttempts) if (now >= entry.resetAt) ocrAttempts.delete(key);
+}
+function ocrRateLimit(req, res, next) {
+  const now = Date.now();
+  if (ocrAttempts.size >= OCR_RATE_MAX_ENTRIES) cleanupOcrAttempts(now);
+  const key = String(req.user.id);
+  const entry = ocrAttempts.get(key);
+  if (!entry || now >= entry.resetAt) { ocrAttempts.set(key, { count: 1, resetAt: now + OCR_RATE_WINDOW_MS }); return next(); }
+  entry.count += 1;
+  if (entry.count > OCR_RATE_MAX) return res.status(429).json({ error: 'Too many scans in a short time. Please wait a few minutes and try again.' });
+  next();
+}
+const ocrCleanupTimer = setInterval(() => cleanupOcrAttempts(), OCR_RATE_WINDOW_MS);
+ocrCleanupTimer.unref();
+
 /** Runs the Tesseract OCR script as a subprocess. Resolves with the parsed
  * JSON the script prints, or rejects with a short, user-safe message —
  * never with raw stderr/stack details, which could leak server paths. */
@@ -153,7 +179,7 @@ router.get('/ai-status', async (req, res) => {
   }
 });
 
-router.post('/ai-import', async (req, res) => {
+router.post('/ai-import', ocrRateLimit, async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can import score sheets.' });
   const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
   if (!enabled) return res.status(503).json({ error: 'Score-sheet import is disabled. Use manual score entry.' });
@@ -313,12 +339,38 @@ router.get('/rejections', async (req, res) => {
 
 router.get('/student/:studentCode', async (req, res) => {
   const studentCode = String(req.params.studentCode || '').trim().toUpperCase();
-  if (req.user.role === 'student' && req.user.user_code !== studentCode) return res.status(403).json({ error: 'You can only view your own results.' });
+  const role = req.user.role;
+  if (role === 'student' && req.user.user_code !== studentCode) return res.status(403).json({ error: 'You can only view your own results.' });
   try {
-    const canSeePending = ['teacher','hod','admin','commandant'].includes(req.user.role);
+    // SECURITY FIX: any authenticated teacher or HOD could previously pull a
+    // *named* student's full result history (approved and pending both) by
+    // just changing the code in the URL — student codes are short and
+    // sequential (STU0001, STU0002...), so this was trivially enumerable
+    // school-wide, across every department and class, not just the ones a
+    // given teacher/HOD actually has a relationship to. A teacher is now
+    // scoped to students in a class/arm they are currently assigned to
+    // teach; an HOD is scoped to their own department's subjects only —
+    // matching the isolation already enforced everywhere else in the app
+    // (the approval queue, department stats, etc.). Admin/commandant are
+    // unrestricted, as they are for every other school-wide view.
+    let canSeePending = ['admin', 'commandant'].includes(role);
+    let extraWhere = '';
+    const extraParams = [];
+    if (role === 'teacher') {
+      extraWhere = `AND EXISTS (SELECT 1 FROM teacher_class_assignments tca JOIN teachers tc ON tc.id=tca.teacher_id
+        JOIN academic_sessions asx ON asx.id=tca.session_id
+        WHERE tc.user_id=? AND tca.class_level_id=s.class_level_id AND tca.arm_id=s.arm_id AND asx.is_current=1)`;
+      extraParams.push(req.user.id);
+      canSeePending = true;
+    }
+    if (role === 'hod') {
+      extraWhere = `AND sub.dept_id=(SELECT dept_id FROM hods WHERE user_id=?)`;
+      extraParams.push(req.user.id);
+      canSeePending = true;
+    }
     const [rows] = await db.query(`SELECT r.id,sub.subject_name,t.term_name,t.term_number,ac.session_name,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.is_approved,r.uploaded_at,r.approved_at
       FROM results r JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id JOIN students s ON s.id=r.student_id JOIN users u ON u.id=s.user_id
-      WHERE u.user_code=? AND (r.is_approved=1 OR ?) ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, [studentCode, canSeePending ? 1 : 0]);
+      WHERE u.user_code=? AND (r.is_approved=1 OR ?) ${extraWhere} ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, [studentCode, canSeePending ? 1 : 0, ...extraParams]);
     res.json(rows);
   } catch (err) { console.error('[results/student]', err); res.status(500).json({ error: 'Unable to load results.' }); }
 });
