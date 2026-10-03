@@ -5,6 +5,10 @@ const db = require('../db');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+// Used only to give a nonexistent user_code the same bcrypt.compare timing
+// cost as a real one at login (see the SECURITY FIX comment below) — not a
+// real credential, never checked against an actual account.
+const DUMMY_HASH = '$2a$10$2Y2qiYGDHmB7myYdIrRX.Oc6e4SEVwukNrSIVIF7aGY.9jXxnO55.';
 const isProduction = process.env.NODE_ENV === 'production';
 // Secure cookies require HTTPS. A school running this on its own LAN typically has
 // no TLS certificate, so forcing `secure` on whenever NODE_ENV=production would
@@ -38,7 +42,13 @@ router.post('/login', async (req, res) => {
        FROM users WHERE user_code = ? LIMIT 1`, [user_code]
     );
     const user = rows[0];
-    const valid = user ? await bcrypt.compare(password, user.password_hash) : false;
+    // SECURITY FIX: bcrypt.compare only ran when a matching user_code was
+    // found, so a nonexistent code returned instantly while a real one took
+    // bcrypt's deliberately-slow hashing time — an attacker could use that
+    // timing difference alone to enumerate valid user_codes without ever
+    // guessing a password. Always run a compare, against a fixed dummy hash
+    // when there's no real user, so both paths take comparable time.
+    const valid = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
     if (!user || !valid || !user.is_active) return res.status(401).json({ error: 'Invalid user ID or password.' });
 
     const token = jwt.sign(
