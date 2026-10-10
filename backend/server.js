@@ -12,7 +12,10 @@ const HOST = process.env.HOST || '0.0.0.0';
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 const isProduction = process.env.NODE_ENV === 'production';
 
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('JWT_SECRET must be set and at least 32 characters long.');
+const jwtSecret = String(process.env.JWT_SECRET || '');
+if (jwtSecret.length < 32 || /^(replace|change[-_ ]?me|your[-_ ]|example|default)/i.test(jwtSecret)) {
+  throw new Error('JWT_SECRET must be a unique random secret of at least 32 characters; do not use a placeholder value.');
+}
 app.disable('x-powered-by');
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 
