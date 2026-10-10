@@ -22,7 +22,19 @@ if (/^(change-this-database-password|replace-with-a-long-unique-password)/i.test
   throw new Error('DB_PASSWORD is still a placeholder; configure a unique database password before starting the server.');
 }
 app.disable('x-powered-by');
-app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+
+// Trust only the exact number of reverse-proxy hops configured by the operator.
+// Default 0 means direct client connections. Never use trust proxy=true: it can
+// let clients spoof X-Forwarded-For and bypass IP-based rate limits.
+const trustProxyHopsRaw = process.env.TRUST_PROXY_HOPS ?? '0';
+if (!/^(0|[1-9][0-9]*)$/.test(trustProxyHopsRaw)) {
+  throw new Error('TRUST_PROXY_HOPS must be an integer from 0 to 10.');
+}
+const trustProxyHops = Number(trustProxyHopsRaw);
+if (!Number.isSafeInteger(trustProxyHops) || trustProxyHops > 10) {
+  throw new Error('TRUST_PROXY_HOPS must be an integer from 0 to 10.');
+}
+app.set('trust proxy', trustProxyHops === 0 ? false : trustProxyHops);
 
 // Bound API request volume before body parsing, authentication, or database work.
 // The in-memory store is suitable for this single-process deployment; use a shared
