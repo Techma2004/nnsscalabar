@@ -6,6 +6,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const db = require('./db');
+const { routeLimiter, parseCookies, originGuard, securityHeaders } = require('./middleware/security');
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
@@ -48,7 +49,7 @@ const apiRateLimit = rateLimit({
 });
 app.use('/api', apiRateLimit);
 
-app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Permissions-Policy','camera=(self), microphone=(), geolocation=()');if(isProduction)res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');next();});
+app.use(securityHeaders(isProduction));
 const explicitOrigins=(process.env.FRONTEND_ORIGIN||'').split(',').map(v=>v.trim()).filter(Boolean);
 function getAllowedOrigins(){
   const origins=new Set([
@@ -63,11 +64,16 @@ function getAllowedOrigins(){
 app.use(cors({
   origin(origin,callback){
     if(!origin||getAllowedOrigins().has(origin)) return callback(null,true);
-    return callback(new Error('Origin not allowed by CORS'));
+    return callback(Object.assign(new Error('Origin not allowed by CORS'),{status:403,expose:true}));
   },
   credentials:true,
   methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders:['Content-Type','Authorization']
+}));
+// Reject state-changing requests that a browser reports as coming from another site.
+app.use(originGuard((origin,req)=>{
+  if(getAllowedOrigins().has(origin)) return true;
+  try{return new URL(origin).host===req.get('host');}catch{return false;}
 }));
 // OCR score-sheet images are sent as base64 JSON and need a larger body limit.
 // Keep this route-specific parser before the global parser so normal API requests
@@ -78,7 +84,7 @@ app.use('/api/results/sheet/import', express.json({limit:'6mb'}));
 
 app.use(express.json({limit:'1mb'}));
 app.use(express.urlencoded({extended:true,limit:'1mb'}));
-app.use((req,res,next)=>{const raw=req.headers.cookie||'';req.cookies={};for(const part of raw.split(';')){const i=part.indexOf('=');if(i<1)continue;const key=decodeURIComponent(part.slice(0,i).trim());const value=decodeURIComponent(part.slice(i+1).trim());req.cookies[key]=value;}next();});
+app.use(parseCookies);
 const authAttempts=new Map();
 const authIpAttempts=new Map();
 const LOGIN_WINDOW_MS=15*60*1000;
@@ -137,11 +143,26 @@ app.use('/api/results',require('./routes/results'));
 app.use('/api/assignments',require('./routes/assignments'));
 app.use('/api/announcements',require('./routes/announcements'));
 app.use('/api/dashboard',require('./routes/dashboard'));
-if(fs.existsSync(FRONTEND_DIR)){app.use(express.static(FRONTEND_DIR,{extensions:['html'],maxAge:isProduction?'1h':0}));app.get('*',(req,res,next)=>{if(req.path.startsWith('/api/'))return next();res.sendFile(path.join(FRONTEND_DIR,'index.html'));});}
+if(fs.existsSync(FRONTEND_DIR)){
+  // Static pages touch the file system, so they get their own (generous) ceiling.
+  const staticLimit=routeLimiter(1000,'Too many page requests. Please try again later.');
+  app.use(staticLimit);
+  app.use(express.static(FRONTEND_DIR,{extensions:['html'],maxAge:isProduction?'1h':0}));
+  // Express 5 (path-to-regexp 8) rejects a bare '*'; a named wildcard is required.
+  app.get('/{*splat}',(req,res,next)=>{if(req.path.startsWith('/api/'))return next();res.sendFile(path.join(FRONTEND_DIR,'index.html'));});
+}
 app.use((req,res)=>res.status(404).json({error:'Route not found.'}));
-app.use((err,req,res,next)=>{console.error('[server]',err.stack||err.message||err);if(res.headersSent)return next(err);res.status(err.status||500).json({error:isProduction?'An unexpected server error occurred.':err.message});});
+app.use((err,req,res,next)=>{
+  const status=Number.isInteger(err.status)&&err.status>=400&&err.status<600?err.status:500;
+  if(status>=500)console.error('[server]',err.stack||err.message||err);
+  if(res.headersSent)return next(err);
+  // Client errors (bad JSON, body too large, blocked origin) are safe to describe; server errors are not.
+  const message=status<500?(status===413?'Request is too large.':status===403?'Request not allowed.':'Invalid request.'):(isProduction?'An unexpected server error occurred.':err.message);
+  res.status(status).json({error:message});
+});
 function getLanAddresses(){const nets=os.networkInterfaces();const addresses=[];for(const name of Object.keys(nets))for(const net of nets[name]||[])if(net.family==='IPv4'&&!net.internal)addresses.push(net.address);return addresses;}
 const server=app.listen(PORT,HOST,async()=>{try{await db.query('SELECT 1');console.log('Database connection: OK');}catch(err){console.error('Database connection failed:',err.message);}console.log(`NNSS Calabar server listening on http://localhost:${PORT}`);if(HOST==='0.0.0.0'||HOST==='::'){const lan=getLanAddresses();if(lan.length){console.log('Also reachable on this network at:');lan.forEach(ip=>console.log(`  http://${ip}:${PORT}`));console.log('Share one of the addresses above with devices on the same wifi/LAN to let them use the portal.');}else console.log('No LAN network interface detected yet — connect this machine to the school network to enable local-network access.');}});
-async function shutdown(signal){console.log(`${signal} received; shutting down...`);server.close(async()=>{try{await db.end();}finally{process.exit(0);}});}
+async function shutdown(signal){console.log(`${signal} received; shutting down...`);const force=setTimeout(()=>process.exit(1),10000);force.unref();server.close(async()=>{try{await db.end();}finally{process.exit(0);}});}
 process.on('SIGTERM',()=>shutdown('SIGTERM'));process.on('SIGINT',()=>shutdown('SIGINT'));
+app.server=server;
 module.exports=app;

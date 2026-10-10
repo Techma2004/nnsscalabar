@@ -9,8 +9,13 @@ const auth = require('../middleware/auth');
 const scheme = require('../scheme');
 const sheets = require('../sheets');
 const sheetExcel = require('../sheetExcel');
+const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
+router.use(routeLimiter(300, 'Too many result requests. Please try again later.'));
 router.use(auth);
+// Free-text notes (approval / rejection reasons) are stored as-is, so bound them.
+const NOTE_MAX = 500;
+const cleanNote = raw => (typeof raw === 'string' ? raw.trim().slice(0, NOTE_MAX) : '');
 
 const OCR_DIR = path.join(__dirname, '..', '..');
 const OCR_SCRIPT = path.join(OCR_DIR, 'ocr_score_sheet.py');
@@ -338,7 +343,7 @@ router.put('/approve/:resultId', async (req, res) => {
     if (row.is_approved) return res.json({ message: 'Result was already approved.' });
     await conn.beginTransaction();
     await conn.query('UPDATE results SET is_approved=1,approved_by=?,approved_at=NOW(),rejected_at=NULL,rejected_by=NULL,rejection_note=NULL WHERE id=?', [req.user.id, resultId]);
-    await conn.query('INSERT INTO result_approval_log(result_id,action,actor_id,note) VALUES (?,?,?,?)', [resultId,'approved',req.user.id,req.body?.note || null]);
+    await conn.query('INSERT INTO result_approval_log(result_id,action,actor_id,note) VALUES (?,?,?,?)', [resultId,'approved',req.user.id,cleanNote(req.body?.note) || null]);
     await conn.commit();
     res.json({ message: 'Result approved.' });
   } catch (err) { await conn.rollback(); console.error('[results/approve]', err); res.status(500).json({ error: 'Unable to approve result.' }); }
@@ -367,7 +372,7 @@ router.put('/approve-sheet', async (req, res) => {
     if (!ids.length) { await conn.rollback(); return res.json({ message: 'Nothing pending on this sheet.', approved: 0 }); }
     const idList = ids.map(r => r.id);
     await conn.query('UPDATE results SET is_approved=1, approved_by=?, approved_at=NOW(), rejected_at=NULL, rejected_by=NULL, rejection_note=NULL WHERE id IN (?)', [req.user.id, idList]);
-    await conn.query('INSERT INTO result_approval_log (result_id, action, actor_id, note) VALUES ?', [idList.map(id => [id, 'approved', req.user.id, req.body?.note || 'Approved with the whole class sheet'])]);
+    await conn.query('INSERT INTO result_approval_log (result_id, action, actor_id, note) VALUES ?', [idList.map(id => [id, 'approved', req.user.id, cleanNote(req.body?.note) || 'Approved with the whole class sheet'])]);
     await conn.commit();
     res.json({ message: `${idList.length} result${idList.length === 1 ? '' : 's'} approved.`, approved: idList.length });
   } catch (err) { try { await conn.rollback(); } catch { /* nothing to roll back */ } console.error('[results/approve-sheet]', err); res.status(500).json({ error: 'Unable to approve this sheet.' }); }
@@ -383,7 +388,7 @@ router.put('/approve-sheet', async (req, res) => {
 router.put('/reject/:resultId', async (req, res) => {
   if (req.user.role !== 'hod') return res.status(403).json({ error: 'Only HODs can disapprove results.' });
   const resultId = Number(req.params.resultId);
-  const note = String(req.body?.note || '').trim();
+  const note = cleanNote(req.body?.note);
   if (!Number.isInteger(resultId)) return res.status(400).json({ error: 'Invalid result ID.' });
   if (!note) return res.status(400).json({ error: 'A reason is required so the teacher knows what to correct.' });
   const conn = await db.getConnection();

@@ -11,14 +11,31 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const mysql = require('../backend/node_modules/mysql2/promise');
 const bcrypt = require('../backend/node_modules/bcryptjs');
 require('../backend/node_modules/dotenv').config({ path: path.join(__dirname, '..', 'backend', '.env') });
 
+
+// Demo/test accounts must never ship with a published password. Use DEMO_PASSWORD
+// if the operator supplied one, otherwise generate a random one per run. The value
+// is written to a private (0600, git-ignored) file instead of being printed.
+function resolveDemoPassword() {
+  const supplied = process.env.DEMO_PASSWORD;
+  if (supplied) return { password: supplied, generated: false };
+  return { password: crypto.randomBytes(12).toString('base64url'), generated: true };
+}
+function saveDemoPassword(password, generated) {
+  const file = path.join(__dirname, '.demo-credentials');
+  fs.writeFileSync(file, `Demo account password: ${password}\n`, { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch { /* best effort on filesystems without modes */ }
+  return generated ? `A random password was generated and saved to ${file}` : `The password from DEMO_PASSWORD was saved to ${file}`;
+}
+
 const DB_NAME = 'nnss_calabar_demo';
 const STUDENT_COUNT = Math.max(1, Number(process.env.STUDENT_COUNT || 600));
 const TEACHER_COUNT = Math.max(6, Number(process.env.TEACHER_COUNT || 48));
-const PASSWORD = process.env.DEMO_PASSWORD || 'DemoPass123!';
+const { password: PASSWORD, generated: PASSWORD_GENERATED } = resolveDemoPassword();
 
 const studentFirst = [
   'Abasi','Ada','Amina','Blessing','Caleb','Daniel','David','Diana','Edidiong','Emem',
@@ -322,7 +339,7 @@ async function main() {
     console.log('Student logins: STU0001-STU' + String(STUDENT_COUNT).padStart(4, '0'));
     console.log('Teacher logins: TCH001-TCH' + String(TEACHER_COUNT).padStart(3, '0'));
     console.log('HOD logins:     HOD001-HOD' + String(departments.length).padStart(3, '0'));
-    console.log('Demo password:  ' + PASSWORD);
+    console.log(saveDemoPassword(PASSWORD, PASSWORD_GENERATED));
     console.log('==============================================');
   } catch (error) {
     try { await db.rollback(); } catch {}

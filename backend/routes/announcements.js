@@ -1,7 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
+const v = require('../validate');
+const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
+router.use(routeLimiter(200, 'Too many announcement requests. Please try again later.'));
+const BODY_MAX = 5000;
 
 const VALID_AUDIENCE = ['student', 'teacher', 'hod', 'admin', 'commandant'];
 const VALID_TYPES = ['info', 'warn', 'success', 'danger'];
@@ -58,9 +62,12 @@ router.post('/', auth, async (req, res) => {
   const audience = normalizeAudience(req.body?.audience, req.user.role).join(',');
   if (!title || !body) return res.status(400).json({ error: 'Title and announcement body are required.' });
   if (title.length > 200) return res.status(400).json({ error: 'Title must be 200 characters or fewer.' });
+  if (body.length > BODY_MAX) return res.status(400).json({ error: `Announcement body must be ${BODY_MAX} characters or fewer.` });
+  const expires_at = v.optDate(req.body?.expires_at);
+  if (expires_at === undefined) return res.status(400).json({ error: 'Expiry must be a valid date.' });
   try {
     const [result] = await db.query(`INSERT INTO announcements(title,body,type,author_id,audience,is_pinned,expires_at) VALUES(?,?,?,?,?,?,?)`,
-      [title, body, type, req.user.id, audience, req.body?.is_pinned ? 1 : 0, req.body?.expires_at || null]);
+      [title, body, type, req.user.id, audience, req.body?.is_pinned ? 1 : 0, expires_at]);
     res.status(201).json({ id: result.insertId, message: 'Announcement published.' });
   } catch (err) { console.error('[announcements/post]', err); res.status(500).json({ error: 'Unable to publish announcement.' }); }
 });
@@ -76,12 +83,12 @@ router.patch('/:id', auth, async (req, res) => {
 
     const fields = [];
     const params = [];
-    if (req.body?.title != null) { const t = String(req.body.title).trim(); if (!t) return res.status(400).json({ error: 'Title cannot be empty.' }); fields.push('title=?'); params.push(t); }
-    if (req.body?.body != null) { const b = String(req.body.body).trim(); if (!b) return res.status(400).json({ error: 'Announcement body cannot be empty.' }); fields.push('body=?'); params.push(b); }
+    if (req.body?.title != null) { const t = String(req.body.title).trim(); if (!t) return res.status(400).json({ error: 'Title cannot be empty.' }); if (t.length > 200) return res.status(400).json({ error: 'Title must be 200 characters or fewer.' }); fields.push('title=?'); params.push(t); }
+    if (req.body?.body != null) { const b = String(req.body.body).trim(); if (!b) return res.status(400).json({ error: 'Announcement body cannot be empty.' }); if (b.length > BODY_MAX) return res.status(400).json({ error: `Announcement body must be ${BODY_MAX} characters or fewer.` }); fields.push('body=?'); params.push(b); }
     if (req.body?.type != null) { fields.push('type=?'); params.push(VALID_TYPES.includes(req.body.type) ? req.body.type : 'info'); }
     if (req.body?.audience != null) { fields.push('audience=?'); params.push(normalizeAudience(req.body.audience, req.user.role).join(',')); }
     if (req.body?.is_pinned != null) { fields.push('is_pinned=?'); params.push(req.body.is_pinned ? 1 : 0); }
-    if (req.body?.expires_at !== undefined) { fields.push('expires_at=?'); params.push(req.body.expires_at || null); }
+    if (req.body?.expires_at !== undefined) { const e = v.optDate(req.body.expires_at); if (e === undefined) return res.status(400).json({ error: 'Expiry must be a valid date.' }); fields.push('expires_at=?'); params.push(e); }
     if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
     params.push(id);
     await db.query(`UPDATE announcements SET ${fields.join(', ')} WHERE id=?`, params);
