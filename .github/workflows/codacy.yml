@@ -59,7 +59,7 @@ jobs:
       # code scanning. Assign stable per-run IDs without suppressing any result.
       - name: Assign unique SARIF categories
         run: |
-          jq '(.runs) |= (to_entries | map(.value.automationDetails = ((.value.automationDetails // {}) + {id: ("codacy-" + (.key | tostring))}) | .value)' results.sarif > results.unique.sarif
+          jq '(.runs) |= (to_entries | map(. as $entry | $entry.value | .automationDetails = ((.automationDetails // {}) + {id: ("codacy-" + ($entry.key | tostring))})))' results.sarif > results.unique.sarif
           mv results.unique.sarif results.sarif
 
       # Upload the SARIF file generated in the previous step
