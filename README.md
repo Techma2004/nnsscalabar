@@ -233,7 +233,7 @@ Edit `backend/.env`:
 ```dotenv
 NODE_ENV=development
 PORT=5000
-HOST=0.0.0.0
+HOST=127.0.0.1
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=nnss_admin
@@ -243,7 +243,7 @@ DB_POOL_SIZE=10
 JWT_SECRET=
 FRONTEND_ORIGIN=
 TRUST_PROXY=false
-COOKIE_SECURE=true
+COOKIE_SECURE=false
 ```
 
 ### Password quoting in `.env`
@@ -264,7 +264,7 @@ Other important settings:
 |---|---|
 | `NODE_ENV` | `development` or `production` |
 | `PORT` | HTTP port; defaults to `5000` |
-| `HOST` | `0.0.0.0` for LAN access, `127.0.0.1` for local-only access |
+| `HOST` | Defaults to `127.0.0.1` for local-only access; use `0.0.0.0` only when intentionally enabling LAN access |
 | `DB_HOST`, `DB_PORT` | Database connection address |
 | `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Database credentials and name |
 | `DB_POOL_SIZE` | MySQL connection pool size |
