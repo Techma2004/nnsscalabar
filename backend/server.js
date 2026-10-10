@@ -17,7 +17,7 @@ if (jwtSecret.length < 32 || /^(replace|change[-_ ]?me|your[-_ ]|example|default
   throw new Error('JWT_SECRET must be a unique random secret of at least 32 characters; do not use a placeholder value.');
 }
 const dbPassword = String(process.env.DB_PASSWORD || '');
-if (/^(change-this-database-password|replace-with-a-long-unique-password)$/i.test(dbPassword)) {
+if (/^(change-this-database-password|replace-with-a-long-unique-password)/i.test(dbPassword)) {
   throw new Error('DB_PASSWORD is still a placeholder; configure a unique database password before starting the server.');
 }
 app.disable('x-powered-by');
