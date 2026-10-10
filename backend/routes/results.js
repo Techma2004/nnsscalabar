@@ -449,8 +449,8 @@ router.get('/student/:studentCode', async (req, res) => {
     const extraParams = [];
     if (role === 'teacher') {
       extraWhere = `AND EXISTS (SELECT 1 FROM teacher_class_assignments tca JOIN teachers tc ON tc.id=tca.teacher_id
-        JOIN academic_sessions asx ON asx.id=tca.session_id
-        WHERE tc.user_id=? AND tca.class_level_id=s.class_level_id AND tca.arm_id=s.arm_id AND asx.is_current=1)`;
+        WHERE tc.user_id=? AND tca.subject_id=r.subject_id AND tca.class_level_id=s.class_level_id
+          AND tca.arm_id=s.arm_id AND tca.session_id=ac.id AND ac.is_current=1)`;
       extraParams.push(req.user.id);
       canSeePending = true;
     }
