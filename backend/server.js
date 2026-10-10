@@ -13,7 +13,7 @@ const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 const isProduction = process.env.NODE_ENV === 'production';
 
 const jwtSecret = String(process.env.JWT_SECRET || '');
-if (jwtSecret.length < 32 || /^(replace|change[-_ ]?me|your[-_ ]|example|default)/i.test(jwtSecret)) {
+if (jwtSecret.length < 32 || /^(replace|change[-_ ]?me|your[-_ ]|example|default|generate[-_ ]|insert[-_ ]|put[-_ ])/i.test(jwtSecret)) {
   throw new Error('JWT_SECRET must be a unique random secret of at least 32 characters; do not use a placeholder value.');
 }
 app.disable('x-powered-by');
