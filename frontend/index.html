@@ -22,7 +22,7 @@
       <span>Hardwork and Discipline</span>
     </div>
   </a>
-  <button class="hamburger" onclick="toggleMobileNav()"><span></span><span></span><span></span></button>
+  <button class="hamburger" data-action="nav"><span></span><span></span><span></span></button>
   <div class="nav-right">
     <ul class="nav-links" id="navLinks">
       <li><a href="index.html" class="active">Home</a></li>
@@ -31,7 +31,7 @@
       <li><a href="newsletter.html">Newsletter</a></li>
       <li><a href="login.html" class="login-btn">Portal Login</a></li>
     </ul>
-    <button class="theme-toggle" onclick="toggleTheme()"></button>
+    <button class="theme-toggle" data-action="theme"></button>
   </div>
 </nav>
 
@@ -75,8 +75,8 @@
 
   <!-- Arrows -->
   <div class="carousel-arrows">
-    <button onclick="changeSlide(-1)">&#8592;</button>
-    <button onclick="changeSlide(1)">&#8594;</button>
+    <button data-action="slide-prev">&#8592;</button>
+    <button data-action="slide-next">&#8594;</button>
   </div>
   <!-- Dots -->
   <div class="carousel-dots" id="carouselDots"></div>
@@ -220,31 +220,6 @@
 
 <script src="icons.js"></script>
 <script src="main.js"></script>
-<script>
-  // Animate stats counter
-  function animateCounter(id, target, suffix) {
-    let count = 0;
-    const step = Math.ceil(target / 50);
-    const el = document.getElementById(id);
-    const interval = setInterval(() => {
-      count = Math.min(count + step, target);
-      el.textContent = count + (suffix || '');
-      if (count >= target) clearInterval(interval);
-    }, 30);
-  }
-
-  // Observe stats section
-  const statsObserver = new IntersectionObserver((entries) => {
-    entries.forEach(e => {
-      if (e.isIntersecting) {
-        animateCounter('statStudents', 1200);
-        animateCounter('statTeachers', 85);
-        statsObserver.disconnect();
-      }
-    });
-  });
-  const statsEl = document.querySelector('.stats-section');
-  if (statsEl) statsObserver.observe(statsEl);
-</script>
+<script src="home.js"></script>
 </body>
 </html>
