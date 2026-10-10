@@ -84,7 +84,7 @@ router.get('/:studentCode', async (req, res) => {
   if (!/^[A-Z0-9_-]{3,20}$/.test(code)) return res.status(400).json({ error: 'Invalid student code format. Must be 3-20 characters using letters, numbers, _ or -.' });
   if (req.user.role === 'student' && req.user.user_code !== code) return res.status(403).json({ error: 'Forbidden.' });
   try {
-    const [[student]] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,s.id AS student_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
+    const [[student]] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,s.id AS student_id,s.class_level_id,s.arm_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
       cl.level_name AS class,a.arm_name AS arm,s.track FROM students s JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id WHERE u.user_code=? AND u.is_active=1 LIMIT 1`, [code]);
     if (!student) return res.status(404).json({ error: 'Student not found.' });
     if (!await canAccessStudent(req.user, student)) return res.status(403).json({ error: 'You are not assigned to this student.' });
@@ -116,9 +116,20 @@ router.get('/:studentCode/subjects', async (req, res) => {
       JOIN users u ON u.id=s.user_id WHERE u.user_code=? AND u.is_active=1 LIMIT 1`, [code]);
     if (!student) return res.status(404).json({ error: 'Student not found.' });
     if (!await canAccessStudent(req.user, student)) return res.status(403).json({ error: 'You are not assigned to this student.' });
+    let subjectScope = '';
+    const params = [student.student_id];
+    if (req.user.role === 'teacher') {
+      subjectScope = `AND EXISTS (SELECT 1 FROM teacher_class_assignments tca JOIN teachers tch ON tch.id=tca.teacher_id
+        JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tch.user_id=? AND tca.subject_id=sub.id
+          AND tca.class_level_id=? AND tca.arm_id=? AND ac.is_current=1)`;
+      params.push(req.user.id, student.class_level_id, student.arm_id);
+    } else if (req.user.role === 'hod') {
+      subjectScope = 'AND sub.dept_id=(SELECT dept_id FROM hods WHERE user_id=?)';
+      params.push(req.user.id);
+    }
     const [rows] = await db.query(`SELECT DISTINCT sub.id,sub.subject_name,sub.ca_max,sub.exam_max
       FROM student_subject_enrollment e JOIN subjects sub ON sub.id=e.subject_id
-      WHERE e.student_id=? AND e.is_active=1 ORDER BY sub.subject_name`, [student.student_id]);
+      WHERE e.student_id=? AND e.is_active=1 ${subjectScope} ORDER BY sub.subject_name`, params);
     res.json(rows);
   } catch (err) { console.error('[students/subjects]', err); res.status(500).json({ error: 'Unable to load subjects.' }); }
 });
