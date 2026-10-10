@@ -54,8 +54,16 @@ jobs:
           # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
 
+      # Codacy can emit multiple SARIF runs. GitHub requires each run to have
+      # a unique category, otherwise the upload fails and findings never reach
+      # code scanning. Assign stable per-run IDs without suppressing any result.
+      - name: Assign unique SARIF categories
+        run: |
+          jq '(.runs) |= (to_entries | map(.value.automationDetails = ((.value.automationDetails // {}) + {id: ("codacy-" + (.key | tostring))}) | .value)' results.sarif > results.unique.sarif
+          mv results.unique.sarif results.sarif
+
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
