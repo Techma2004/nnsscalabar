@@ -51,48 +51,52 @@ app.use(express.json({limit:'1mb'}));
 app.use(express.urlencoded({extended:true,limit:'1mb'}));
 app.use((req,res,next)=>{const raw=req.headers.cookie||'';req.cookies={};for(const part of raw.split(';')){const i=part.indexOf('=');if(i<1)continue;const key=decodeURIComponent(part.slice(0,i).trim());const value=decodeURIComponent(part.slice(i+1).trim());req.cookies[key]=value;}next();});
 const authAttempts=new Map();
+const authIpAttempts=new Map();
 const LOGIN_WINDOW_MS=15*60*1000;
 const LOGIN_MAX_ATTEMPTS=10;
+const LOGIN_IP_MAX_ATTEMPTS=300;
 const LOGIN_MAX_ENTRIES=5000;
+const LOGIN_IP_MAX_ENTRIES=10000;
 
-function cleanupAuthAttempts(now=Date.now()){
-  for(const [key,entry] of authAttempts){
-    if(now>=entry.resetAt) authAttempts.delete(key);
+function cleanupAttemptMap(map,now=Date.now()){
+  for(const [key,entry] of map){
+    if(now>=entry.resetAt) map.delete(key);
   }
+}
+
+function consumeAttempt(map,key,maxEntries,maxAttempts,now){
+  let entry=map.get(key);
+  if(!entry||now>=entry.resetAt){
+    if(map.size>=maxEntries){
+      cleanupAttemptMap(map,now);
+      // Bound memory even if a burst contains only unique keys.
+      if(map.size>=maxEntries){
+        const oldestKey=map.keys().next().value;
+        if(oldestKey!==undefined) map.delete(oldestKey);
+      }
+    }
+    map.set(key,{count:1,resetAt:now+LOGIN_WINDOW_MS});
+    return true;
+  }
+  entry.count+=1;
+  return entry.count<=maxAttempts;
 }
 
 function loginRateLimit(req,res,next){
   const now=Date.now();
-  const userCode=String(req.body?.user_code||'').trim().toUpperCase();
-  const key=`${req.ip}:${userCode}`;
-  let entry=authAttempts.get(key);
-
-  if(!entry||now>=entry.resetAt){
-    if(authAttempts.size>=LOGIN_MAX_ENTRIES){
-      cleanupAuthAttempts(now);
-      // Expired entries may not exist during a burst of unique usernames.
-      // Keep the map strictly bounded rather than allowing attacker-controlled
-      // user IDs to grow process memory without limit.
-      if(authAttempts.size>=LOGIN_MAX_ENTRIES){
-        const oldestKey=authAttempts.keys().next().value;
-        if(oldestKey!==undefined) authAttempts.delete(oldestKey);
-      }
-    }
-    authAttempts.set(key,{count:1,resetAt:now+LOGIN_WINDOW_MS});
-    return next();
+  // Account codes are at most 20 characters in this app; truncating only the
+  // limiter key prevents arbitrary large request values from bloating memory.
+  const userCode=String(req.body?.user_code||'').trim().toUpperCase().slice(0,20);
+  if(!consumeAttempt(authIpAttempts,req.ip,LOGIN_IP_MAX_ENTRIES,LOGIN_IP_MAX_ATTEMPTS,now)){
+    return res.status(429).json({error:'Too many login attempts from this network. Please try again later.'});
   }
-
-  entry.count+=1;
-  if(entry.count>LOGIN_MAX_ATTEMPTS){
-    return res.status(429).json({
-      error:'Too many login attempts. Please try again later.'
-    });
+  if(!consumeAttempt(authAttempts,`${req.ip}:${userCode}`,LOGIN_MAX_ENTRIES,LOGIN_MAX_ATTEMPTS,now)){
+    return res.status(429).json({error:'Too many login attempts. Please try again later.'});
   }
-
   next();
 }
 
-const authCleanupTimer=setInterval(()=>cleanupAuthAttempts(),LOGIN_WINDOW_MS);
+const authCleanupTimer=setInterval(()=>{cleanupAttemptMap(authAttempts);cleanupAttemptMap(authIpAttempts);},LOGIN_WINDOW_MS);
 authCleanupTimer.unref();
 
 app.use('/api/auth/login',loginRateLimit);
