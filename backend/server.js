@@ -8,7 +8,7 @@ const db = require('./db');
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || '127.0.0.1';
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 const isProduction = process.env.NODE_ENV === 'production';
 
