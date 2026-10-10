@@ -238,7 +238,7 @@ function renderDepartments(){
 
   const s=d.stats||{};
   const subjectRows=d.subjects.map(x=>`<tr><td><strong>${esc(x.subject_name)}</strong>${x.is_active?'':' <span class="portal-badge danger">Not offered</span>'}</td><td>${esc((x.tracks||[]).join(', ')||'—')}</td><td>${x.ca_max} / ${x.exam_max}</td><td>${x.result_count}</td></tr>`).join('');
-  const teacherRows=d.teachers.map(x=>`<tr><td><strong>${esc(x.full_name)}</strong><br><small>${esc(x.user_code)}</small></td><td>${esc(x.subjects||'—')}</td><td>${esc(x.qualification||'—')}</td><td>${x.date_joined?fmtDate(x.date_joined):'—'}</td></tr>`).join('');
+  const teacherRows=d.teachers.map(x=>`<tr><td><strong>${esc(x.full_name)}</strong><br><small>${esc(x.user_code)}</small></td><td>${esc(x.subjects||'—')}</td><td>${x.date_joined?fmtDate(x.date_joined):'—'}</td></tr>`).join('');
   const classRows=d.classes.map(x=>`<tr><td>${esc(x.class_name)} ${esc(x.arm_name)}</td><td>${x.student_count}</td><td>${x.avg_score!=null?`${x.avg_score}%`:'—'}</td></tr>`).join('');
   const totalGraded=d.grade_distribution.reduce((a,g)=>a+g.n,0);
   const gradeBars=totalGraded?d.grade_distribution.map(g=>`<div class="portal-kpi"><span><strong>${esc(g.grade)}</strong></span><span style="flex:1;margin:0 1rem"><span class="portal-progress"><span style="width:${Math.round(g.n/totalGraded*100)}%"></span></span></span><span>${g.n} (${Math.round(g.n/totalGraded*100)}%)</span></div>`).join(''):'<p style="color:var(--text-secondary)">No approved results yet.</p>';
@@ -248,7 +248,7 @@ function renderDepartments(){
     ${canSeeAll?overview:''}
     <div class="portal-grid">${stat('Subjects',d.subjects.filter(x=>x.is_active).length,'book')}${stat('Teachers',d.teachers.length,'idbadge')}${stat('Awaiting approval',s.pending||0,'clock')}${stat('Department average',s.avg_score!=null?`${s.avg_score}%`:'—','trendingup')}</div>
     ${card('Subjects',table(['Subject','Curriculum tracks','CA / Exam','Results recorded'],subjectRows,'No subjects assigned to this department.'))}
-    ${card('Teaching staff',table(['Teacher','Subjects','Qualification','Joined'],teacherRows,'No teachers assigned to this department.'))}
+    ${card('Teaching staff',table(['Teacher','Subjects','Joined'],teacherRows,'No teachers assigned to this department.'))}
     ${card('Performance by class',table(['Class','Students','Average'],classRows,'No results recorded for this department yet.'))}
     ${card('Grade distribution (approved results)',gradeBars)}`;
 }

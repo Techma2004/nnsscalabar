@@ -31,7 +31,6 @@ const firstNames = ['Amina','Daniel','Emem','Favour','Grace','Hassan','Ifeoma','
 const lastNames = ['Bello','Okoro','Williams','Etim','Ekanem','Ibrahim','Johnson','Obi','Udo','Adebayo','Essien','Musa','George','Nwankwo','Archibong','Lawal','Udoh','Otu','Edem','Balogun'];
 const teacherFirstNames = ['Abasi','Blessing','Chinedu','David','Esther','Fatima','Gabriel','Helen','Irene','Joseph','Kemi','Lawrence','Margaret','Nathan','Olumide','Patience','Rita','Stephen','Theresa','Victor','Zainab','Andrew','Caroline','Emmanuel','Janet','Michael'];
 const teacherLastNames = ['Akan','Bassey','Chukwu','Duke','Ekong','Essien','Eyo','Ita','King','Mba','Ndi','Obot','Okon','Onyema','Peter','Sani','Udo','Ufot','Wright','Yakubu'];
-const qualifications = ['B.Ed.','B.Sc. Education','B.A. Education','B.Tech. Education','M.Ed.'];
 const juniorArms = ['OBUDU','CALABAR','KWA'];
 
 function nameFrom(listA, listB, n) {
@@ -149,10 +148,10 @@ async function main() {
       );
       const userId = userResult.insertId;
       const [teacherResult] = await connection.query(
-        `INSERT INTO teachers (user_id, staff_no, dept_id, qualification, date_joined)
-         VALUES (?, ?, ?, ?, '2020-09-01')
-         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), dept_id=VALUES(dept_id), qualification=VALUES(qualification)`,
-        [userId, code, dept.id, qualifications[(i - 1) % qualifications.length]]
+        `INSERT INTO teachers (user_id, staff_no, dept_id, date_joined)
+         VALUES (?, ?, ?, '2020-09-01')
+         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), dept_id=VALUES(dept_id)`,
+        [userId, code, dept.id]
       );
       const teacherId = teacherResult.insertId;
       const deptSubjects = subjects.filter(s => s.dept_id === dept.id);
