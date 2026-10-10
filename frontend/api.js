@@ -12,7 +12,12 @@ async function apiFetch(endpoint, options = {}) {
     currentUser = null;
     sessionStorage.removeItem('nnss_user');
   }
-  if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+  if (!response.ok) {
+    const err = new Error(data.error || `Request failed (${response.status}).`);
+    err.status = response.status;
+    err.data = data; // e.g. data.row_errors from a rejected score sheet
+    throw err;
+  }
   return data;
 }
 
@@ -84,7 +89,14 @@ export const getAssignments = () => apiFetch('/results/assignments');
 export const getAssignmentMeta = () => apiFetch('/assignments/meta');
 export const getTeacherAssignments = teacherId => apiFetch(`/assignments/teacher/${teacherId}`);
 export const updateTeacherAssignments = (teacherId, data) => apiFetch(`/assignments/teacher/${teacherId}`, { method: 'PUT', body: JSON.stringify(data) });
-export const uploadResult = data => apiFetch('/results/upload', { method: 'POST', body: JSON.stringify(data) });
+// Continuous Assessment Sheet (one subject x one class+arm x one term).
+export const getScheme = () => apiFetch('/results/scheme');
+export const getSheetIndex = term_id => apiFetch(`/results/sheets${qs({ term_id })}`);
+export const getSheet = params => apiFetch(`/results/sheet${qs(params)}`);
+export const saveSheet = data => apiFetch('/results/sheet', { method: 'POST', body: JSON.stringify(data) });
+export const importSheetFile = data => apiFetch('/results/sheet/import', { method: 'POST', body: JSON.stringify(data) });
+export const approveSheet = data => apiFetch('/results/approve-sheet', { method: 'PUT', body: JSON.stringify(data) });
+export const sheetDownloadUrl = (kind, params = {}) => `${API_BASE}/results/sheet/${kind}${qs(params)}`;
 export const getPendingResults = () => apiFetch('/results/pending');
 export const approveResult = (id, note) => apiFetch(`/results/approve/${id}`, { method: 'PUT', body: JSON.stringify({ note }) });
 export const rejectResult = (id, note) => apiFetch(`/results/reject/${id}`, { method: 'PUT', body: JSON.stringify({ note }) });
@@ -98,7 +110,8 @@ export const updateAnnouncement = (id, data) => apiFetch(`/announcements/${id}`,
 export const deleteAnnouncement = id => apiFetch(`/announcements/${id}`, { method: 'DELETE' });
 export const getStats = () => apiFetch('/dashboard/stats');
 export const getStudentSummary = () => apiFetch('/dashboard/student-summary');
-export const getTopPerformers = () => apiFetch('/dashboard/top-performers');
+export const getTopPerformers = params => apiFetch(`/dashboard/top-performers${qs(params || {})}`);
+export const getCommandantSummary = term_id => apiFetch(`/dashboard/commandant-summary${qs({ term_id })}`);
 
 export const getAiStatus = () => apiFetch('/results/ai-status');
 export const aiImportScores = data => apiFetch('/results/ai-import', { method: 'POST', body: JSON.stringify(data) });

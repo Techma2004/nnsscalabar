@@ -41,6 +41,8 @@ app.use(cors({
 // Keep this route-specific parser before the global parser so normal API requests
 // remain tightly bounded without breaking score-sheet import.
 app.use('/api/results/ai-import', express.json({limit:'11mb'}));
+// Excel score sheets (<= 4 MB) are also sent as base64 JSON.
+app.use('/api/results/sheet/import', express.json({limit:'6mb'}));
 
 app.use(express.json({limit:'1mb'}));
 app.use(express.urlencoded({extended:true,limit:'1mb'}));

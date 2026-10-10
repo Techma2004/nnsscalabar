@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const auth = require('../middleware/auth');
+const scheme = require('../scheme');
 const router = express.Router();
 
 const ROLES = ['student', 'teacher', 'hod', 'admin', 'commandant'];
@@ -330,14 +331,13 @@ router.get('/subjects', requireManagement, async (req, res) => {
 router.post('/subjects', requireManagement, async (req, res) => {
   const subject_name = String(req.body?.subject_name || '').trim();
   const dept_id = Number(req.body?.dept_id) || null;
-  const ca_max = Number.isFinite(Number(req.body?.ca_max)) ? Number(req.body.ca_max) : 30;
-  const exam_max = Number.isFinite(Number(req.body?.exam_max)) ? Number(req.body.exam_max) : 70;
+  // Every subject is scored on the school's Continuous Assessment Sheet
+  // (CA 40 = 15+5+5+5+5+5, Exam 60), so the split is fixed rather than editable.
+  const ca_max = scheme.CA_MAX;
+  const exam_max = scheme.EXAM_MAX;
   if (!subject_name || subject_name.length < 2) return res.status(400).json({ error: 'Subject name is required.' });
-  if (ca_max < 0 || ca_max > 100 || exam_max < 0 || exam_max > 100) return res.status(400).json({ error: 'CA and exam maximums must be between 0 and 100.' });
-  // Grades and remarks are computed from (ca + exam) against a 100-point WAEC
-  // scale, so the two maximums must add up to 100 or every grade for the
-  // subject would be silently wrong.
-  if (ca_max + exam_max !== 100) return res.status(400).json({ error: `CA and exam maximums must add up to 100 (you entered ${ca_max} + ${exam_max} = ${ca_max + exam_max}).` });
+  const sentCa = req.body?.ca_max, sentExam = req.body?.exam_max;
+  if ((sentCa != null && Number(sentCa) !== ca_max) || (sentExam != null && Number(sentExam) !== exam_max)) return res.status(400).json({ error: `All subjects use the school's Continuous Assessment Sheet split (CA ${ca_max} + Exam ${exam_max}).` });
   try {
     const [result] = await db.query('INSERT INTO subjects (subject_name, dept_id, ca_max, exam_max, is_active) VALUES (?, ?, ?, ?, 1)', [subject_name, dept_id, ca_max, exam_max]);
     await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
@@ -356,17 +356,13 @@ router.patch('/subjects/:subjectId', requireManagement, async (req, res) => {
   const params = [];
   if (req.body?.subject_name != null) { fields.push('subject_name=?'); params.push(String(req.body.subject_name).trim()); }
   if (req.body?.dept_id != null) { fields.push('dept_id=?'); params.push(Number(req.body.dept_id) || null); }
-  if (req.body?.ca_max != null) { fields.push('ca_max=?'); params.push(Number(req.body.ca_max)); }
-  if (req.body?.exam_max != null) { fields.push('exam_max=?'); params.push(Number(req.body.exam_max)); }
+  // The CA/Exam split is fixed by the Continuous Assessment Sheet; reject attempts to change it.
+  if ((req.body?.ca_max != null && Number(req.body.ca_max) !== scheme.CA_MAX) || (req.body?.exam_max != null && Number(req.body.exam_max) !== scheme.EXAM_MAX)) return res.status(400).json({ error: `All subjects use the school's Continuous Assessment Sheet split (CA ${scheme.CA_MAX} + Exam ${scheme.EXAM_MAX}).` });
   if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
   let current;
   try {
     [[current]] = await db.query('SELECT subject_name, dept_id, ca_max, exam_max FROM subjects WHERE id=? LIMIT 1', [subjectId]);
     if (!current) return res.status(404).json({ error: 'Subject not found.' });
-    const nextCa = req.body?.ca_max != null ? Number(req.body.ca_max) : Number(current.ca_max);
-    const nextExam = req.body?.exam_max != null ? Number(req.body.exam_max) : Number(current.exam_max);
-    if (!Number.isFinite(nextCa) || !Number.isFinite(nextExam) || nextCa < 0 || nextExam < 0) return res.status(400).json({ error: 'CA and exam maximums must be positive numbers.' });
-    if (nextCa + nextExam !== 100) return res.status(400).json({ error: `CA and exam maximums must add up to 100 (you entered ${nextCa} + ${nextExam} = ${nextCa + nextExam}).` });
   } catch (err) { console.error('[admin/subjects/update-validate]', err); return res.status(500).json({ error: 'Unable to update subject.' }); }
   params.push(subjectId);
   try {

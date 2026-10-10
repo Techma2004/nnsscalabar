@@ -74,8 +74,8 @@ CREATE TABLE IF NOT EXISTS subjects (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   subject_name VARCHAR(80) NOT NULL UNIQUE,
   dept_id      INT,
-  ca_max       TINYINT DEFAULT 30,
-  exam_max     TINYINT DEFAULT 70,
+  ca_max       TINYINT DEFAULT 40,
+  exam_max     TINYINT DEFAULT 60,
   is_active    BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (dept_id) REFERENCES departments(id)
 );
@@ -344,6 +344,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_active     BOOLEAN DEFAULT TRUE,
   last_login    DATETIME,
   profile_photo VARCHAR(255),
+  session_version INT NOT NULL DEFAULT 0,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -446,8 +447,16 @@ CREATE TABLE IF NOT EXISTS results (
   subject_id      INT NOT NULL,
   term_id         INT NOT NULL,
   teacher_id      INT NOT NULL,
+  -- Continuous Assessment Sheet components (NULL = not recorded).
+  -- ca_score is the stored CA total: the sum of these six (max 40).
+  test1_score      DECIMAL(5,2) NULL DEFAULT NULL,  -- 1st Test   (15)
+  quiz_score       DECIMAL(5,2) NULL DEFAULT NULL,  -- Quiz       (5)
+  assignment_score DECIMAL(5,2) NULL DEFAULT NULL,  -- Assignment (5)
+  test2_score      DECIMAL(5,2) NULL DEFAULT NULL,  -- 2nd Test   (5)
+  project_score    DECIMAL(5,2) NULL DEFAULT NULL,  -- Project    (5)
+  note_score       DECIMAL(5,2) NULL DEFAULT NULL,  -- Note       (5)
   ca_score        DECIMAL(5,2) DEFAULT 0,
-  exam_score      DECIMAL(5,2) DEFAULT 0,
+  exam_score      DECIMAL(5,2) DEFAULT 0,           -- Exam (60)
   total_score     DECIMAL(5,2) GENERATED ALWAYS AS (ca_score + exam_score) STORED,
   grade           VARCHAR(5) GENERATED ALWAYS AS (
     CASE
@@ -890,8 +899,56 @@ SET @sql := IF(@constraint_exists = 0,
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- Migration 005: users.session_version (used by login + auth middleware to
+-- invalidate old sessions after a password change/reset)
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'session_version'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE users ADD COLUMN session_version INT NOT NULL DEFAULT 0',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Migration 004: Continuous Assessment Sheet components (see database/004_ca_sheet_scheme.sql)
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'results' AND column_name = 'test1_score'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE results
+     ADD COLUMN test1_score      DECIMAL(5,2) NULL DEFAULT NULL AFTER teacher_id,
+     ADD COLUMN quiz_score       DECIMAL(5,2) NULL DEFAULT NULL AFTER test1_score,
+     ADD COLUMN assignment_score DECIMAL(5,2) NULL DEFAULT NULL AFTER quiz_score,
+     ADD COLUMN test2_score      DECIMAL(5,2) NULL DEFAULT NULL AFTER assignment_score,
+     ADD COLUMN project_score    DECIMAL(5,2) NULL DEFAULT NULL AFTER test2_score,
+     ADD COLUMN note_score       DECIMAL(5,2) NULL DEFAULT NULL AFTER project_score',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @c := (SELECT COUNT(*) FROM information_schema.table_constraints
+           WHERE table_schema = DATABASE() AND table_name = 'results' AND constraint_name = 'chk_results_components');
+SET @sql := IF(@c = 0,
+  'ALTER TABLE results ADD CONSTRAINT chk_results_components CHECK (
+     (test1_score      IS NULL OR (test1_score      >= 0 AND test1_score      <= 15)) AND
+     (quiz_score       IS NULL OR (quiz_score       >= 0 AND quiz_score       <= 5))  AND
+     (assignment_score IS NULL OR (assignment_score >= 0 AND assignment_score <= 5))  AND
+     (test2_score      IS NULL OR (test2_score      >= 0 AND test2_score      <= 5))  AND
+     (project_score    IS NULL OR (project_score    >= 0 AND project_score    <= 5))  AND
+     (note_score       IS NULL OR (note_score       >= 0 AND note_score       <= 5)))',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Old default split was 30/70; the sheet is 40 (CA) + 60 (Exam). Subjects a
+-- school customised to some other split that still totals 100 are left alone.
+ALTER TABLE subjects MODIFY ca_max TINYINT DEFAULT 40, MODIFY exam_max TINYINT DEFAULT 60;
+UPDATE subjects SET ca_max = 40, exam_max = 60 WHERE ca_max = 30 AND exam_max = 70;
+
 UPDATE subjects
-SET ca_max = 30, exam_max = 70
+SET ca_max = 40, exam_max = 60
 WHERE (ca_max + exam_max) <> 100;
 
 -- =====================================================

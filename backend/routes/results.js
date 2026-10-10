@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const db = require('../db');
 const auth = require('../middleware/auth');
+const scheme = require('../scheme');
+const sheets = require('../sheets');
+const sheetExcel = require('../sheetExcel');
 const router = express.Router();
 router.use(auth);
 
@@ -86,7 +89,7 @@ function runOcr(imagePath, roster) {
       if (parsed.error) return reject(new Error(parsed.error));
       resolve(parsed);
     });
-    child.stdin.write(JSON.stringify(roster));
+    child.stdin.write(JSON.stringify({ roster, limits: { ...Object.fromEntries(scheme.COMPONENTS.map(c => [c.key, c.max])), exam: scheme.EXAM_MAX } }));
     child.stdin.end();
   });
 }
@@ -108,52 +111,113 @@ router.get('/assignments', async (req, res) => {
   } catch (err) { console.error('[results/assignments]', err); res.status(500).json({ error: 'Unable to load teaching assignments.' }); }
 });
 
-router.post('/upload', async (req, res) => {
-  if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can upload results.' });
-  const student_code = String(req.body?.student_code || '').trim().toUpperCase();
-  const subject_name = String(req.body?.subject_name || '').trim();
-  const term_id = Number(req.body?.term_id);
-  const ca_score = Number(req.body?.ca_score);
-  const exam_score = Number(req.body?.exam_score);
-  if (!student_code || !subject_name || !Number.isInteger(term_id) || !Number.isFinite(ca_score) || !Number.isFinite(exam_score)) return res.status(400).json({ error: 'Student, subject, term and numeric scores are required.' });
-  if (ca_score < 0 || exam_score < 0) return res.status(400).json({ error: 'Scores cannot be negative.' });
-  // The upper bounds come from the subject itself (subjects.ca_max/exam_max are
-  // configurable per subject in the Curriculum panel), not a hardcoded 30/70 —
-  // otherwise a school that weights a subject differently cannot enter its marks.
+// ---------------------------------------------------------------------------
+// Continuous Assessment Sheet
+//
+// A "sheet" is one subject for one class + arm in one term - exactly the paper
+// sheet the school already uses. Teachers fill it in as a grid, HODs approve it,
+// the Commandant monitors it, students see it on their report card.
+// ---------------------------------------------------------------------------
+const sendError = (res, e) => res.status(e.status).json({ error: e.message, ...(e.row_errors ? { row_errors: e.row_errors } : {}) });
+const safeFile = v => String(v || '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-  const conn = await db.getConnection();
+router.get('/scheme', (req, res) => res.json(scheme.describe()));
+
+// All sheets in a term with their progress (HOD: own department only).
+router.get('/sheets', async (req, res) => {
+  if (!['hod', 'admin', 'commandant'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
   try {
-    const [[teacher]] = await conn.query('SELECT id FROM teachers WHERE user_id=? LIMIT 1', [req.user.id]);
-    const [[student]] = await conn.query('SELECT s.id,class_level_id,arm_id FROM students s JOIN users u ON u.id=s.user_id WHERE u.user_code=? AND u.is_active=1 LIMIT 1', [student_code]);
-    const [[subject]] = await conn.query('SELECT id,ca_max,exam_max FROM subjects WHERE subject_name=? AND is_active=1 LIMIT 1', [subject_name]);
-    const [[term]] = await conn.query('SELECT id,session_id,result_locked FROM terms WHERE id=? LIMIT 1', [term_id]);
-    if (!teacher) return res.status(404).json({ error: 'Teacher record not found.' });
-    if (!student) return res.status(404).json({ error: 'Student not found.' });
-    if (!subject) return res.status(404).json({ error: 'Subject not found.' });
-    if (!term) return res.status(404).json({ error: 'Academic term not found.' });
-    if (term.result_locked) return res.status(409).json({ error: 'This term is locked and cannot be edited.' });
-    if (ca_score > subject.ca_max || exam_score > subject.exam_max) {
-      return res.status(400).json({ error: `For ${subject_name}, CA must be 0–${subject.ca_max} and exam must be 0–${subject.exam_max}.` });
+    const termId = Number(req.query.term_id);
+    if (!Number.isInteger(termId) || termId < 1) return res.status(400).json({ error: 'Select an academic term.' });
+    let deptId = null;
+    if (req.user.role === 'hod') {
+      const hod = await sheets.hodRecord(req.user.id);
+      if (!hod) return res.status(404).json({ error: 'No department is assigned to your account.' });
+      deptId = hod.dept_id;
     }
-
-    const [assignment] = await conn.query(`SELECT id FROM teacher_class_assignments WHERE teacher_id=? AND subject_id=? AND class_level_id=? AND arm_id=? AND session_id=? LIMIT 1`,
-      [teacher.id, subject.id, student.class_level_id, student.arm_id, term.session_id]);
-    if (!assignment.length) return res.status(403).json({ error: 'You are not assigned to this subject and class.' });
-
-    await conn.beginTransaction();
-    await conn.query(`INSERT INTO results (student_id,subject_id,term_id,teacher_id,ca_score,exam_score,is_approved)
-      VALUES (?,?,?,?,?,?,0) ON DUPLICATE KEY UPDATE ca_score=VALUES(ca_score),exam_score=VALUES(exam_score),teacher_id=VALUES(teacher_id),is_approved=0,approved_by=NULL,approved_at=NULL,rejected_at=NULL,rejected_by=NULL,rejection_note=NULL,updated_at=CURRENT_TIMESTAMP`,
-      [student.id, subject.id, term.id, teacher.id, ca_score, exam_score]);
-    await conn.query(`INSERT INTO result_approval_log(result_id,action,actor_id,note) SELECT r.id,'revised',?,? FROM results r WHERE r.student_id=? AND r.subject_id=? AND r.term_id=?`,
-      [req.user.id, 'Score submitted/revised by teacher', student.id, subject.id, term.id]);
-    await conn.commit();
-    res.json({ message: 'Score saved and sent for HOD approval.' });
-  } catch (err) {
-    try { await conn.rollback(); } catch {}
-    console.error('[results/upload]', err); res.status(500).json({ error: 'Unable to save score.' });
-  } finally { conn.release(); }
+    const out = await sheets.sheetIndex(termId, { deptId });
+    if (!out) return res.status(404).json({ error: 'Academic term not found.' });
+    res.json(out);
+  } catch (err) { console.error('[results/sheets]', err); res.status(500).json({ error: 'Unable to load result sheets.' }); }
 });
 
+router.get('/sheet', async (req, res) => {
+  try {
+    const { ctx, error } = await sheets.resolveSheetContext(req.user, req.query);
+    if (error) return sendError(res, error);
+    res.json(await sheets.loadSheet(ctx));
+  } catch (err) { console.error('[results/sheet]', err); res.status(500).json({ error: 'Unable to load the score sheet.' }); }
+});
+
+// Save a whole class sheet (teacher only).
+router.post('/sheet', async (req, res) => {
+  if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can submit score sheets.' });
+  try {
+    const { ctx, error } = await sheets.resolveSheetContext(req.user, req.body || {});
+    if (error) return sendError(res, error);
+    const out = await sheets.saveSheetRows(ctx, req.user, req.body?.rows);
+    if (out.error) return sendError(res, out.error);
+    const parts = [];
+    if (out.saved) parts.push(`${out.saved} score${out.saved === 1 ? '' : 's'} saved and sent for HOD approval`);
+    if (out.unchanged) parts.push(`${out.unchanged} unchanged`);
+    if (!parts.length) parts.push('Nothing to save - every row is blank or unchanged');
+    res.json({ message: `${parts.join(', ')}.`, ...out });
+  } catch (err) { console.error('[results/sheet/save]', err); res.status(500).json({ error: 'Unable to save the score sheet.' }); }
+});
+
+// Blank, reusable Excel template (no class needed).
+router.get('/sheet/template', async (req, res) => {
+  if (!['teacher', 'hod', 'admin', 'commandant'].includes(req.user.role)) return res.status(403).json({ error: 'Forbidden.' });
+  try {
+    const wb = await sheetExcel.buildWorkbook({});
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="NNSS-CA-Score-Sheet-Template.xlsx"');
+    await wb.xlsx.write(res); res.end();
+  } catch (err) { console.error('[results/sheet/template]', err); if (!res.headersSent) res.status(500).json({ error: 'Unable to build the template.' }); }
+});
+
+// Excel copy of one class sheet, roster and saved scores pre-filled.
+router.get('/sheet/export', async (req, res) => {
+  try {
+    const { ctx, error } = await sheets.resolveSheetContext(req.user, req.query);
+    if (error) return sendError(res, error);
+    const sheet = await sheets.loadSheet(ctx);
+    const h = sheet.header;
+    const wb = await sheetExcel.buildWorkbook({
+      header: { class_name: h.class_name, arm_name: h.arm_name, term_name: h.term_name, session_name: h.session_name, subject_name: h.subject_name },
+      rows: sheet.students.map(s => ({ user_code: s.user_code, full_name: s.full_name, scores: s.scores }))
+    });
+    const name = [h.class_name, h.arm_name, h.subject_name, h.term_name, h.session_name].map(safeFile).filter(Boolean).join('-');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${name || 'score-sheet'}.xlsx"`);
+    await wb.xlsx.write(res); res.end();
+  } catch (err) { console.error('[results/sheet/export]', err); if (!res.headersSent) res.status(500).json({ error: 'Unable to export the score sheet.' }); }
+});
+
+// Read a filled-in Excel sheet and match it to the roster. Nothing is saved:
+// the browser loads the values into the grid so the teacher can review them.
+router.post('/sheet/import', async (req, res) => {
+  if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can import score sheets.' });
+  const file = String(req.body?.file || '');
+  const m = file.match(/^(?:data:[^;]+;base64,)?([A-Za-z0-9+/=\s]+)$/);
+  if (!m) return res.status(400).json({ error: 'Upload an Excel (.xlsx) score sheet.' });
+  try {
+    const { ctx, error } = await sheets.resolveSheetContext(req.user, req.body || {});
+    if (error) return sendError(res, error);
+    if (ctx.term.result_locked) return res.status(409).json({ error: 'This term is locked and cannot be edited.' });
+    const buffer = Buffer.from(m[1], 'base64');
+    if (buffer.length < 100 || buffer.length > 4 * 1024 * 1024) return res.status(413).json({ error: 'The Excel file is empty or larger than 4 MB.' });
+    let parsed;
+    try { parsed = await sheetExcel.parseWorkbook(buffer); }
+    catch (e) { return res.status(422).json({ error: e.message || 'That file could not be read as an Excel score sheet.' }); }
+    const roster = await sheets.loadRoster(db, ctx);
+    const { matched, unmatched } = sheetExcel.matchToRoster(parsed.rows, roster);
+    res.json({
+      rows: matched.map(r => ({ user_code: r.user_code, full_name: r.full_name, scores: r.scores, problems: r.problems })),
+      unmatched, warnings: parsed.warnings, roster_count: roster.length, imported_count: matched.length
+    });
+  } catch (err) { console.error('[results/sheet/import]', err); res.status(500).json({ error: 'Unable to import the score sheet.' }); }
+});
 
 router.get('/ai-status', async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can use score-sheet import.' });
@@ -183,30 +247,17 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can import score sheets.' });
   const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
   if (!enabled) return res.status(503).json({ error: 'Score-sheet import is disabled. Use manual score entry.' });
-  const assignmentId = Number(req.body?.assignment_id);
-  const termId = Number(req.body?.term_id);
   const image = String(req.body?.image || '');
-  if (!Number.isInteger(assignmentId) || assignmentId < 1) return res.status(400).json({ error: 'Select a valid teaching assignment.' });
-  if (!Number.isInteger(termId) || termId < 1) return res.status(400).json({ error: 'Select an unlocked academic term.' });
   const imageMatch = image.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=\s]+)$/);
   if (!imageMatch) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP score-sheet image.' });
   if (image.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'Score-sheet image is too large. Use an image under 7 MB.' });
 
-  const teacher = await teacherIdForUser(req.user.id);
-  if (!teacher) return res.status(404).json({ error: 'Teacher record not found.' });
-
   let tmpPath = null;
   try {
-    const [[assignment]] = await db.query(`SELECT tca.id,tca.subject_id,tca.class_level_id,tca.arm_id,tca.session_id,s.subject_name,s.ca_max,s.exam_max,cl.level_name AS class_name,a.arm_name
-      FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id JOIN arms a ON a.id=tca.arm_id
-      WHERE tca.id=? AND tca.teacher_id=? LIMIT 1`, [assignmentId, teacher.id]);
-    if (!assignment) return res.status(403).json({ error: 'That assignment is not assigned to your account.' });
-    const [[term]] = await db.query('SELECT id,session_id,result_locked,term_name FROM terms WHERE id=? LIMIT 1', [termId]);
-    if (!term) return res.status(404).json({ error: 'Academic term not found.' });
-    if (term.result_locked) return res.status(409).json({ error: 'This academic term is locked.' });
-    if (term.session_id !== assignment.session_id) return res.status(400).json({ error: 'The selected term does not belong to this teaching assignment session.' });
-    const [students] = await db.query(`SELECT u.user_code, u.full_name FROM students st JOIN users u ON u.id=st.user_id
-      WHERE u.is_active=1 AND st.class_level_id=? AND st.arm_id=? ORDER BY u.full_name`, [assignment.class_level_id, assignment.arm_id]);
+    const { ctx, error } = await sheets.resolveSheetContext(req.user, req.body || {});
+    if (error) return sendError(res, error);
+    if (ctx.term.result_locked) return res.status(409).json({ error: 'This academic term is locked.' });
+    const students = await sheets.loadRoster(db, ctx);
     if (!students.length) return res.status(409).json({ error: 'No active students were found for this class and arm.' });
 
     const roster = Object.fromEntries(students.map(s => [s.user_code, s.full_name]));
@@ -215,20 +266,19 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
     await fs.writeFile(tmpPath, Buffer.from(imageMatch[2], 'base64'));
 
     const ocrResult = await runOcr(tmpPath, roster);
-    const known = new Map(students.map(x => [x.user_code, { ...x }]));
+    const known = new Set(students.map(x => x.user_code));
     const rows = (ocrResult.rows || [])
-      .map(r => ({
-        user_code: String(r.user_code || '').trim().toUpperCase(),
-        full_name: known.get(String(r.user_code || '').trim().toUpperCase())?.full_name || null,
-        ca_score: r.ca_score === null || r.ca_score === undefined ? null : Number(r.ca_score),
-        exam_score: r.exam_score === null || r.exam_score === undefined ? null : Number(r.exam_score),
-        confidence: Number(r.confidence || 0),
-        note: ''
-      }))
-      .filter(r => known.has(r.user_code))
-      .map(r => ({ ...r, valid_ca: Number.isFinite(r.ca_score) && r.ca_score >= 0 && r.ca_score <= assignment.ca_max, valid_exam: Number.isFinite(r.exam_score) && r.exam_score >= 0 && r.exam_score <= assignment.exam_max }));
+      .map(r => {
+        const code = String(r.user_code || '').trim().toUpperCase();
+        const parsed = scheme.parseScores(r.scores || {});
+        // parseScores nulls anything out of range, so a misread digit can never
+        // sneak past the grid as a valid mark - it is reported as unreadable.
+        const out_of_range = Object.keys(r.scores || {}).filter(k => r.scores[k] !== null && r.scores[k] !== undefined && parsed.values[k] === null);
+        return { user_code: code, full_name: roster[code] || null, scores: parsed.values, out_of_range, confidence: Number(r.confidence || 0), note: r.note || '' };
+      })
+      .filter(r => known.has(r.user_code));
 
-    res.json({ assignment: { id: assignment.id, class_name: assignment.class_name, arm_name: assignment.arm_name, subject_name: assignment.subject_name, ca_max: assignment.ca_max, exam_max: assignment.exam_max }, term_id: term.id, term_name: term.term_name, rows, roster_count: students.length, extracted_count: rows.length, model: 'Tesseract OCR' });
+    res.json({ term_id: ctx.term.id, rows, roster_count: students.length, extracted_count: rows.length, model: 'Tesseract OCR' });
   } catch (err) {
     if (err.message && !err.message.includes('\n') && err.message.length < 200) {
       // A clean, user-safe message we raised deliberately (from runOcr or a validation check above).
@@ -238,7 +288,7 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
       res.status(503).json({ error: 'Score-sheet import is unavailable right now. Use manual score entry.' });
     }
   } finally {
-    if (tmpPath) { try { await fs.unlink(tmpPath); } catch {} }
+    if (tmpPath) { try { await fs.unlink(tmpPath); } catch { /* temp file already gone */ } }
   }
 });
 
@@ -253,8 +303,9 @@ router.get('/pending', async (req, res) => {
     // the queue consistent with the count shown on the HOD dashboard, which is
     // calculated from the subject's department.
     if (req.user.role === 'hod') { deptFilter = 'AND sub.dept_id = (SELECT dept_id FROM hods WHERE user_id=?)'; params.push(req.user.id); }
-    const [rows] = await db.query(`SELECT r.id,su.user_code AS student_code,su.full_name AS student_name,sub.subject_name,cl.level_name AS class_name,a.arm_name,
-      t.term_name,ac.session_name,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.uploaded_at,tu.full_name AS teacher_name
+    const [rows] = await db.query(`SELECT r.id,su.user_code AS student_code,su.full_name AS student_name,r.subject_id,sub.subject_name,s.class_level_id,cl.level_name AS class_name,s.arm_id,a.arm_name,
+      r.term_id,t.term_name,ac.session_name,r.test1_score,r.quiz_score,r.assignment_score,r.test2_score,r.project_score,r.note_score,
+      r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.uploaded_at,tu.full_name AS teacher_name
       FROM results r JOIN students s ON s.id=r.student_id JOIN users su ON su.id=s.user_id JOIN subjects sub ON sub.id=r.subject_id JOIN teachers tch ON tch.id=r.teacher_id
       JOIN users tu ON tu.id=tch.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
       WHERE r.is_approved=0 AND r.rejected_at IS NULL ${deptFilter} ORDER BY r.updated_at ASC`, params);
@@ -280,6 +331,35 @@ router.put('/approve/:resultId', async (req, res) => {
     await conn.commit();
     res.json({ message: 'Result approved.' });
   } catch (err) { await conn.rollback(); console.error('[results/approve]', err); res.status(500).json({ error: 'Unable to approve result.' }); }
+  finally { conn.release(); }
+});
+
+// Approve every pending result on one class sheet in a single step - the
+// natural unit of work now that results arrive as whole sheets. Anything the
+// HOD has already disapproved stays disapproved until the teacher resubmits.
+router.put('/approve-sheet', async (req, res) => {
+  if (req.user.role !== 'hod') return res.status(403).json({ error: 'Only HODs can approve results.' });
+  const { subject_id, class_level_id, arm_id, term_id } = Object.fromEntries(['subject_id', 'class_level_id', 'arm_id', 'term_id'].map(k => [k, Number(req.body?.[k])]));
+  if (![subject_id, class_level_id, arm_id, term_id].every(n => Number.isInteger(n) && n > 0)) return res.status(400).json({ error: 'Select a valid sheet.' });
+  const conn = await db.getConnection();
+  try {
+    const [[hod]] = await conn.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1', [req.user.id]);
+    const [[subject]] = await conn.query('SELECT dept_id FROM subjects WHERE id=? LIMIT 1', [subject_id]);
+    const [[term]] = await conn.query('SELECT result_locked FROM terms WHERE id=? LIMIT 1', [term_id]);
+    if (!hod || !subject || !term) return res.status(404).json({ error: 'Sheet or HOD record not found.' });
+    if (subject.dept_id !== hod.dept_id) return res.status(403).json({ error: 'This sheet belongs to another department.' });
+    if (term.result_locked) return res.status(409).json({ error: 'This term is locked.' });
+    await conn.beginTransaction();
+    const [ids] = await conn.query(`SELECT r.id FROM results r JOIN students s ON s.id=r.student_id
+      WHERE r.subject_id=? AND r.term_id=? AND s.class_level_id=? AND s.arm_id=? AND r.is_approved=0 AND r.rejected_at IS NULL FOR UPDATE`,
+      [subject_id, term_id, class_level_id, arm_id]);
+    if (!ids.length) { await conn.rollback(); return res.json({ message: 'Nothing pending on this sheet.', approved: 0 }); }
+    const idList = ids.map(r => r.id);
+    await conn.query('UPDATE results SET is_approved=1, approved_by=?, approved_at=NOW(), rejected_at=NULL, rejected_by=NULL, rejection_note=NULL WHERE id IN (?)', [req.user.id, idList]);
+    await conn.query('INSERT INTO result_approval_log (result_id, action, actor_id, note) VALUES ?', [idList.map(id => [id, 'approved', req.user.id, req.body?.note || 'Approved with the whole class sheet'])]);
+    await conn.commit();
+    res.json({ message: `${idList.length} result${idList.length === 1 ? '' : 's'} approved.`, approved: idList.length });
+  } catch (err) { try { await conn.rollback(); } catch { /* nothing to roll back */ } console.error('[results/approve-sheet]', err); res.status(500).json({ error: 'Unable to approve this sheet.' }); }
   finally { conn.release(); }
 });
 
@@ -368,7 +448,7 @@ router.get('/student/:studentCode', async (req, res) => {
       extraParams.push(req.user.id);
       canSeePending = true;
     }
-    const [rows] = await db.query(`SELECT r.id,sub.subject_name,t.term_name,t.term_number,ac.session_name,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.is_approved,r.uploaded_at,r.approved_at
+    const [rows] = await db.query(`SELECT r.id,sub.subject_name,t.term_name,t.term_number,ac.session_name,r.test1_score,r.quiz_score,r.assignment_score,r.test2_score,r.project_score,r.note_score,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.is_approved,r.uploaded_at,r.approved_at
       FROM results r JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id JOIN students s ON s.id=r.student_id JOIN users u ON u.id=s.user_id
       WHERE u.user_code=? AND (r.is_approved=1 OR ?) ${extraWhere} ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, [studentCode, canSeePending ? 1 : 0, ...extraParams]);
     res.json(rows);

@@ -298,6 +298,12 @@ From `backend/` run:
 npm run seed:admin
 ```
 
+To create the Commandant account (who can then create admin accounts from Account Management):
+
+```bash
+INITIAL_COMMANDANT_CODE=CMD001 INITIAL_COMMANDANT_PASSWORD='use-a-strong-unique-password' npm run seed:commandant
+```
+
 No default administrator password is embedded in the source code.
 
 ## Run the application
@@ -352,7 +358,24 @@ Statistics, controlled account creation, student lifecycle management, curriculu
 
 ### Commandant
 
-School overview, statistics, top approved-result performers, curriculum management, and announcements.
+Dashboard with a term selector: headcount, results pipeline (approved / awaiting HOD / sent back), term average and pass rate, grade distribution, class-sheet progress with the sheets furthest behind, and top 5 students. Also School Overview (per class and per department), Result Sheets (read-only view of every class sheet), Top Performers (filter by term and class), plus students, teachers, curriculum, classes, sessions, announcements and account management.
+
+### Continuous Assessment Sheet (results)
+
+Results follow the school's paper sheet: one subject, one class + arm, one term.
+1st Test 15 + Quiz 5 + Assignment 5 (= 25) · 2nd Test 5 + Project 5 + Note 5 (= 15) · Exam 60 · Term's total 100 · WAEC grade.
+
+- Teachers fill the sheet as a grid (**Score Sheet**), with live totals and grade, draft autosave, Excel import/export and photo scan; blank rows are skipped, filled rows need every column (0 is valid).
+- HODs approve a whole sheet at once (**Result Approval**) or send single scores back with a reason.
+- A blank reusable Excel template is at `score-sheet-template.xlsx` (and downloadable in the portal); regenerate it with `npm run build:template` in `backend/`.
+
+Upgrading an existing database (back up first), then run `npm install` in `backend/`:
+
+```bash
+mysql -u <user> -p nnss_calabar < database/004_ca_sheet_scheme.sql
+mysql -u <user> -p nnss_calabar < database/005_session_version.sql
+```
+
 
 Result lifecycle:
 
