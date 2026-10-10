@@ -1,15 +1,17 @@
 import {
   getCurrentUser, logout, getStats, getStudentSummary, getStudentResults, getStudentSubjects,
   getAllStudents, getAllTeachers, getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
-  getTeacherStudents, getAssignments, uploadResult, getPendingResults, approveResult, rejectResult, getRejections,
-  getAnnouncements, createAnnouncement, getTopPerformers, removeUser, getAiStatus, aiImportScores,
+  getTeacherStudents, getAssignments, getPendingResults, approveResult, rejectResult, approveSheet, getRejections,
+  getAnnouncements, createAnnouncement, removeUser,
   updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment, deleteDepartment, promoteStudents, getCurriculumHistory,
   changeMyPassword, resetUserPassword, getManagedAnnouncements, updateAnnouncement, deleteAnnouncement,
   getSessions, createSession, activateSession, createTerm, updateTerm,
   getDepartments, getDepartmentDetail, getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
 } from './api.js';
+import * as Sheets from './sheets.js';
+import * as Cmd from './commandant.js';
 
-const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], rejections:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], curriculumHistory:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{} };
+const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], rejections:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], curriculumHistory:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{}, cmdSummary:null, cmdTermId:null, topFilters:{term_id:'',class_level_id:''} };
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const roleName = {student:'Student',teacher:'Subject Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant'};
@@ -18,14 +20,14 @@ const STUDENT_STATUSES = ['active','pending','withdrawn','graduated','repeating'
 const statusBadgeClass = {active:'ok', pending:'pending', withdrawn:'danger', graduated:''};
 const menus = {
   student:[['Dashboard','dashboard'],['My Results','results'],['My Subjects','subjects'],['Announcements','announcements'],['My Profile','profile']],
-  teacher:[['Dashboard','dashboard'],['My Department','departments'],['Score Entry','scores'],['Score-Sheet Scanner','ai-import'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
-  hod:[['Dashboard','dashboard'],['My Department','departments'],['Result Approval','approval'],['Department Teachers','teachers'],['Announcements','announcements'],['My Profile','profile']],
-  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
-  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Top Performers','top'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
+  teacher:[['Dashboard','dashboard'],['My Department','departments'],['Score Sheet','sheet'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
+  hod:[['Dashboard','dashboard'],['My Department','departments'],['Result Approval','approval'],['Result Sheets','sheets'],['Department Teachers','teachers'],['Announcements','announcements'],['My Profile','profile']],
+  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Result Sheets','sheets'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
+  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Result Sheets','sheets'],['Top Performers','top'],['Students','students'],['Teachers','teachers'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
 };
 const panelIcons = {
   dashboard:'grid', results:'document', subjects:'book', announcements:'bell', profile:'user',
-  scores:'pencil', 'ai-import':'cpu', students:'users', teachers:'idbadge', approval:'checksquare',
+  sheet:'pencil', sheets:'document', students:'users', teachers:'idbadge', approval:'checksquare',
   system:'settings', accounts:'userplus', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar', classes:'grid', departments:'shield'
 };
 const ic = (name,size) => (typeof window.Icon==='function') ? window.Icon(name,{size:size||18}) : '';
@@ -48,7 +50,7 @@ function renderRejectionNotice(kind){
   const list = state.rejections || [];
   if(!list.length) return '';
   if(kind === 'teacher'){
-    const rows = list.map(r=>`<div class="ai-note-row"><div><strong>${esc(r.student_name)}</strong> · ${esc(r.subject_name)} · ${esc(r.term_name)}, ${esc(r.session_name)}<br><small>${esc(r.rejection_note)}</small></div><button class="btn btn-secondary" data-go="scores">Fix now</button></div>`).join('');
+    const rows = list.map(r=>`<div class="ai-note-row"><div><strong>${esc(r.student_name)}</strong> · ${esc(r.subject_name)} · ${esc(r.term_name)}, ${esc(r.session_name)}<br><small>${esc(r.rejection_note)}</small></div><button class="btn btn-secondary" data-go="sheet">Fix now</button></div>`).join('');
     return card(`${ic('alerttriangle',16)} Results sent back for correction (${list.length})`, rows, '', 'portal-card-alert');
   }
   const rows = list.map(r=>`<div class="ai-note-row"><div>${esc(r.subject_name)} · ${esc(r.term_name)}, ${esc(r.session_name)}<br><small>This result is being corrected by your teacher and will be updated soon.</small></div></div>`).join('');
@@ -120,7 +122,7 @@ async function render(panel,{silent=false}={}){
       if(panel==='dashboard') { state.studentSummary=await getStudentSummary(); state.rejections=await getRejections(); }
     }
     if(state.user.role==='teacher'){
-      if(panel==='scores' || panel==='ai-import') { state.assignments=await getAssignments(); state.students=await getTeacherStudents(state.user.user_code); state.meta=await getAdminMeta(); }
+      if(panel==='sheet') { state.assignments=await getAssignments(); await loadMeta(); await Sheets.loadScheme(); }
       if(panel==='dashboard') { state.assignments=await getAssignments(); state.rejections=await getRejections(); }
       if(panel==='students') { const r=await getTeacherStudents(state.user.user_code,state.search.students); state.students=r; }
     }
@@ -128,7 +130,14 @@ async function render(panel,{silent=false}={}){
       if(panel==='dashboard') state.hodSummary=await getHodSummary();
       if(panel==='approval') state.pending=await getPendingResults();
     }
-    if(state.user.role==='hod' && panel==='teachers') { const r=await getAllTeachers(state.search.teachers); state.teachers=r.rows; state.teachersTruncated=r.truncated; }
+    if(['hod','admin','commandant'].includes(state.user.role) && panel==='sheets'){ await loadMeta(); await Sheets.loadScheme(); }
+    if(state.user.role==='commandant'){
+      if(panel==='dashboard' || panel==='overview') await Cmd.loadSummary();
+      if(panel==='top'){ await loadMeta(); await Cmd.loadTop(); }
+      if(panel==='students'){ const r=await getAllStudents(state.studentStatusFilter,state.search.students); state.students=r.rows; state.studentsTruncated=r.truncated; }
+      if(panel==='results'){ const r=await getAllResults(state.search.results); state.results=r.rows; state.resultsTruncated=r.truncated; }
+    }
+    if(['hod','commandant'].includes(state.user.role) && panel==='teachers') { const r=await getAllTeachers(state.search.teachers); state.teachers=r.rows; state.teachersTruncated=r.truncated; }
     if(['admin','commandant'].includes(state.user.role)){
       if(panel==='accounts') { const r=await getAllUsers(state.search.accounts); state.accounts=r.rows; state.accountsTruncated=r.truncated; }
       if(panel==='sessions') state.sessions=await getSessions();
@@ -151,7 +160,6 @@ async function render(panel,{silent=false}={}){
       state.deptDetail = only ? await getDepartmentDetail(only) : null;
       state.activeDeptId = only;
     }
-    if(panel==='top') state.top=await getTopPerformers();
     $('#appRoot').innerHTML=renderPanel(panel);
     bindPanel(panel);
     if(focusedId){ const el=$('#'+focusedId); if(el){ el.focus(); el.setSelectionRange(selStart,selEnd); } }
@@ -163,8 +171,8 @@ function renderPanel(panel){
   if(panel==='subjects') return renderSubjects();
   if(panel==='announcements') return renderAnnouncements();
   if(panel==='profile') return renderProfile();
-  if(panel==='scores') return renderScoreEntry();
-  if(panel==='ai-import') return renderAiImport();
+  if(panel==='sheet') return Sheets.renderTeacherSheet();
+  if(panel==='sheets') return Sheets.renderSheetBrowser();
   if(panel==='students') return renderStudents();
   if(panel==='approval') return renderApproval();
   if(panel==='teachers') return renderTeachers();
@@ -173,14 +181,15 @@ function renderPanel(panel){
   if(panel==='sessions') return renderSessions();
   if(panel==='classes') return renderClassesArms();
   if(panel==='departments') return renderDepartments();
-  if(panel==='overview') return renderOverview();
-  if(panel==='top') return renderTop();
+  if(panel==='overview') return Cmd.renderOverview();
+  if(panel==='top') return Cmd.renderTop();
   if(panel==='accounts') return renderAccounts();
   return '<div class="portal-empty">Section not found.</div>';
 }
 
 function renderDashboard(){
   const r=state.user.role;
+  if(r==='commandant') return Cmd.renderDashboard();
   if(r==='student') return `<div class="portal-toolbar"><div><div class="eyebrow">Student workspace</div><h1>Welcome, ${esc(state.user.name.split(' ')[0])}</h1><p>Your academic information at a glance.</p></div></div>
     ${renderRejectionNotice('student')}
     <div class="portal-grid">${stat('Approved subjects',state.studentSummary.subjects||0,'book')}${stat('Current average',state.studentSummary.average?`${state.studentSummary.average}%`:'—','trendingup')}${stat('Passed subjects',state.studentSummary.passes||0,'checkcircle')}${stat('Active notices',state.stats.active_announcements||0,'bell')}</div>
@@ -204,11 +213,11 @@ function renderDashboard(){
     const byClass=new Map();
     (state.assignments||[]).forEach(a=>{ const key=`${a.class_name} ${a.arm_name}`; if(!byClass.has(key)) byClass.set(key,new Set()); byClass.get(key).add(a.subject_name); });
     const teachingRows=[...byClass.entries()].map(([cls,subs])=>`<div class="portal-kpi"><span>${esc(cls)}</span><strong>${[...subs].map(esc).join(', ')}</strong></div>`).join('') || '<p style="color:var(--text-secondary)">No teaching assignments yet.</p>';
-    return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>Teacher workspace</h1><p>Manage score entry and your assigned students.</p></div></div>
+    return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>Teacher workspace</h1><p>Fill in your class score sheets and manage your assigned students.</p></div></div>
     ${renderRejectionNotice('teacher')}
     <div class="portal-grid">${stat('My students',state.stats.students??0,'users')}${stat('My subjects',state.stats.subjects??0,'book')}${stat('Awaiting approval',state.stats.pending_results??0,'clock')}${stat('Approved results',state.stats.results??0,'checkcircle')}</div>
     ${card('What I teach',teachingRows)}
-    ${card('Workflow',`<div class="portal-kpi"><span>1. Select an assignment</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter CA + exam</span><strong>${ic('pencil',16)}</strong></div><div class="portal-kpi"><span>3. Submit for HOD review</span><strong>${ic('checkcircle',16)}</strong></div>`)}`;
+    ${card('Workflow',`<div class="portal-kpi"><span>1. Open the Score Sheet for a class, subject and term</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Fill the CA columns and exam (type it, import Excel, or scan the paper sheet)</span><strong>${ic('pencil',16)}</strong></div><div class="portal-kpi"><span>3. Save &amp; submit — your HOD approves the sheet</span><strong>${ic('checkcircle',16)}</strong></div><button class="btn btn-primary" data-go="sheet" style="margin-top:.8rem">Open Score Sheet ${ic('arrowright',15)}</button>`)}`;
   }
   if(r==='student') return '';
   const title={admin:'Administration control centre',commandant:'Commandant overview'}[r];
@@ -222,7 +231,7 @@ function renderDepartments(){
   const d=state.deptDetail;
   // Admin/commandant get an overview of every department first; staff go
   // straight into their own, since that is the only one they can access.
-  const overview = canSeeAll ? `<div class="portal-grid">${state.departments.map(x=>`<div class="portal-stat" style="cursor:pointer;position:relative" data-open-dept="${x.id}"><span class="stat-icon">${ic('shield',16)}</span><small>${esc(x.dept_name)}</small><strong>${x.subject_count}</strong><div style="color:var(--text-secondary);font-size:.78rem;margin-top:.35rem">${x.teacher_count} teacher${x.teacher_count===1?'':'s'}${x.pending_count?` · <span style="color:var(--warning)">${x.pending_count} pending</span>`:''}</div><div style="color:var(--text-light);font-size:.75rem;margin-top:.2rem">HOD: ${esc(x.hod_name||'Not assigned')}</div><button class="btn btn-danger btn-sm" style="position:absolute;top:.6rem;right:.6rem" data-delete-dept="${x.id}" data-name="${esc(x.dept_name)}" onclick="event.stopPropagation()">Delete</button></div>`).join('')}</div>` : '';
+  const overview = canSeeAll ? `<div class="dept-grid">${state.departments.map(x=>`<div class="portal-stat dept-card" data-open-dept="${x.id}" role="button" tabindex="0" aria-label="Open ${esc(x.dept_name)} department"><div class="dept-card-head"><div class="dept-card-title"><span class="stat-icon">${ic('shield',16)}</span><small>${esc(x.dept_name)}</small></div><button type="button" class="btn btn-danger btn-sm dept-delete" data-delete-dept="${x.id}" data-name="${esc(x.dept_name)}" aria-label="Delete ${esc(x.dept_name)}">Delete</button></div><strong>${x.subject_count}</strong><div class="dept-card-meta">${x.teacher_count} teacher${x.teacher_count===1?'':'s'}${x.pending_count?` · <span style="color:var(--warning)">${x.pending_count} pending</span>`:''}</div><div class="dept-card-hod">HOD: ${esc(x.hod_name||'Not assigned')}</div></div>`).join('')}</div>` : '';
   const addDept = canSeeAll ? card('Add a department',`<div class="portal-form-grid"><div class="form-group"><label>Department name</label><input id="newDeptName" maxlength="60" placeholder="e.g. Languages"></div><div class="form-group full"><label>Description (optional)</label><input id="newDeptDesc" maxlength="160" placeholder="What this department covers"></div><div class="full"><button class="btn btn-primary" id="addDeptBtn">Add department</button></div></div>`) : '';
 
   if(!d) return `<div class="portal-toolbar"><div><div class="eyebrow">Academic structure</div><h1>Departments</h1><p>Select a department to see its subjects, staff and performance.</p></div></div>${addDept}${overview}`;
@@ -244,8 +253,10 @@ function renderDepartments(){
     ${card('Grade distribution (approved results)',gradeBars)}`;
 }
 function bindDepartments(){
-  document.querySelectorAll('[data-open-dept]').forEach(el=>el.onclick=async()=>{
-    state.activeDeptId=Number(el.dataset.openDept); render('departments');
+  document.querySelectorAll('[data-open-dept]').forEach(el=>{
+    const open=()=>{ state.activeDeptId=Number(el.dataset.openDept); render('departments'); };
+    el.onclick=open;
+    el.onkeydown=e=>{ if((e.key==='Enter'||e.key===' ') && e.target===el){ e.preventDefault(); open(); } };
   });
   $('#deptBack')?.addEventListener('click',()=>{ state.activeDeptId=null; state.deptDetail=null; render('departments'); });
   $('#addDeptBtn')?.addEventListener('click',async()=>{
@@ -331,7 +342,7 @@ function renderResults(){
   const rows=state.results.map((r,i)=>{
     return `<tr><td>${i+1}</td><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${esc(r.subject_name)}</td><td>${esc(r.term_name)}<br><small>${esc(r.session_name)}</small></td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${r.is_approved?'<span class="portal-badge ok">Approved</span>':'<span class="portal-badge pending">Pending</span>'}</td></tr>`;
   }).join('');
-  const headers = ['#','Student','Subject','Term','CA','Exam','Total','Grade','Status'];
+  const headers = ['#','Student','Subject','Term','CA /40','Exam /60','Total','Grade','Status'];
   return `<div class="portal-toolbar"><div><div class="eyebrow">Academic oversight</div><h1>Results</h1><p>Every submitted result across the school, most recent first.</p></div>${searchBox('results','Search by student, code or subject…')}</div>${card('All results',table(headers,rows,'No results match this search.')+truncatedNote(state.resultsTruncated,'results'))}`;
 }
 // A student's own results used to be one flat admin-style table with a
@@ -351,12 +362,15 @@ function renderReportCards(){
   const printedOn=fmtDate(new Date());
   const legend='Grading key: A1/B2/B3 Excellent–Very Good · C4/C5/C6 Credit · D7/E8 Pass · F9 Fail';
   const cards=[...groups.values()].map(g=>{
-    const subjectRows=g.rows.map(r=>`<tr><td>${esc(r.subject_name)}</td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${esc(r.remark||'—')}</td></tr>`).join('');
+    const dash=v=>v===null||v===undefined?'—':Number(v);
+    const ca1=r=>r.test1_score===null||r.test1_score===undefined?'—':Number(r.test1_score)+Number(r.quiz_score||0)+Number(r.assignment_score||0);
+    const ca2=r=>r.test2_score===null||r.test2_score===undefined?'—':Number(r.test2_score)+Number(r.project_score||0)+Number(r.note_score||0);
+    const subjectRows=g.rows.map(r=>`<tr><td>${esc(r.subject_name)}</td><td>${dash(r.test1_score)}</td><td>${dash(r.quiz_score)}</td><td>${dash(r.assignment_score)}</td><td>${ca1(r)}</td><td>${dash(r.test2_score)}</td><td>${dash(r.project_score)}</td><td>${dash(r.note_score)}</td><td>${ca2(r)}</td><td>${Number(r.exam_score)}</td><td><strong>${Number(r.total_score)}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${esc(r.remark||'—')}</td></tr>`).join('');
     const count=g.rows.length;
     const average=count?(g.rows.reduce((a,r)=>a+Number(r.total_score),0)/count).toFixed(1):'0.0';
     const passes=g.rows.filter(r=>Number(r.total_score)>=50).length;
     return `<section class="report-card">
-      <div class="report-card-head"><h2>NNSS Calabar</h2><p>Termly Report Card</p></div>
+      <div class="report-card-head"><h2>Nigerian Navy Secondary School Akpabuyo Calabar</h2><p>Termly Report Card</p></div>
       <div class="report-card-bio">
         <span>Student<strong>${esc(u.name)}</strong></span>
         <span>Student ID<strong>${esc(u.user_code)}</strong></span>
@@ -365,7 +379,7 @@ function renderReportCards(){
         <span>Session<strong>${esc(g.session_name)}</strong></span>
         <span>Printed<strong>${esc(printedOn)}</strong></span>
       </div>
-      ${table(['Subject','CA','Exam','Total','Grade','Remark'],subjectRows,'No approved results for this term.')}
+      ${table(['Subject','1st Test /15','Quiz /5','Assign. /5','CA1 /25','2nd Test /5','Project /5','Note /5','CA2 /15','Exam /60','Total /100','Grade','Remark'],subjectRows,'No approved results for this term.')}
       <div class="report-card-summary">
         <span>Subjects offered<strong>${count}</strong></span>
         <span>Average score<strong>${average}%</strong></span>
@@ -426,10 +440,6 @@ function announcementModal(existing){
 }
 function renderProfile(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Account</div><h1>My Profile</h1></div></div>${card('Account details',`<div class="portal-form-grid"><div class="info-item"><label>Full name</label><p>${esc(state.user.name)}</p></div><div class="info-item"><label>Role</label><p>${esc(roleName[state.user.role])}</p></div><div class="info-item"><label>User ID</label><p>${esc(state.user.user_code)}</p></div><div class="info-item"><label>Email</label><p>${esc(state.user.email||'Not provided')}</p></div></div>`)}
     ${card('Change password',`<div class="portal-form-grid">${pwdField("pwdCurrent","Current password","current-password")}${pwdField("pwdNew","New password (min. 8 characters)","new-password",'minlength="8"')}${pwdField("pwdConfirm","Confirm new password","new-password",'minlength="8"')}<div class="full"><button class="btn btn-primary" id="changePasswordBtn">Update password</button></div></div>`)}`; }
-function renderScoreEntry(){
-  const assignmentOptions=state.assignments.map(a=>`<option value="${a.id}" data-class="${esc(a.class_name)}" data-arm="${esc(a.arm_name)}" data-subject="${esc(a.subject_name)}" data-session="${a.session_id}" data-camax="${a.ca_max}" data-exammax="${a.exam_max}">${esc(a.class_name)} ${esc(a.arm_name)} — ${esc(a.subject_name)} (${esc(a.session_name)})</option>`).join('');
-  return `<div class="portal-toolbar"><div><div class="eyebrow">Teacher workflow</div><h1>Score Entry</h1><p>Scores are validated by the server and sent to the HOD approval queue.</p></div></div>${card('Enter a result',`<div class="portal-form-grid"><div class="form-group full"><label>Teaching assignment</label><select id="scoreAssignment"><option value="">Select assignment…</option>${assignmentOptions}</select></div><div class="form-group"><label>Student</label><select id="scoreStudent"><option value="">Select assignment first…</option></select></div><div class="form-group"><label>Academic term</label><select id="scoreTerm"></select></div><div class="form-group"><label>CA score <small id="caRange">(select assignment)</small></label><input id="caScore" type="number" min="0" step="0.5" inputmode="decimal"></div><div class="form-group"><label>Exam score <small id="examRange">(select assignment)</small></label><input id="examScore" type="number" min="0" step="0.5" inputmode="decimal"></div><div class="full"><div class="portal-actions"><button class="btn btn-primary" id="saveScore">Save & submit for review</button><button class="btn btn-secondary" type="button" id="clearScore">Clear</button></div></div></div>`)}`;
-}
 function renderStudents(){
   const manageable = ['admin','commandant'].includes(state.user.role);
   const rows=state.students.map((s,i)=>{
@@ -442,16 +452,38 @@ function renderStudents(){
   return `<div class="portal-toolbar"><div><div class="eyebrow">Student register</div><h1>${state.user.role==='teacher'?'My Students':'Students'}</h1>${manageable?'<p>Status changes preserve every academic record — nothing is deleted.</p>':''}</div><div class="portal-actions">${search}${statusFilter}</div></div>${card('Student register',table(headers,rows,'No students found for this filter.')+truncatedNote(state.studentsTruncated,'student'))}`;
 }
 function renderAccounts(){ const rows=state.accounts.map(a=>`<tr><td><strong>${esc(a.full_name)}</strong><br><small>${esc(a.user_code)}</small></td><td>${esc(roleName[a.role]||a.role)}</td><td>${esc(a.email||'—')}</td><td><span class="portal-badge ok">Active</span></td><td class="portal-actions">${a.user_id===state.user.id?'<span class="portal-badge">Current account</span>':`<button class="btn btn-secondary btn-sm" data-reset-password="${a.user_id}" data-reset-name="${esc(a.full_name)}">Reset password</button><button class="btn btn-danger btn-sm" data-remove-user="${a.user_id}">Remove access</button>`}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Access control</div><h1>Account Management</h1><p>Provision and revoke portal access while preserving academic and audit history.</p></div><div class="portal-actions">${searchBox('accounts','Search accounts by name or ID…')}<button class="btn btn-primary btn-auto" id="newUser">Create account</button></div></div>${card('Active portal accounts',table(['Account','Role','Email','Status','Action'],rows,'No accounts match this search.')+truncatedNote(state.accountsTruncated,'account'))}`; }
-function renderApproval(){ const rows=state.pending.map(r=>`<tr><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${esc(r.class_name)} ${esc(r.arm_name)}</td><td>${esc(r.subject_name)}</td><td>${esc(r.term_name)}</td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong> <span class="${gradeClass(r.grade)}">${esc(r.grade)}</span></td><td><div class="portal-actions"><button class="btn btn-primary" data-approve="${r.id}">Approve</button><button class="btn btn-danger" data-reject="${r.id}">Disapprove</button></div></td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Quality control</div><h1>Result Approval</h1><p>Review each submitted score before it becomes visible to students.</p></div></div>${card('Pending approval queue',table(['Student','Class','Subject','Term','CA','Exam','Total','Action'],rows,'No pending results. The department is up to date.'))}`; }
+function renderApproval(){
+  // Results arrive as whole class sheets, so the queue is grouped the same way:
+  // approve a sheet in one click, or work through its rows one by one.
+  const groups=new Map();
+  state.pending.forEach(r=>{
+    const key=[r.subject_id,r.class_level_id,r.arm_id,r.term_id].join('|');
+    if(!groups.has(key)) groups.set(key,{key,subject_id:r.subject_id,class_level_id:r.class_level_id,arm_id:r.arm_id,term_id:r.term_id,subject_name:r.subject_name,class_name:r.class_name,arm_name:r.arm_name,term_name:r.term_name,session_name:r.session_name,teacher_name:r.teacher_name,rows:[]});
+    groups.get(key).rows.push(r);
+  });
+  const cell=v=>v===null||v===undefined?'<span style="color:var(--text-light)">—</span>':Number(v);
+  const cards=[...groups.values()].map(g=>{
+    const rows=g.rows.map(r=>`<tr><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${cell(r.test1_score)}</td><td>${cell(r.quiz_score)}</td><td>${cell(r.assignment_score)}</td><td>${cell(r.test2_score)}</td><td>${cell(r.project_score)}</td><td>${cell(r.note_score)}</td><td>${Number(r.ca_score)}</td><td>${Number(r.exam_score)}</td><td><strong>${Number(r.total_score)}</strong> <span class="${gradeClass(r.grade)}">${esc(r.grade)}</span></td><td><div class="portal-actions"><button class="btn btn-primary btn-sm" data-approve="${r.id}">Approve</button><button class="btn btn-danger btn-sm" data-reject="${r.id}">Disapprove</button></div></td></tr>`).join('');
+    const head=`${esc(g.class_name)} ${esc(g.arm_name)} — ${esc(g.subject_name)}`;
+    const actions=`<button class="btn btn-primary btn-sm" data-approve-sheet data-subject="${g.subject_id}" data-class="${g.class_level_id}" data-arm="${g.arm_id}" data-term="${g.term_id}" data-count="${g.rows.length}">Approve all ${g.rows.length}</button>`;
+    return card(head,`<p style="color:var(--text-secondary);font-size:.85rem;margin-bottom:.6rem">${esc(g.term_name)}, ${esc(g.session_name)} · submitted by ${esc(g.teacher_name)}</p>${table(['Student','1st Test','Quiz','Assign.','2nd Test','Project','Note','CA /40','Exam /60','Total','Action'],rows)}`,actions,'approval-card');
+  }).join('') || card('Pending approval queue','<div class="portal-empty">No pending results. The department is up to date.</div>');
+  return `<div class="portal-toolbar"><div><div class="eyebrow">Quality control</div><h1>Result Approval</h1><p>Review each submitted class sheet before it becomes visible to students. Approve a whole sheet at once, or send individual scores back with a reason.</p></div><button class="btn btn-secondary btn-auto" data-go="sheets">Browse all sheets</button></div>${cards}`;
+}
+async function approveWholeSheet(btn){
+  const n=Number(btn.dataset.count);
+  if(!confirm(`Approve all ${n} pending result${n===1?'':'s'} on this sheet? Students will be able to see them.`)) return;
+  btn.disabled=true;
+  try{ const out=await approveSheet({subject_id:Number(btn.dataset.subject),class_level_id:Number(btn.dataset.class),arm_id:Number(btn.dataset.arm),term_id:Number(btn.dataset.term)}); toast(out.message,'success'); render('approval'); }
+  catch(e){ toast(e.message,'error'); btn.disabled=false; }
+}
 function renderTeachers(){ const rows=state.teachers.map((t,i)=>`<tr><td>${i+1}</td><td><strong>${esc(t.full_name)}</strong><br><small>${esc(t.user_code)}</small></td><td>${esc(t.department||'—')}</td><td>${esc(t.subjects||'—')}</td><td>${esc(t.email||'—')}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Staff directory</div><h1>Teachers</h1></div>${searchBox('teachers','Search by name, ID or subject…')}</div>${card('Teaching staff',table(['#','Teacher','Department','Subjects','Email'],rows,'No teachers match this search.')+truncatedNote(state.teachersTruncated,'teacher'))}`; }
 function renderSystem(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Configuration</div><h1>System Administration</h1></div></div>${card('Academic configuration',`<p>Academic sessions, terms, departments, subjects and assignments are stored in the database.</p><p style="margin-top:.7rem">Use the account creation workflow to provision controlled portal access. Passwords are hashed server-side and are never returned to the browser.</p>`)}${card('Security posture',`<div class="portal-kpi"><span>Authentication</span><strong>HTTP-only session cookie</strong></div><div class="portal-kpi"><span>Role enforcement</span><strong>Server-side</strong></div><div class="portal-kpi"><span>Result publication</span><strong>HOD approval required</strong></div>`)}`; }
-function renderOverview(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Commandant</div><h1>School Overview</h1><p>High-level academic and operational indicators.</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'users')}${stat('Teachers',state.stats.teachers,'idbadge')}${stat('Approved results',state.stats.results,'barchart')}${stat('Pending review',state.stats.pending_results,'clock')}</div>${card('Operational picture','The dashboard is backed by live database queries rather than demo values. Use Top Performers for academic ranking and Announcements for official communications.')}`; }
-function renderTop(){ const rows=state.top.map((r,i)=>`<tr><td><span class="portal-badge ${i<3?'ok':''}">#${i+1}</span></td><td><strong>${esc(r.full_name)}</strong><br><small>${esc(r.user_code)}</small></td><td>${esc(r.class)}</td><td>${esc(r.arm)}</td><td><strong>${r.avg_score}%</strong></td><td>${r.subjects_taken}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic excellence</div><h1>Top Performers</h1></div></div>${card('Approved-result ranking',table(['Rank','Student','Class','Arm','Average','Subjects'],rows,'No approved results are available for ranking.'))}`; }
 
 function renderCurriculum(){
   const depts = state.meta?.departments || [];
   const deptOpts = depts.map(d=>`<option value="${d.id}">${esc(d.dept_name)}</option>`).join('');
-  const addForm = `<div class="portal-form-grid"><div class="form-group full"><label>Subject name</label><input id="newSubjectName" placeholder="e.g. Music"></div><div class="form-group"><label>Department</label><select id="newSubjectDept"><option value="">Unassigned</option>${deptOpts}</select></div><div class="form-group"><label>CA max</label><input id="newSubjectCa" type="number" min="0" max="100" value="30"></div><div class="form-group"><label>Exam max</label><input id="newSubjectExam" type="number" min="0" max="100" value="70"></div><div class="full"><button class="btn btn-primary" id="addSubjectBtn">Add subject</button></div></div>`;
+  const addForm = `<div class="portal-form-grid"><div class="form-group full"><label>Subject name</label><input id="newSubjectName" placeholder="e.g. Music"></div><div class="form-group"><label>Department</label><select id="newSubjectDept"><option value="">Unassigned</option>${deptOpts}</select></div><div class="form-group full"><p style="color:var(--text-secondary);font-size:.85rem">Every subject uses the school's Continuous Assessment Sheet split: <strong>CA 40</strong> (1st test 15, quiz 5, assignment 5, 2nd test 5, project 5, note 5) + <strong>Exam 60</strong> = 100.</p></div><div class="full"><button class="btn btn-primary" id="addSubjectBtn">Add subject</button></div></div>`;
   const rows = state.curriculum.map(s=>{
     const trackCells = TRACKS.map(t=>{
       const on = s.tracks.includes(t);
@@ -479,10 +511,8 @@ function bindCurriculum(){
   $('#addSubjectBtn').onclick=async()=>{
     const subject_name=$('#newSubjectName').value.trim();
     const dept_id=$('#newSubjectDept').value?Number($('#newSubjectDept').value):null;
-    const ca_max=Number($('#newSubjectCa').value), exam_max=Number($('#newSubjectExam').value);
     if(!subject_name) return toast('Enter a subject name.','error');
-    if(!Number.isFinite(ca_max)||!Number.isFinite(exam_max)) return toast('CA and exam maximums must be numbers.','error');
-    try{ await createSubject({subject_name,dept_id,ca_max,exam_max}); toast('Subject added.','success'); render('curriculum'); }
+    try{ await createSubject({subject_name,dept_id}); toast('Subject added.','success'); render('curriculum'); }
     catch(e){ toast(e.message,'error'); }
   };
   document.querySelectorAll('[data-track-toggle]').forEach(b=>b.onclick=async()=>{
@@ -511,120 +541,12 @@ function studentStatusModal(id,currentStatus,name){
   };
 }
 
-function renderAiImport(){ const terms=(state.meta?.terms||[]).filter(t=>!t.result_locked); return `<div class="portal-toolbar"><div><div class="eyebrow">Assisted data entry</div><h1>Score-Sheet Scanner (OCR)</h1><p>Capture or upload a score sheet, review the extracted values, then submit verified scores for HOD approval.</p></div><span id="aiStatusBadge" class="portal-badge pending">Checking OCR engine…</span></div>${card('1. Select assignment',`<div class="portal-form-grid"><div class="form-group"><label for="aiAssignment">Teaching assignment</label><select id="aiAssignment"><option value="">Select class, arm and subject</option>${state.assignments.map(a=>`<option value="${a.id}">${esc(a.class_name)} ${esc(a.arm_name)} · ${esc(a.subject_name)} · ${esc(a.session_name)}</option>`).join('')}</select></div><div class="form-group"><label for="aiTerm">Academic term</label><select id="aiTerm"><option value="">Select term</option>${terms.map(t=>`<option value="${t.id}" ${t.is_current?'selected':''}>${esc(t.session_name)} · ${esc(t.term_name)}</option>`).join('')}</select></div></div>`)}${card('2. Capture or upload',`<div class="ai-dropzone"><div class="ai-drop-icon">${ic('plus',20)}</div><h3>Score sheet image</h3><p>Use a clear, well-lit JPG, PNG or WebP image. The image is processed for extraction and is not stored by this feature.</p><div class="portal-actions"><label class="btn btn-primary" for="aiImage">Choose image<input id="aiImage" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden></label><button class="btn btn-secondary" id="aiAnalyze" disabled>Analyze sheet</button></div><small id="aiFileName">No image selected</small></div>`)}<div id="aiResults"></div>`; }
-function bindAiImport(){
-  const badge=$('#aiStatusBadge'), file=$('#aiImage'), analyze=$('#aiAnalyze'), assignment=$('#aiAssignment'), term=$('#aiTerm'), fileName=$('#aiFileName'), results=$('#aiResults');
-  getAiStatus().then(s=>{ badge.textContent=s.available?'Scanner ready':'OCR unavailable — manual entry available'; badge.className=`portal-badge ${s.available?'ok':'pending'}`; analyze.dataset.available=s.available?'1':'0'; }).catch(()=>{badge.textContent='OCR unavailable — manual entry available';});
-  let selectedFile=null;
-  file.onchange=()=>{selectedFile=file.files?.[0]||null; fileName.textContent=selectedFile?`${selectedFile.name} · ${(selectedFile.size/1024/1024).toFixed(1)} MB`:'No image selected'; analyze.disabled=!selectedFile||!assignment.value||!term.value;};
-  assignment.onchange=()=>{analyze.disabled=!selectedFile||!assignment.value||!term.value;};
-  analyze.onclick=async()=>{
-    if(!selectedFile||!assignment.value||!term.value)return;
-    analyze.disabled=true; analyze.textContent='Analyzing…';
-    // A single OCR call has no real progress events to report, so this
-    // advances through honest, descriptive stages on a timer and caps short
-    // of 100% until the actual response lands — a linear bar with a
-    // percentage reads far more informative than an indefinite spinner for
-    // something that can take several seconds on modest hardware.
-    const stages=[[10,'Uploading photo…'],[30,'Correcting lighting and tilt…'],[60,'Reading the score sheet…'],[85,'Matching rows to the class roster…']];
-    let stageIdx=0;
-    results.innerHTML=`<div class="portal-card"><div class="ai-progress"><div class="ai-progress-track"><div class="ai-progress-bar" id="aiProgressBar" style="width:0%">0%</div></div><p id="aiProgressLabel">Starting…</p></div></div>`;
-    const bar=$('#aiProgressBar'), label=$('#aiProgressLabel');
-    const timer=setInterval(()=>{
-      if(stageIdx<stages.length){ const [pct,text]=stages[stageIdx++]; bar.style.width=pct+'%'; bar.textContent=pct+'%'; label.textContent=text; }
-    },700);
-    try{
-      const dataUrl=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(selectedFile);});
-      const out=await aiImportScores({assignment_id:Number(assignment.value),term_id:Number(term.value),image:dataUrl});
-      clearInterval(timer);
-      bar.style.width='100%'; bar.textContent='100%'; label.textContent='Done';
-      setTimeout(()=>renderAiReview(out,results),200);
-    }catch(e){
-      clearInterval(timer);
-      results.innerHTML=`<div class="portal-card"><div class="portal-empty"><h3>Scan could not be completed</h3><p>${esc(e.message)}</p><button class="btn btn-secondary" id="aiManualFallback" data-go="scores">Continue with manual score entry</button></div></div>`;
-      document.querySelector('#aiManualFallback')?.addEventListener('click',()=>render('scores'));
-    }finally{analyze.disabled=false;analyze.textContent='Analyze sheet';}
-  };
-}
-// Working copy of the scanner's extracted rows, editable in the browser
-// before anything is submitted: teachers previously had no way to fix a
-// wrong/duplicate student match or add one the scan missed entirely — they
-// could only tweak the two score numbers. This keeps a live array and
-// re-renders just this section (never a full page reload) on every edit.
-let aiRows = [], aiCM = 30, aiEM = 70, aiAssignment = null, aiTermId = null;
-
-function renderAiReview(data, target){
-  aiRows = (data.rows || []).map(r => ({ ...r }));
-  aiCM = Number(data.assignment?.ca_max) || 30;
-  aiEM = Number(data.assignment?.exam_max) || 70;
-  aiAssignment = data.assignment;
-  aiTermId = data.term_id;
-  renderAiTable(target);
-}
-
-function syncAiInputs(target){
-  target.querySelectorAll('.ai-score-input').forEach(inp=>{
-    const i=Number(inp.dataset.aiRow), field=inp.dataset.field==='ca'?'ca_score':'exam_score';
-    aiRows[i][field] = inp.value===''?'':Number(inp.value);
-  });
-  target.querySelectorAll('.ai-student-select').forEach(sel=>{
-    const i=Number(sel.dataset.aiRow);
-    aiRows[i].user_code = sel.value || null;
-    aiRows[i].full_name = sel.value ? (state.students.find(s=>s.user_code===sel.value)?.full_name || null) : null;
-  });
-}
-
-function renderAiTable(target){
-  const counts = {};
-  aiRows.forEach(r=>{ if(r.user_code) counts[r.user_code]=(counts[r.user_code]||0)+1; });
-  const dupCount = Object.values(counts).filter(c=>c>1).length;
-  const studentOptions = code => `<option value="">— Select student —</option>${state.students.map(s=>`<option value="${esc(s.user_code)}" ${s.user_code===code?'selected':''}>${esc(s.full_name)} (${esc(s.user_code)})</option>`).join('')}`;
-  const body = aiRows.map((r,i)=>{
-    const isDup = r.user_code && counts[r.user_code] > 1;
-    return `<tr class="${isDup?'ai-row-duplicate':''}">
-      <td><select class="ai-student-select" data-ai-row="${i}">${studentOptions(r.user_code)}</select>
-        ${isDup?'<small class="ai-note ai-note-danger">Duplicate — remove one</small>':!r.user_code?'<small class="ai-note">Unmatched — pick the student</small>':''}</td>
-      <td><input class="ai-score-input" data-ai-row="${i}" data-field="ca" type="number" min="0" max="${aiCM}" value="${r.ca_score??''}"></td>
-      <td><input class="ai-score-input" data-ai-row="${i}" data-field="exam" type="number" min="0" max="${aiEM}" value="${r.exam_score??''}"></td>
-      <td><span class="portal-badge ${r.confidence>=.9&&r.valid_ca&&r.valid_exam?'ok':'pending'}">${r.confidence!=null?Math.round(r.confidence*100)+'%':'Manual'}</span>${r.note?`<small class="ai-note">${esc(r.note)}</small>`:''}</td>
-      <td><button class="btn btn-secondary ai-remove-btn" data-ai-remove="${i}" title="Remove this row">${ic('x',14)}</button></td>
-    </tr>`;
-  }).join('');
-  target.innerHTML = `${card('3. Verify extracted scores',
-    `<div class="ai-review-note"><strong>Nothing is published automatically.</strong> Review every row — reassign a wrong or unmatched student, remove duplicates, or add a row for a student the scan missed — before submitting.</div>
-    ${dupCount?`<div class="ai-review-note ai-review-warn">${dupCount} student${dupCount===1?' appears':'s appear'} more than once below. Remove the extra row(s) before submitting.</div>`:''}
-    ${table(['Student',`CA / ${aiCM}`,`Exam / ${aiEM}`,'Confidence',''], body, 'No rows yet — use "Add student row" below.')}
-    <div class="portal-actions"><button class="btn btn-secondary" id="addAiRow">${ic('plus',15)} Add student row</button></div>
-    <div class="portal-actions"><button class="btn btn-primary" id="submitAiScores">Submit verified scores</button><button class="btn btn-secondary" id="discardAiScores">Discard and retry</button></div>`
-  )}`;
-
-  target.querySelectorAll('.ai-student-select').forEach(sel=>sel.onchange=()=>{ syncAiInputs(target); renderAiTable(target); });
-  target.querySelectorAll('[data-ai-remove]').forEach(b=>b.onclick=()=>{ syncAiInputs(target); aiRows.splice(Number(b.dataset.aiRemove),1); renderAiTable(target); });
-  $('#addAiRow').onclick=()=>{ syncAiInputs(target); aiRows.push({ user_code:null, full_name:null, ca_score:'', exam_score:'', confidence:null, valid_ca:true, valid_exam:true, note:null }); renderAiTable(target); };
-
-  const submit = $('#submitAiScores');
-  submit.onclick = async () => {
-    syncAiInputs(target);
-    const unassigned = aiRows.filter(r=>!r.user_code);
-    if(unassigned.length) return toast(`${unassigned.length} row(s) still need a student selected.`,'error');
-    const hasDupes = aiRows.some((r,i)=>aiRows.findIndex(x=>x.user_code===r.user_code)!==i);
-    if(hasDupes) return toast('Remove duplicate student rows before submitting.','error');
-    const invalid = aiRows.filter(r=>!Number.isFinite(r.ca_score)||r.ca_score<0||r.ca_score>aiCM||!Number.isFinite(r.exam_score)||r.exam_score<0||r.exam_score>aiEM);
-    if(invalid.length) return toast(`${invalid.length} row(s) need valid scores before submission.`,'error');
-    submit.disabled=true; submit.textContent='Submitting…';
-    try{
-      for(const r of aiRows) await uploadResult({ student_code:r.user_code, subject_name:aiAssignment.subject_name, term_id:Number(aiTermId), ca_score:r.ca_score, exam_score:r.exam_score });
-      toast(`${aiRows.length} verified score(s) sent for HOD approval.`,'success');
-      render('scores');
-    }catch(e){ toast(e.message,'error'); submit.disabled=false; submit.textContent='Submit verified scores'; }
-  };
-  $('#discardAiScores').onclick=()=>render('ai-import');
-}
-
 function bindPanel(panel){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>render(b.dataset.go));
-  if(panel==='scores') bindScores();
-  if(panel==='ai-import') bindAiImport();
+  if(panel==='sheet') Sheets.bindTeacherSheet();
+  if(panel==='sheets') Sheets.bindSheetBrowser();
+  if(state.user.role==='commandant' && ['dashboard','overview','top'].includes(panel)) Cmd.bind(panel);
+  if(panel==='approval') document.querySelectorAll('[data-approve-sheet]').forEach(b=>b.onclick=()=>approveWholeSheet(b));
   if(panel==='approval') document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>approveOne(b.dataset.approve));
   if(panel==='approval') document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>rejectOne(b.dataset.reject));
   if(panel==='announcements') bindAnnouncements();
@@ -738,17 +660,6 @@ function resetPasswordModal(userId,name){
     catch(e){ toast(e.message,'error'); }
   };
 }
-function bindScores(){
-  const assignment=$('#scoreAssignment'), student=$('#scoreStudent'), term=$('#scoreTerm');
-  const terms=(state.meta?.terms||[]).filter(t=>!t.result_locked);
-  term.innerHTML=terms.map(t=>`<option value="${t.id}" ${t.is_current?'selected':''}>${esc(t.session_name)} — ${esc(t.term_name)}</option>`).join('') || '<option value="">No unlocked terms</option>';
-  assignment.onchange=()=>{ const opt=assignment.selectedOptions[0]; if(!opt?.dataset.class){student.innerHTML='<option>Select assignment first…</option>';$('#caRange').textContent='(select assignment)';$('#examRange').textContent='(select assignment)';return;}
-    // Bounds come from the selected subject, which may weight CA/exam differently.
-    const cm=Number(opt.dataset.camax)||30, em=Number(opt.dataset.exammax)||70;
-    $('#caScore').max=cm; $('#examScore').max=em; $('#caRange').textContent=`(0–${cm})`; $('#examRange').textContent=`(0–${em})`; const matches=state.students.filter(s=>s.class===opt.dataset.class && s.arm===opt.dataset.arm); student.innerHTML=matches.map(s=>`<option value="${esc(s.user_code)}">${esc(s.full_name)} — ${esc(s.user_code)}</option>`).join('') || '<option value="">No assigned students</option>'; };
-  $('#clearScore').onclick=()=>{ $('#caScore').value=''; $('#examScore').value=''; };
-  $('#saveScore').onclick=async()=>{ const opt=assignment.selectedOptions[0]; if(!opt?.value||!student.value||!term.value) return toast('Select assignment, student and term.','error'); const cm=Number(opt.dataset.camax)||30, em=Number(opt.dataset.exammax)||70; const ca=Number($('#caScore').value),exam=Number($('#examScore').value); if(!Number.isFinite(ca)||!Number.isFinite(exam)||ca<0||ca>cm||exam<0||exam>em) return toast(`CA must be 0–${cm} and exam must be 0–${em}.`,'error'); try{ $('#saveScore').disabled=true; await uploadResult({student_code:student.value,subject_name:opt.dataset.subject,term_id:Number(term.value),ca_score:ca,exam_score:exam}); toast('Score saved and sent for HOD approval.','success'); $('#clearScore').click(); }catch(e){toast(e.message,'error')}finally{$('#saveScore').disabled=false;} };
-}
 async function approveOne(id){ if(!confirm('Approve this result? It will become visible to the student.')) return; try{await approveResult(id);toast('Result approved.','success');render('approval')}catch(e){toast(e.message,'error')} }
 // A reason is mandatory here (the teacher needs to know what to fix), and
 // requiring it doubles as the confirmation step the HOD has to deliberately
@@ -772,4 +683,6 @@ async function userModal(){ const m=await loadMeta(); const classOpts=m.classes.
 
 // Admin can use the same student screen to create accounts. Keep the feature visible but controlled.
 window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+const ctx={state,esc,ic,toast,card,table,stat,gradeClass,render,openModal,closeModal};
+Sheets.init(ctx); Cmd.init(ctx);
 init();

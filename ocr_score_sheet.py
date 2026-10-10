@@ -4,14 +4,22 @@ NNSS Calabar — score-sheet OCR extraction (Tesseract-based).
 
 Invoked by backend/routes/results.js as a subprocess:
     uv run ocr_score_sheet.py <image_path>
-with the real class roster piped to stdin as JSON:
-    {"STU2024001": "Jane Doe", "STU2024002": "John Smith", ...}
+with the real class roster (and the score limits) piped to stdin as JSON:
+    {"roster": {"STU2024001": "Jane Doe", ...},
+     "limits": {"test1": 15, "quiz": 5, "assignment": 5, "test2": 5,
+                "project": 5, "note": 5, "exam": 60}}
+(A bare {"STU2024001": "Jane Doe", ...} roster is still accepted.)
+
+It reads the school's Continuous Assessment Sheet, whose columns are
+    1ST TEST | QUIZ | ASSIGNMENT | TOTAL | 2ND TEST | PROJECT | NOTE | TOTAL | EXAM | TERM'S TOTAL | GRADE
 
 Prints a single JSON object to stdout:
     {
       "rows": [
-        {"user_code": "...", "full_name": "...", "ca_score": 25, "exam_score": 60,
-         "confidence": 0.93, "valid_ca": true, "valid_exam": true}
+        {"user_code": "...", "full_name": "...",
+         "scores": {"test1": 12, "quiz": 4, "assignment": 5, "test2": 4,
+                    "project": 5, "note": 3, "exam": 48},
+         "confidence": 0.93, "note": ""}
       ],
       "roster_count": 5,
       "extracted_count": 5,
@@ -51,7 +59,10 @@ _CONFUSIONS = [
     ("l", "1"), ("S", "5"), ("B", "8"),
 ]
 
-NUMERIC_RE = re.compile(r"^\d{1,3}$")
+NUMERIC_RE = re.compile(r"^\d{1,3}(?:[.,]\d{1,2})?$")
+
+SCORE_KEYS = ["test1", "quiz", "assignment", "test2", "project", "note", "exam"]
+DEFAULT_LIMITS = {"test1": 15, "quiz": 5, "assignment": 5, "test2": 5, "project": 5, "note": 5, "exam": 60}
 NAME_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z.'-]*$")
 
 
@@ -211,7 +222,47 @@ def match_roster_name(words, start, roster_by_name, max_words=4):
     return best or (None, None)
 
 
-def parse_rows(lines, roster):
+def to_number(text):
+    n = float(text.replace(",", "."))
+    return int(n) if n == int(n) else n
+
+
+def map_sheet_numbers(tokens):
+    """Map the numbers read left-to-right on one row to the sheet's columns.
+
+    The printed sheet reads  T1 Quiz Assign [TOTAL] T2 Project Note [TOTAL] Exam [TERM'S TOTAL]
+    (GRADE is a letter, so it never matches NUMERIC_RE). Only layouts that can be
+    mapped without guessing are accepted: 10 numbers (everything printed), 9
+    (term total missing) or 7 (a sheet with no total columns). Anything else is
+    returned unmapped, with a note, for the teacher to fill in by hand.
+    """
+    nums = [to_number(t["text"]) for t in tokens]
+    n = len(nums)
+    empty = {k: None for k in SCORE_KEYS}
+    if n >= 9:
+        idx = [0, 1, 2, 4, 5, 6, 8]
+        used = tokens[: min(n, 10)]
+    elif n == 7:
+        idx = list(range(7))
+        used = tokens
+    else:
+        return empty, [], f"Read {n} of the 7 score columns - enter this row by hand."
+    values = dict(zip(SCORE_KEYS, [nums[i] for i in idx]))
+    note = ""
+    if n >= 9:
+        ca1_ok = abs(nums[3] - (nums[0] + nums[1] + nums[2])) < 0.01
+        ca2_ok = abs(nums[7] - (nums[4] + nums[5] + nums[6])) < 0.01
+        total_ok = n < 10 or abs(nums[9] - (nums[3] + nums[7] + nums[8])) < 0.01
+        if not (ca1_ok and ca2_ok and total_ok):
+            note = "Printed totals do not match the scores read - check this row."
+    return values, used, note
+
+
+def within_limits(values, limits):
+    return all(values[k] is not None and 0 <= values[k] <= limits[k] for k in SCORE_KEYS)
+
+
+def parse_rows(lines, roster, limits):
     # Build a name -> code lookup once. A duplicate name across two students
     # is genuinely ambiguous from a name-only sheet, so the first one wins
     # rather than guessing.
@@ -249,30 +300,21 @@ def parse_rows(lines, roster):
         if matched_code is None:
             continue  # not a data row (header, title, blank line, unmatched noise)
 
-        # Take the numeric tokens that appear after the matched code, in
-        # left-to-right order: first is CA, second is EXAM. Ignore anything
-        # before the code (that's the S/N column) and anything after the
-        # second numeric token (stray marks, notes).
+        # Numbers after the matched name, left to right, are the score columns.
+        # Anything before it is the S/N column.
         numeric_after = [w for w in words[code_idx + 1:] if NUMERIC_RE.match(w["text"])]
-        ca_word = numeric_after[0] if len(numeric_after) >= 1 else None
-        exam_word = numeric_after[1] if len(numeric_after) >= 2 else None
+        values, used, note = map_sheet_numbers(numeric_after)
 
-        ca_score = int(ca_word["text"]) if ca_word else None
-        exam_score = int(exam_word["text"]) if exam_word else None
-
-        conf_values = [words[code_idx]["conf"]]
-        if ca_word: conf_values.append(ca_word["conf"])
-        if exam_word: conf_values.append(exam_word["conf"])
+        conf_values = [words[code_idx]["conf"]] + [w["conf"] for w in used]
         confidence = round(sum(conf_values) / len(conf_values) / 100, 2)
 
         rows.append({
             "user_code": matched_code,
             "full_name": roster.get(matched_code),
-            "ca_score": ca_score,
-            "exam_score": exam_score,
+            "scores": values,
             "confidence": confidence,
-            "valid_ca": ca_score is not None and 0 <= ca_score <= 30,
-            "valid_exam": exam_score is not None and 0 <= exam_score <= 70,
+            "note": note,
+            "_ok": within_limits(values, limits) and not note,
         })
     return rows
 
@@ -283,11 +325,19 @@ def main():
         sys.exit(1)
     image_path = sys.argv[1]
 
+    limits = dict(DEFAULT_LIMITS)
     try:
         roster_raw = sys.stdin.read()
-        roster = json.loads(roster_raw) if roster_raw.strip() else {}
-        if not isinstance(roster, dict):
+        payload = json.loads(roster_raw) if roster_raw.strip() else {}
+        if not isinstance(payload, dict):
             raise ValueError("roster must be a JSON object of {user_code: full_name}")
+        if "roster" in payload and isinstance(payload["roster"], dict):
+            roster = payload["roster"]
+            for k, v in (payload.get("limits") or {}).items():
+                if k in limits:
+                    limits[k] = float(v)
+        else:
+            roster = payload
         roster = {str(k).upper().strip(): v for k, v in roster.items()}
     except Exception as e:
         print(json.dumps({"error": f"Invalid roster data: {e}"}))
@@ -305,13 +355,13 @@ def main():
 
     # Try the fast, structured-table config first; only spend time on the
     # sparser/less-structured configs if it clearly under-performed against
-    # the class roster. Selection is by how many rows come out with BOTH
-    # scores actually valid, not raw row count — a sparse-text config can
-    # produce more matched names by fragmenting the table into extra rows,
-    # while losing the adjacent CA/exam pairing on every one of them, which
-    # raw-count selection would wrongly prefer.
+    # the class roster. Selection is by how many rows come out with ALL seven
+    # scores readable and inside their limits, not raw row count — a
+    # sparse-text config can produce more matched names by fragmenting the
+    # table into extra rows while losing the scores that sit beside each name,
+    # which raw-count selection would wrongly prefer.
     def count_valid(rows):
-        return sum(1 for r in rows if r["valid_ca"] and r["valid_exam"])
+        return sum(1 for r in rows if r["_ok"])
 
     best_rows, best_valid = [], -1
     for psm in (6, 4, 11):
@@ -325,13 +375,13 @@ def main():
                 print(json.dumps({"error": f"OCR failed: {e}"}))
                 sys.exit(1)
             continue
-        rows = parse_rows(lines, roster)
+        rows = parse_rows(lines, roster, limits)
         valid = count_valid(rows)
         if valid > best_valid or (valid == best_valid and len(rows) > len(best_rows)):
             best_rows, best_valid = rows, valid
         if best_valid >= len(roster):
             break
-    rows = best_rows
+    rows = [{k: v for k, v in r.items() if k != "_ok"} for r in best_rows]
     print(json.dumps({
         "rows": rows,
         "roster_count": len(roster),

@@ -88,8 +88,15 @@ body {
 
 /* ===== HERO CAROUSEL ===== */
 .hero-carousel { position: relative; width: 100%; height: 85vh; min-height: 500px; overflow: hidden; margin-top: 72px; }
-.carousel-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1s ease-in-out; background-size: cover; background-position: center; }
-.carousel-slide.active { opacity: 1; }
+/* Every slide is stacked on top of the others (position:absolute), and an
+   opacity:0 element still receives clicks. The LAST slide in the DOM (whose
+   button is "Login Now" -> login.html) therefore sat invisibly on top of the
+   whole carousel and swallowed every click, so "Discover Our School", "Read
+   More", "Latest News" etc. all landed on the Login button. Inactive slides
+   must be removed from hit-testing (pointer-events) and from the
+   accessibility/tab order (visibility), and the active one raised above them. */
+.carousel-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; visibility: hidden; pointer-events: none; z-index: 0; transition: opacity 1s ease-in-out, visibility 0s linear 1s; background-size: cover; background-position: center; }
+.carousel-slide.active { opacity: 1; visibility: visible; pointer-events: auto; z-index: 1; transition: opacity 1s ease-in-out, visibility 0s linear 0s; }
 .carousel-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, rgba(10,22,40,0.85) 0%, rgba(26,58,92,0.6) 50%, rgba(10,22,40,0.7) 100%); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; padding: 4rem 8%; }
 .carousel-overlay h2 { font-size: 3.5rem; color: white; font-weight: 800; margin-bottom: 1rem; text-shadow: 2px 4px 8px rgba(0,0,0,0.3); animation: fadeUp 0.8s ease-out; }
 .carousel-overlay p { font-size: 1.3rem; color: rgba(255,255,255,0.9); max-width: 600px; margin-bottom: 2rem; animation: fadeUp 0.8s ease-out 0.2s both; }
@@ -98,8 +105,8 @@ body {
 .carousel-dots { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 10; }
 .carousel-dots button { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; background: transparent; cursor: pointer; transition: var(--transition); }
 .carousel-dots button.active { background: var(--accent); border-color: var(--accent); }
-.carousel-arrows { position: absolute; top: 50%; transform: translateY(-50%); width: 100%; display: flex; justify-content: space-between; padding: 0 20px; z-index: 10; }
-.carousel-arrows button { width: 50px; height: 50px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; font-size: 1.2rem; cursor: pointer; transition: var(--transition); }
+.carousel-arrows { position: absolute; top: 50%; transform: translateY(-50%); width: 100%; display: flex; justify-content: space-between; padding: 0 20px; z-index: 10; pointer-events: none; }
+.carousel-arrows button { pointer-events: auto; width: 50px; height: 50px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.1); color: white; font-size: 1.2rem; cursor: pointer; transition: var(--transition); }
 .carousel-arrows button:hover { background: var(--accent); border-color: var(--accent); color: var(--primary); }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -680,3 +687,91 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
     margin-bottom: 1.25rem;
   }
 }
+
+/* ===== DEPARTMENT CARDS =====
+   The shield icon (.stat-icon) and the Delete button were both absolutely
+   positioned in the card's top-right corner, so they rendered on top of each
+   other. The card now has a normal header row: icon + name on the left, the
+   Delete button on the right, with no absolute positioning. */
+.dept-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+.dept-card { cursor:pointer; display:flex; flex-direction:column; gap:.15rem; transition:var(--transition); }
+.dept-card:hover, .dept-card:focus-visible { transform:translateY(-2px); border-color:var(--accent); box-shadow:var(--shadow-lg); outline:none; }
+.dept-card-head { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.35rem; }
+.dept-card-title { display:flex; align-items:center; gap:.6rem; min-width:0; }
+.dept-card-title small { margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dept-card .stat-icon { position:static; flex-shrink:0; }
+.dept-card .dept-delete { flex-shrink:0; padding:5px 11px; font-size:.75rem; min-height:0; }
+.dept-card-meta { color:var(--text-secondary); font-size:.78rem; margin-top:.35rem; }
+.dept-card-hod { color:var(--text-light); font-size:.75rem; margin-top:.2rem; }
+
+/* ===== CONTINUOUS ASSESSMENT SHEET ===== */
+.sheet-paper-head { text-align: center; margin-bottom: 1rem; }
+.sheet-paper-head h2 { margin: 0; font-size: 1.1rem; letter-spacing: .03em; }
+.sheet-paper-head h3 { margin: .15rem 0 .7rem; font-size: .9rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-secondary); }
+.sheet-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: .3rem 1.6rem; font-size: .85rem; color: var(--text-secondary); }
+.sheet-meta strong { color: var(--text); }
+.sheet-statusline { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-bottom: .8rem; }
+.sheet-draft { margin-left: auto; font-size: .78rem; color: var(--text-light); }
+.sheet-tools { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.sheet-tools .btn { width: auto; }
+.sheet-tools .is-off, .btn.is-off { opacity: .55; }
+.sheet-wrap { overflow-x: auto; }
+.sheet-table { min-width: 880px; border-collapse: collapse; font-size: .85rem; }
+.sheet-table th, .sheet-table td { border: 1px solid var(--border); padding: .3rem .2rem; text-align: center; vertical-align: middle; }
+.sheet-table thead th { background: var(--bg); font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; }
+.sheet-table th small { display: block; font-weight: 600; color: var(--accent); font-size: .72rem; }
+.sheet-table .sheet-name-col, .sheet-table .sheet-name { text-align: left; min-width: 150px; }
+.sheet-name small { display: block; color: var(--text-secondary); font-size: .74rem; }
+.sheet-name .sheet-reject { color: var(--danger); }
+.sheet-row-msg { display: block; font-size: .74rem; color: var(--danger); font-weight: 600; }
+.sheet-input { width: 44px; padding: 6px 4px; text-align: center; border: 1px solid var(--border); border-radius: 5px; font: inherit; background: var(--bg-card); color: var(--text); -moz-appearance: textfield; }
+.sheet-input::-webkit-outer-spin-button, .sheet-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sheet-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.sheet-input[readonly] { background: transparent; border-color: transparent; }
+.sheet-input.bad { border-color: var(--danger); background: rgba(214,69,69,.08); }
+.sheet-input.scanned { background: rgba(184,121,26,.14); border-color: var(--warning); }
+.sheet-calc { font-weight: 600; background: var(--bg); min-width: 44px; }
+.sheet-total { color: var(--text); }
+tr[data-fill="partial"] .sheet-name strong::after { content: ' • incomplete'; color: var(--warning); font-weight: 500; font-size: .74rem; }
+tr.row-error { background: rgba(214,69,69,.07); }
+.sheet-summary { display: flex; flex-wrap: wrap; gap: 1.2rem; margin-top: .9rem; font-size: .85rem; color: var(--text-secondary); }
+.sheet-summary strong { color: var(--text); }
+.sheet-summary .sheet-warn, .sheet-summary .sheet-warn strong { color: var(--warning); }
+.sheet-signatures { display: flex; gap: 2.5rem; margin-top: 2.2rem; }
+.sheet-signatures div { flex: 1; text-align: center; font-size: .8rem; color: var(--text-secondary); border-top: 1px solid var(--text-light); padding-top: .4rem; }
+@media (max-width: 650px) { .sheet-signatures { flex-direction: column; gap: 1.4rem; } }
+
+/* ===== COMMANDANT ===== */
+.cmd-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .cmd-two { grid-template-columns: 1fr; } }
+.pipeline { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--border); }
+.pipeline span { display: block; height: 100%; }
+.pipe-ok { background: var(--success); } .pipe-wait { background: var(--warning); } .pipe-bad { background: var(--danger); }
+.pipeline-key { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; margin-top: .6rem; font-size: .82rem; color: var(--text-secondary); }
+.pipeline-key i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .35rem; }
+.bar-row { display: grid; grid-template-columns: 2.6rem 1fr 2.4rem; gap: .6rem; align-items: center; margin: .35rem 0; font-size: .85rem; }
+.bar-track { height: 12px; background: var(--border); border-radius: 999px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.bar-n { text-align: right; color: var(--text-secondary); }
+
+/* ===== SHEET / REPORT PRINTING ===== */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body { background: #fff !important; }
+  .portal-toolbar, .portal-card-head, .eyebrow { display: none !important; }
+  .sheet-card { border: 0 !important; box-shadow: none !important; }
+  .sheet-wrap { overflow: visible !important; }
+  .sheet-table { min-width: 0 !important; width: 100%; font-size: 10pt; }
+  .sheet-table th, .sheet-table td { border: 1px solid #333 !important; padding: 2px 3px !important; }
+  .sheet-table thead th { background: #eee !important; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet-input { border: 0 !important; background: transparent !important; box-shadow: none !important; width: 100%; font-size: 10pt; padding: 0 !important; }
+  .sheet-calc { background: #f3f3f3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet-row-msg { display: none; }
+  .sheet-paper-head h2 { font-size: 14pt; } .sheet-paper-head h3 { color: #000; }
+  .sheet-signatures div { border-top-color: #000; color: #000; }
+}
+.portal-table.sheet-table th, .portal-table.sheet-table td { padding: .3rem .2rem; }
+.report-card .portal-table th, .report-card .portal-table td, .portal-card .portal-table.approval-table th { padding: .55rem .4rem; font-size: .8rem; }
+.approval-card .portal-table th, .approval-card .portal-table td { padding: .5rem .35rem; }
+.approval-card .portal-actions { flex-wrap: nowrap; }
+.approval-card .portal-actions .btn { white-space: nowrap; }
