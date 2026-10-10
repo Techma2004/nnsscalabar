@@ -59,9 +59,24 @@ function runOcr(imagePath, roster) {
       : ['uv', ['run', '--project', OCR_DIR, OCR_SCRIPT, imagePath]];
     const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], cwd: OCR_DIR });
     let stdout = '', stderr = '';
+    let stdoutBytes = 0, stderrBytes = 0, outputExceeded = false;
+    const MAX_STDOUT_BYTES = 2 * 1024 * 1024;
+    const MAX_STDERR_BYTES = 256 * 1024;
     const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('OCR timed out. Try a clearer, more evenly-lit photo.')); }, OCR_TIMEOUT_MS);
-    child.stdout.on('data', d => { stdout += d; });
-    child.stderr.on('data', d => { stderr += d; });
+    child.stdout.on('data', d => {
+      stdoutBytes += d.length;
+      if (stdoutBytes > MAX_STDOUT_BYTES) {
+        outputExceeded = true;
+        child.kill('SIGKILL');
+        return;
+      }
+      stdout += d;
+    });
+    child.stderr.on('data', d => {
+      stderrBytes += d.length;
+      // Keep only a small diagnostic tail; subprocess stderr is not trusted.
+      if (stderr.length < MAX_STDERR_BYTES) stderr += d.toString('utf8').slice(0, MAX_STDERR_BYTES - stderr.length);
+    });
     child.on('error', err => {
       clearTimeout(timer);
       if (err.code === 'ENOENT') {
@@ -72,21 +87,17 @@ function runOcr(imagePath, roster) {
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      // uv prints its own setup logs (venv creation, package downloads) to
-      // stderr on first run, and pytesseract itself never writes to stdout
-      // except our final JSON line — so stdout should always be clean. Fall
-      // back to scanning stderr too only if stdout truly has nothing usable,
-      // in case uv ever redirects an error there instead.
+      if (outputExceeded) return reject(new Error('OCR produced an oversized response. Use a smaller image or manual entry.'));
+      // OCR stdout is the only trusted protocol channel. Never parse stderr:
+      // it may contain environment details, logs, or private roster data.
       let parsed;
       try { parsed = JSON.parse(stdout.trim().split('\n').pop()); }
       catch {
-        try { parsed = JSON.parse(stderr.trim().split('\n').pop()); }
-        catch {
-          console.error('[ocr] unparseable output', { code, stdout, stderr });
-          return reject(new Error('OCR returned an unreadable response. Try again or use manual entry.'));
-        }
+        console.error('[ocr] unparseable output', { code, stdoutBytes, stderrBytes });
+        return reject(new Error('OCR returned an unreadable response. Try again or use manual entry.'));
       }
       if (parsed.error) return reject(new Error(parsed.error));
+      if (code !== 0) return reject(new Error('OCR process failed. Try again or use manual entry.'));
       resolve(parsed);
     });
     child.stdin.write(JSON.stringify({ roster, limits: { ...Object.fromEntries(scheme.COMPONENTS.map(c => [c.key, c.max])), exam: scheme.EXAM_MAX } }));
@@ -438,8 +449,8 @@ router.get('/student/:studentCode', async (req, res) => {
     const extraParams = [];
     if (role === 'teacher') {
       extraWhere = `AND EXISTS (SELECT 1 FROM teacher_class_assignments tca JOIN teachers tc ON tc.id=tca.teacher_id
-        JOIN academic_sessions asx ON asx.id=tca.session_id
-        WHERE tc.user_id=? AND tca.class_level_id=s.class_level_id AND tca.arm_id=s.arm_id AND asx.is_current=1)`;
+        WHERE tc.user_id=? AND tca.subject_id=r.subject_id AND tca.class_level_id=s.class_level_id
+          AND tca.arm_id=s.arm_id AND tca.session_id=ac.id AND ac.is_current=1)`;
       extraParams.push(req.user.id);
       canSeePending = true;
     }
