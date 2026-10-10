@@ -91,7 +91,7 @@ function runOcr(imagePath, roster) {
       // OCR stdout is the only trusted protocol channel. Never parse stderr:
       // it may contain environment details, logs, or private roster data.
       let parsed;
-      try { parsed = JSON.parse(stdout.trim().split('\\n').pop()); }
+      try { parsed = JSON.parse(stdout.trim().split('\n').pop()); }
       catch {
         console.error('[ocr] unparseable output', { code, stdoutBytes, stderrBytes });
         return reject(new Error('OCR returned an unreadable response. Try again or use manual entry.'));
