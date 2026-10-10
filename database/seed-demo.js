@@ -44,7 +44,6 @@ const teacherLast = [
   'Johnson','King','Mba','Ndi','Obot','Okon','Okoro','Onyema','Peter','Sani',
   'Udo','Ufot','Udoh','Williams','Yakubu','Young'
 ];
-const qualifications = ['B.Ed.','B.Sc. Education','B.A. Education','B.Tech. Education','M.Ed.'];
 const juniorArms = ['OBUDU','CALABAR','KWA'];
 
 function pickName(first, last, index) {
@@ -210,12 +209,11 @@ async function main() {
       );
 
       const [t] = await db.query(
-        "INSERT INTO teachers (user_id, staff_no, dept_id, qualification, date_joined) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO teachers (user_id, staff_no, dept_id, date_joined) VALUES (?, ?, ?, ?)",
         [
           u.insertId,
           code,
           dept.id,
-          qualifications[(i - 1) % qualifications.length],
           '2020-09-01'
         ]
       );
