@@ -1,7 +1,16 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const router = express.Router();
+// Apply a route-specific ceiling in addition to the API-wide limiter.
+router.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many student requests. Please try again later.' }
+}));
 router.use(auth);
 
 // Student profile data is sensitive (date of birth, parent contact details and
