@@ -95,7 +95,7 @@ router.get('/:studentCode', async (req, res) => {
       resultScope = `AND EXISTS (SELECT 1 FROM teacher_class_assignments tca JOIN teachers tch ON tch.id=tca.teacher_id
         JOIN academic_sessions assigned_session ON assigned_session.id=tca.session_id
         WHERE tch.user_id=? AND tca.subject_id=r.subject_id AND tca.class_level_id=student_row.class_level_id
-          AND tca.arm_id=student_row.arm_id AND assigned_session.is_current=1)`;
+          AND tca.arm_id=student_row.arm_id AND tca.session_id=ac.id AND assigned_session.is_current=1)`;
       resultParams.push(req.user.id);
     } else if (req.user.role === 'hod') {
       resultScope = 'AND sub.dept_id=(SELECT dept_id FROM hods WHERE user_id=?)';
@@ -121,7 +121,7 @@ router.get('/:studentCode/subjects', async (req, res) => {
     if (req.user.role === 'teacher') {
       subjectScope = `AND EXISTS (SELECT 1 FROM teacher_class_assignments tca JOIN teachers tch ON tch.id=tca.teacher_id
         JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tch.user_id=? AND tca.subject_id=sub.id
-          AND tca.class_level_id=? AND tca.arm_id=? AND ac.is_current=1)`;
+          AND tca.class_level_id=? AND tca.arm_id=? AND tca.session_id=ac.id AND ac.is_current=1)`;
       params.push(req.user.id, student.class_level_id, student.arm_id);
     } else if (req.user.role === 'hod') {
       subjectScope = 'AND sub.dept_id=(SELECT dept_id FROM hods WHERE user_id=?)';
