@@ -62,11 +62,9 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results-part1.sarif
-          category: codacy-batch-1
 
       - name: Upload SARIF results (runs 21–40)
         if: ${{ hashFiles('results-part2.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results-part2.sarif
-          category: codacy-batch-2
