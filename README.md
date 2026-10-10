@@ -251,12 +251,12 @@ COOKIE_SECURE=false
 For passwords containing characters such as `#`, spaces, `;`, or shell-like symbols, enclose the value in single quotes in `.env`:
 
 ```dotenv
-DB_PASSWORD='1234#$'
+DB_PASSWORD='replace-with-a-long-unique-password#1'
 ```
 
-The quotes tell the dotenv parser that the complete value is the password. Do not add extra quotes around the password when entering it at the interactive `mysql -p` prompt; enter only the password itself. Never commit `.env` or real credentials.
+The quotes tell the dotenv parser that the complete value is the password. Replace this placeholder with the database user's actual unique password; the application intentionally refuses to start while this placeholder is used. Do not add extra quotes around the password at the interactive `mysql -p` prompt; enter only the password itself. Never commit `.env` or real credentials.
 
-Simple passwords may work without quotes, but quoting database passwords consistently avoids parsing problems. Replace the database-password placeholder with the same long, unique password configured for the database user.
+Simple passwords may work without quotes, but quoting database passwords consistently avoids parsing problems. Use the same long, unique password configured for the database user.
 
 Other important settings:
 
