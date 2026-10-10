@@ -3,6 +3,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const db = require('./db');
 
@@ -22,6 +23,18 @@ if (/^(change-this-database-password|replace-with-a-long-unique-password)/i.test
 }
 app.disable('x-powered-by');
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
+
+// Bound API request volume before body parsing, authentication, or database work.
+// The in-memory store is suitable for this single-process deployment; use a shared
+// store if the API is later scaled across multiple instances.
+const apiRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many API requests. Please try again later.' }
+});
+app.use('/api', apiRateLimit);
 
 app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Permissions-Policy','camera=(self), microphone=(), geolocation=()');if(isProduction)res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');next();});
 const explicitOrigins=(process.env.FRONTEND_ORIGIN||'').split(',').map(v=>v.trim()).filter(Boolean);
