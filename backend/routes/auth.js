@@ -3,8 +3,11 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 const auth = require('../middleware/auth');
+const { routeLimiter } = require('../middleware/security');
+const { passwordTooLong } = require('../validate');
 
 const router = express.Router();
+router.use(routeLimiter(120, 'Too many authentication requests. Please try again later.'));
 // Used only to give a nonexistent user_code the same bcrypt.compare timing
 // cost as a real one at login (see the SECURITY FIX comment below) — not a
 // real credential, never checked against an actual account.
@@ -35,6 +38,9 @@ router.post('/login', async (req, res) => {
   const user_code = String(req.body?.user_code || '').trim().toUpperCase();
   const password = String(req.body?.password || '');
   if (!user_code || !password) return res.status(400).json({ error: 'User ID and password are required.' });
+  // Anything longer than the 72 bytes bcrypt reads can never be a valid password;
+  // refuse it before spending CPU on a hash comparison.
+  if (user_code.length > 20 || passwordTooLong(password)) return res.status(401).json({ error: 'Invalid user ID or password.' });
 
   try {
     const [rows] = await db.query(
@@ -119,6 +125,8 @@ router.patch('/password', auth, async (req, res) => {
   const newPassword = String(req.body?.new_password || '');
   if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password are required.' });
   if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+  if (passwordTooLong(newPassword)) return res.status(400).json({ error: 'New password must be 72 bytes or fewer.' });
+  if (passwordTooLong(currentPassword)) return res.status(401).json({ error: 'Current password is incorrect.' });
   if (newPassword === currentPassword) return res.status(400).json({ error: 'New password must be different from your current password.' });
   if (!passwordChangeAllowed(req.user.id)) return res.status(429).json({ error: 'Too many attempts. Please try again in a few minutes.' });
   try {

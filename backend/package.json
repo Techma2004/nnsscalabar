@@ -1,15 +1,16 @@
 {
   "name": "nnss-calabar-backend",
   "version": "1.7.0",
+  "private": true,
   "description": "NNSS Calabar School Management API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "private": "true",
     "seed:admin": "node seed-admin.js",
     "seed:commandant": "node seed-commandant.js",
-    "build:template": "node build-template.js"
+    "build:template": "node build-template.js",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

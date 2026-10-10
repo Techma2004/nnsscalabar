@@ -389,7 +389,7 @@ function renderReportCards(){
       <div class="report-card-signatures"><div>Class Teacher</div><div>Principal / Commandant</div></div>
     </section>`;
   }).join('') || card('Published results','<div class="portal-empty">No approved results have been published yet.</div>');
-  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" onclick="window.print()">${ic('printer',16)}Print</button></div>${cards}`;
+  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${cards}`;
 }
 function renderSubjects(){ const rows=state.subjects.map((s,i)=>`<tr><td>${i+1}</td><td><strong>${esc(s.subject_name)}</strong></td><td>${s.ca_max}</td><td>${s.exam_max}</td><td>${s.ca_max+s.exam_max}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic programme</div><h1>My Subjects</h1></div></div>${card('Enrolled subjects',table(['#','Subject','CA max','Exam max','Total'],rows,'No subjects have been enrolled for this session.'))}`; }
 function renderAnnouncements(){
