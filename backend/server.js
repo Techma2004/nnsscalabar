@@ -60,20 +60,26 @@ function cleanupAuthAttempts(now=Date.now()){
 
 function loginRateLimit(req,res,next){
   const now=Date.now();
-
-  if(authAttempts.size>=LOGIN_MAX_ENTRIES) cleanupAuthAttempts(now);
-
   const userCode=String(req.body?.user_code||'').trim().toUpperCase();
   const key=`${req.ip}:${userCode}`;
-  const entry=authAttempts.get(key);
+  let entry=authAttempts.get(key);
 
   if(!entry||now>=entry.resetAt){
+    if(authAttempts.size>=LOGIN_MAX_ENTRIES){
+      cleanupAuthAttempts(now);
+      // Expired entries may not exist during a burst of unique usernames.
+      // Keep the map strictly bounded rather than allowing attacker-controlled
+      // user IDs to grow process memory without limit.
+      if(authAttempts.size>=LOGIN_MAX_ENTRIES){
+        const oldestKey=authAttempts.keys().next().value;
+        if(oldestKey!==undefined) authAttempts.delete(oldestKey);
+      }
+    }
     authAttempts.set(key,{count:1,resetAt:now+LOGIN_WINDOW_MS});
     return next();
   }
 
   entry.count+=1;
-
   if(entry.count>LOGIN_MAX_ATTEMPTS){
     return res.status(429).json({
       error:'Too many login attempts. Please try again later.'
