@@ -431,7 +431,7 @@ For production:
 5. Terminate HTTPS at the hosting platform or reverse proxy.
 6. Use `NODE_ENV=production` and `COOKIE_SECURE=true` with HTTPS.
 7. Configure `TRUST_PROXY_HOPS` to the verified number of trusted hops.
-   Use `1` only if one proxy sits in front of Express; use `0` for direct access.
+   Use `1` for one proxy before Express; use `0` for direct connections.
    Never set Express `trust proxy` to unrestricted `true`.
    The trusted proxy must overwrite forwarded headers, and the hop count must
    match the actual network path.
