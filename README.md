@@ -242,7 +242,7 @@ DB_NAME=nnss_calabar
 DB_POOL_SIZE=10
 JWT_SECRET=
 FRONTEND_ORIGIN=
-TRUST_PROXY=false
+TRUST_PROXY_HOPS=0
 COOKIE_SECURE=false
 ```
 
@@ -270,6 +270,7 @@ Other important settings:
 | `DB_POOL_SIZE` | MySQL connection pool size |
 | `JWT_SECRET` | At least 32 random characters |
 | `FRONTEND_ORIGIN` | Additional permitted origins, comma-separated |
+| `TRUST_PROXY_HOPS` | Verified proxy hop count (`0`–`10`). |
 | `COOKIE_SECURE` | Keep `true` with HTTPS; `false` is only for isolated HTTP testing with synthetic data |
 | `AI_SCORE_IMPORT_ENABLED` | Enable/disable OCR |
 | `OCR_RUNNER` | `uv` or `python` |
@@ -429,7 +430,11 @@ For production:
 4. Create the first administrator and remove bootstrap secrets after use.
 5. Terminate HTTPS at the hosting platform or reverse proxy.
 6. Use `NODE_ENV=production` and `COOKIE_SECURE=true` with HTTPS.
-7. Set `TRUST_PROXY=true` only behind a trusted reverse proxy.
+7. Configure `TRUST_PROXY_HOPS` to the verified number of trusted hops.
+   Use `1` for one proxy before Express; use `0` for direct connections.
+   Never set Express `trust proxy` to unrestricted `true`.
+   The trusted proxy must overwrite forwarded headers, and the hop count must
+   match the actual network path.
 8. Restrict database/firewall access, configure backups, and monitor logs.
 9. Replace demo records with verified school data.
 
