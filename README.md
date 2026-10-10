@@ -479,6 +479,10 @@ Students see results only after an authorized HOD approves them. Check approval 
 - Back up the database and test restoration.
 - Replace the in-memory login limiter with Redis for multiple backend instances.
 - Treat OCR output as a draft requiring teacher verification and HOD approval.
+- The server sends a strict Content-Security-Policy (`script-src 'self'`), so pages must not use inline `<script>` blocks or inline `onclick=` handlers; use external scripts and `data-action` attributes instead. `npm test` fails if one is added.
+- State-changing API requests from another site are rejected (Origin / Sec-Fetch-Site check) in addition to `SameSite` cookies.
+- Demo seed scripts generate a random password and write it to `database/.demo-credentials` (git-ignored) instead of printing a fixed one. Set `DEMO_PASSWORD` to choose your own.
+- Run `cd backend && npm test` before deploying; it starts the real app against a stub database and checks boot, headers, CSRF, cookies and input validation.
 
 ## Contributing
 

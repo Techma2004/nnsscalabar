@@ -2,7 +2,9 @@ const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const sheets = require('../sheets');
+const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
+router.use(routeLimiter(200, 'Too many dashboard requests. Please try again later.'));
 router.use(auth);
 
 router.get('/stats', async (req, res) => {

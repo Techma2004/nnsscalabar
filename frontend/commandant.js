@@ -63,7 +63,7 @@ export function renderOverview() {
   if (!s || !s.term) return emptyState();
   const classRows = s.classes.map(c => `<tr><td><strong>${C.esc(c.class_name)} ${C.esc(c.arm_name)}</strong></td><td>${c.students_scored}</td><td>${c.results}</td><td>${v(c.avg_score)}</td><td>${v(c.pass_rate, '%')}</td></tr>`).join('');
   const deptRows = s.departments.map(d => `<tr><td><strong>${C.esc(d.dept_name)}</strong></td><td>${d.results}</td><td>${d.approved}</td><td>${d.pending}</td><td>${v(d.avg_score)}</td><td>${v(d.pass_rate, '%')}</td></tr>`).join('');
-  return `<div class="portal-toolbar"><div><div class="eyebrow">Commandant</div><h1>School Overview</h1><p>${C.esc(s.term.term_name)}, ${C.esc(s.term.session_name)} — approved results only.</p></div>${termPicker()}<button class="btn btn-secondary no-print" onclick="window.print()">${C.ic('printer', 16)} Print</button></div>
+  return `<div class="portal-toolbar"><div><div class="eyebrow">Commandant</div><h1>School Overview</h1><p>${C.esc(s.term.term_name)}, ${C.esc(s.term.session_name)} — approved results only.</p></div>${termPicker()}<button class="btn btn-secondary no-print" data-action="print">${C.ic('printer', 16)} Print</button></div>
     ${C.card('Performance by class', C.table(['Class', 'Students scored', 'Results', 'Average', 'Pass rate'], classRows, 'No approved results yet for this term.'))}
     ${C.card('Performance by department', C.table(['Department', 'Results', 'Approved', 'Awaiting', 'Average', 'Pass rate'], deptRows, 'No departments found.'))}`;
 }

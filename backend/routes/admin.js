@@ -3,7 +3,10 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const scheme = require('../scheme');
+const v = require('../validate');
+const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
+router.use(routeLimiter(400, 'Too many administration requests. Please try again later.'));
 
 const ROLES = ['student', 'teacher', 'hod', 'admin', 'commandant'];
 const TRACKS = ['junior', 'science', 'technical', 'arts'];
@@ -51,10 +54,17 @@ router.post('/users', requireManagement, async (req, res) => {
   const role = String(body.role || '').toLowerCase();
   const email = body.email ? String(body.email).trim().toLowerCase() : null;
   const gender = body.gender || null;
+  const admission_no = v.optText(body.admission_no, 20);
+  const staff_no = v.optText(body.staff_no, 20);
+  const qualification = v.optText(body.qualification, 120);
 
   if (!/^[A-Z0-9][A-Z0-9_-]{2,19}$/.test(user_code)) return res.status(400).json({ error: 'User ID must be 3–20 characters using letters, numbers, _ or -.' });
   if (!full_name || full_name.length < 3) return res.status(400).json({ error: 'Full name is required.' });
+  if (full_name.length > 120) return res.status(400).json({ error: 'Full name must be 120 characters or fewer.' });
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  if (v.passwordTooLong(password)) return res.status(400).json({ error: 'Password must be 72 bytes or fewer.' });
+  if (email !== null && !v.isEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (admission_no === undefined || staff_no === undefined || qualification === undefined) return res.status(400).json({ error: 'Admission number, staff number or qualification is invalid or too long.' });
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Invalid account role.' });
   if (['admin','commandant'].includes(role) && req.user.role !== 'commandant') return res.status(403).json({ error: 'Only the Commandant can create management-level accounts.' });
   if (gender && !['M', 'F'].includes(gender)) return res.status(400).json({ error: 'Invalid gender.' });
@@ -83,7 +93,7 @@ router.post('/users', requireManagement, async (req, res) => {
       ]);
       if (!classRow.length || !armRow.length) throw new Error('Invalid class or arm.');
       const [studentInsert] = await conn.query(`INSERT INTO students (user_id, admission_no, class_level_id, arm_id, track, is_boarder) VALUES (?, ?, ?, ?, ?, ?)`,
-        [userId, body.admission_no || null, classRow[0].id, armRow[0].id, track, body.is_boarder ? 1 : 0]);
+        [userId, admission_no, classRow[0].id, armRow[0].id, track, body.is_boarder ? 1 : 0]);
       const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
       if (currentSession) {
         await conn.query(`INSERT INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by)
@@ -104,8 +114,10 @@ router.post('/users', requireManagement, async (req, res) => {
       if (!deptRow) throw new Error('A valid department is required.');
       if (role === 'teacher') {
         const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, qualification, date_joined) VALUES (?, ?, ?, ?, CURDATE())',
-          [userId, body.staff_no || null, deptRow.id, body.qualification || null]);
-        const subjectNames = Array.isArray(body.subjects) ? body.subjects : (body.subject ? [body.subject] : []);
+          [userId, staff_no, deptRow.id, qualification]);
+        const rawSubjects = Array.isArray(body.subjects) ? body.subjects : (body.subject ? [body.subject] : []);
+        if (rawSubjects.length > 50 || rawSubjects.some(x => typeof x !== 'string' || x.length > 120)) throw new Error('Subject not found: invalid subject list');
+        const subjectNames = rawSubjects;
         for (const subject of subjectNames) {
           const [[subjectRow]] = await conn.query('SELECT id FROM subjects WHERE subject_name = ? LIMIT 1', [subject]);
           if (!subjectRow) throw new Error(`Subject not found: ${subject}`);
@@ -203,8 +215,8 @@ router.get('/results', requireManagement, async (req, res) => {
 
 
 router.delete('/users/:userId', requireManagement, async (req, res) => {
-  const targetId = Number(req.params.userId);
-  if (!Number.isInteger(targetId) || targetId < 1) return res.status(400).json({ error: 'Invalid account ID.' });
+  const targetId = v.id(req.params.userId);
+  if (!targetId) return res.status(400).json({ error: 'Invalid account ID.' });
   if (targetId === req.user.id) return res.status(400).json({ error: 'You cannot remove your own account.' });
   try {
     const [[target]] = await db.query('SELECT id, user_code, full_name, role FROM users WHERE id=? LIMIT 1', [targetId]);
@@ -232,7 +244,8 @@ router.delete('/users/:userId', requireManagement, async (req, res) => {
 
 router.patch('/users/:userId/status', requireManagement, async (req, res) => {
   const active = req.body?.is_active ? 1 : 0;
-  const targetId = Number(req.params.userId);
+  const targetId = v.id(req.params.userId);
+  if (!targetId) return res.status(400).json({ error: 'Invalid account ID.' });
   if (targetId === req.user.id) return res.status(400).json({ error: 'You cannot change your own account status.' });
   try {
     const [[target]] = await db.query('SELECT id,role FROM users WHERE id=? LIMIT 1', [targetId]);
@@ -259,6 +272,7 @@ router.patch('/users/:userId/password', requireManagement, async (req, res) => {
   const newPassword = String(req.body?.new_password || '');
   if (!Number.isInteger(targetId) || targetId < 1) return res.status(400).json({ error: 'Invalid user ID.' });
   if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters long.' });
+  if (v.passwordTooLong(newPassword)) return res.status(400).json({ error: 'New password must be 72 bytes or fewer.' });
   try {
     const [[target]] = await db.query('SELECT id, role, user_code, full_name FROM users WHERE id=? LIMIT 1', [targetId]);
     if (!target) return res.status(404).json({ error: 'User not found.' });
@@ -335,7 +349,7 @@ router.post('/subjects', requireManagement, async (req, res) => {
   // (CA 40 = 15+5+5+5+5+5, Exam 60), so the split is fixed rather than editable.
   const ca_max = scheme.CA_MAX;
   const exam_max = scheme.EXAM_MAX;
-  if (!subject_name || subject_name.length < 2) return res.status(400).json({ error: 'Subject name is required.' });
+  if (!subject_name || subject_name.length < 2 || subject_name.length > 100) return res.status(400).json({ error: 'Subject name must be 2-100 characters.' });
   const sentCa = req.body?.ca_max, sentExam = req.body?.exam_max;
   if ((sentCa != null && Number(sentCa) !== ca_max) || (sentExam != null && Number(sentExam) !== exam_max)) return res.status(400).json({ error: `All subjects use the school's Continuous Assessment Sheet split (CA ${ca_max} + Exam ${exam_max}).` });
   try {
@@ -354,8 +368,13 @@ router.patch('/subjects/:subjectId', requireManagement, async (req, res) => {
   if (!Number.isInteger(subjectId) || subjectId < 1) return res.status(400).json({ error: 'Invalid subject ID.' });
   const fields = [];
   const params = [];
-  if (req.body?.subject_name != null) { fields.push('subject_name=?'); params.push(String(req.body.subject_name).trim()); }
-  if (req.body?.dept_id != null) { fields.push('dept_id=?'); params.push(Number(req.body.dept_id) || null); }
+  let newName = null;
+  if (req.body?.subject_name != null) {
+    newName = String(req.body.subject_name).trim();
+    if (newName.length < 2 || newName.length > 100) return res.status(400).json({ error: 'Subject name must be 2-100 characters.' });
+    fields.push('subject_name=?'); params.push(newName);
+  }
+  if (req.body?.dept_id != null) { fields.push('dept_id=?'); params.push(v.id(req.body.dept_id)); }
   // The CA/Exam split is fixed by the Continuous Assessment Sheet; reject attempts to change it.
   if ((req.body?.ca_max != null && Number(req.body.ca_max) !== scheme.CA_MAX) || (req.body?.exam_max != null && Number(req.body.exam_max) !== scheme.EXAM_MAX)) return res.status(400).json({ error: `All subjects use the school's Continuous Assessment Sheet split (CA ${scheme.CA_MAX} + Exam ${scheme.EXAM_MAX}).` });
   if (!fields.length) return res.status(400).json({ error: 'No changes supplied.' });
@@ -374,7 +393,7 @@ router.patch('/subjects/:subjectId', requireManagement, async (req, res) => {
     // when. Existing results are untouched (they store raw scores, not the
     // subject's max values), this only makes the change itself traceable.
     await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
-      [req.user.id, 'UPDATE_SUBJECT', 'subject', subjectId, JSON.stringify({ before: current, after: req.body })]);
+      [req.user.id, 'UPDATE_SUBJECT', 'subject', subjectId, JSON.stringify({ before: current, after: { subject_name: newName, dept_id: req.body?.dept_id != null ? v.id(req.body.dept_id) : undefined } })]);
     res.json({ message: 'Subject updated.' });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A subject with this name already exists.' });
@@ -520,8 +539,9 @@ router.get('/departments/:deptId', requireStaffReference, async (req, res) => {
 
 router.post('/departments', requireManagement, async (req, res) => {
   const dept_name = String(req.body?.dept_name || '').trim();
-  const description = req.body?.description ? String(req.body.description).trim() : null;
-  if (!dept_name || dept_name.length < 2) return res.status(400).json({ error: 'Department name is required.' });
+  const description = v.optText(req.body?.description, 255);
+  if (!dept_name || dept_name.length < 2 || dept_name.length > 100) return res.status(400).json({ error: 'Department name must be 2-100 characters.' });
+  if (description === undefined) return res.status(400).json({ error: 'Description is too long.' });
   try {
     const [result] = await db.query('INSERT INTO departments (dept_name, description) VALUES (?, ?)', [dept_name, description]);
     await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
@@ -602,10 +622,11 @@ router.get('/sessions', requireManagement, async (req, res) => {
 
 router.post('/sessions', requireManagement, async (req, res) => {
   const session_name = String(req.body?.session_name || '').trim();
-  const start_date = req.body?.start_date || null;
-  const end_date = req.body?.end_date || null;
+  const start_date = v.optDate(req.body?.start_date);
+  const end_date = v.optDate(req.body?.end_date);
   const make_current = !!req.body?.make_current;
   if (!/^\d{4}\/\d{4}$/.test(session_name)) return res.status(400).json({ error: 'Session name must look like 2027/2028.' });
+  if (start_date === undefined || end_date === undefined) return res.status(400).json({ error: 'Dates must be in YYYY-MM-DD format.' });
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
@@ -626,7 +647,8 @@ router.post('/sessions', requireManagement, async (req, res) => {
 });
 
 router.patch('/sessions/:sessionId/activate', requireManagement, async (req, res) => {
-  const sessionId = Number(req.params.sessionId);
+  const sessionId = v.id(req.params.sessionId);
+  if (!sessionId) return res.status(400).json({ error: 'Invalid session ID.' });
   const conn = await db.getConnection();
   try {
     const [[session]] = await conn.query('SELECT id, session_name FROM academic_sessions WHERE id=? LIMIT 1', [sessionId]);
@@ -642,11 +664,13 @@ router.patch('/sessions/:sessionId/activate', requireManagement, async (req, res
 
 const TERM_NAMES = { 1: 'First Term', 2: 'Second Term', 3: 'Third Term' };
 router.post('/sessions/:sessionId/terms', requireManagement, async (req, res) => {
-  const sessionId = Number(req.params.sessionId);
+  const sessionId = v.id(req.params.sessionId);
   const term_number = Number(req.body?.term_number);
-  const start_date = req.body?.start_date || null;
-  const end_date = req.body?.end_date || null;
+  const start_date = v.optDate(req.body?.start_date);
+  const end_date = v.optDate(req.body?.end_date);
+  if (!sessionId) return res.status(400).json({ error: 'Invalid session ID.' });
   if (![1, 2, 3].includes(term_number)) return res.status(400).json({ error: 'Term number must be 1, 2, or 3.' });
+  if (start_date === undefined || end_date === undefined) return res.status(400).json({ error: 'Dates must be in YYYY-MM-DD format.' });
   try {
     const [[session]] = await db.query('SELECT id FROM academic_sessions WHERE id=? LIMIT 1', [sessionId]);
     if (!session) return res.status(404).json({ error: 'Session not found.' });
@@ -660,7 +684,8 @@ router.post('/sessions/:sessionId/terms', requireManagement, async (req, res) =>
 });
 
 router.patch('/terms/:termId', requireManagement, async (req, res) => {
-  const termId = Number(req.params.termId);
+  const termId = v.id(req.params.termId);
+  if (!termId) return res.status(400).json({ error: 'Invalid term ID.' });
   const conn = await db.getConnection();
   try {
     const [[term]] = await conn.query('SELECT id, term_name FROM terms WHERE id=? LIMIT 1', [termId]);

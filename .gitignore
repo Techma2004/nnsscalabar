@@ -4,3 +4,12 @@ backend/node_modules/
 .DS_Store
 npm-debug.log*
 .venv
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+database/.demo-credentials
+# Dependencies
+node_modules/
