@@ -48,12 +48,33 @@ jobs:
           gh-code-scanning-compat: true
           max-allowed-issues: 2147483647
 
-      # Give each run a stable, unique category. GitHub limits each SARIF
-      # upload to 20 runs, so split the report into chunks without dropping
-      # any runs or results.
+      # Codacy runs ~20 tools. Style/lint tools (Biome, JSHint, PMD, markdownlint,
+      # ...) are quality signals, not vulnerabilities, and uploading them here
+      # buried the real security alerts under thousands of style warnings.
+      # Only security-focused tools are uploaded as code-scanning alerts; every
+      # other run is kept but emptied, so alerts it raised earlier are closed
+      # and category ids (codacy-<index>) stay stable. Full lint results remain
+      # in the Codacy dashboard.
+      #
+      # GitHub limits each SARIF upload to 20 runs, so the report is split into
+      # chunks without dropping any runs. partialFingerprints are removed so
+      # GitHub computes its own (Codacy's often disagree with the file content
+      # and produce "inconsistent fingerprint" warnings).
       - name: Prepare SARIF upload batches
         run: |
-          jq '(.runs) |= (to_entries | map(. as $entry | $entry.value | .automationDetails = ((.automationDetails // {}) + {id: ("codacy-" + ($entry.key | tostring))})))' results.sarif > results.categorized.sarif
+          SECURITY_TOOLS='opengrep|semgrep|bandit|checkov|trivy|gitleaks|secret'
+          jq --arg re "$SECURITY_TOOLS" '
+            (.runs) |= (to_entries | map(
+              . as $entry | $entry.value
+              | ((.tool.driver.name? // "") | ascii_downcase | test($re)) as $security
+              | .automationDetails = ((.automationDetails // {}) + {id: ("codacy-" + ($entry.key | tostring))})
+              | if $security then . else .results = [] end
+              | .results |= map(del(.partialFingerprints))
+            ))' results.sarif > results.categorized.sarif
+          echo "Runs kept with results (security tools):"
+          jq -r '.runs[] | select((.results | length) > 0) | "\(.tool.driver.name): \(.results | length)"' results.categorized.sarif
+          echo "Runs emptied (style/lint tools):"
+          jq -r '.runs[] | select((.results | length) == 0) | .tool.driver.name' results.categorized.sarif | sort | uniq -c
           jq '.runs = .runs[0:20]' results.categorized.sarif > results-part1.sarif
           jq '.runs = .runs[20:40]' results.categorized.sarif > results-part2.sarif
           if [ "$(jq '.runs | length' results-part2.sarif)" -eq 0 ]; then

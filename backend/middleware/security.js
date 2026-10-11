@@ -22,7 +22,7 @@ function routeLimiter(max, message) {
  * single malformed cookie (for example "a=%E0%A4%A") crashed the request, and
  * it wrote attacker-chosen keys onto a normal object.
  */
-function parseCookies(req, res, next) {
+function parseCookies(req, _res, next) {
   const cookies = Object.create(null);
   const raw = req.headers.cookie || '';
   if (raw.length <= 8192) {
@@ -38,7 +38,11 @@ function parseCookies(req, res, next) {
   next();
 }
 function safeDecode(value) {
-  try { return decodeURIComponent(value); } catch { return value; }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 /**
