@@ -1,0 +1,76 @@
+name: Code scanning triage
+
+# Manual tool. Reports the open code-scanning alerts on the default branch, grouped
+# by tool and rule, and can dismiss the ones raised by style/lint tools (Biome,
+# JSHint, PMD, markdownlint, ...). Security tools (CodeQL, Opengrep, Bandit,
+# Checkov, Trivy, Gitleaks) are never touched.
+#
+# Run it from the Actions tab: "Code scanning triage" > "Run workflow".
+# Leave "dismiss" off first to get a report only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dismiss:
+        description: 'Dismiss open alerts raised by style/lint tools (leave off for a report only)'
+        type: boolean
+        default: false
+      max_dismiss:
+        description: 'Maximum alerts to dismiss in one run (GitHub allows about 1000 API writes per hour; run again for the rest)'
+        type: string
+        default: '800'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      BRANCH: ${{ github.event.repository.default_branch }}
+      STYLE_TOOLS: 'Biome|Jshint|Pmd|Pmd-7|Markdownlint|Oxlint|Eslint-9|Csslint|Stylelint|Pylint|Pylintpython3|Remark-lint|Lizard|Prospector|SQLint|Sqlfluff|Agentlinter|Spectral|Ruff'
+    steps:
+      - name: List open alerts on the default branch
+        run: |
+          gh api --paginate "repos/$REPO/code-scanning/alerts?state=open&ref=refs/heads/$BRANCH&per_page=100" \
+            --jq '.[] | {number, tool: .tool.name, rule: .rule.id, path: .most_recent_instance.location.path}' > alerts.jsonl
+          total=$(wc -l < alerts.jsonl)
+          by_tool=$(jq -s -r 'group_by(.tool) | map("\(.[0].tool): \(length)") | sort | join("; ")' alerts.jsonl)
+          top_rules=$(jq -s -r 'group_by(.tool + " / " + .rule) | map({k: (.[0].tool + " / " + .[0].rule), n: length}) | sort_by(-.n) | .[0:12] | map("\(.k): \(.n)") | join("; ")' alerts.jsonl)
+          top_files=$(jq -s -r 'group_by(.path) | map({k: .[0].path, n: length}) | sort_by(-.n) | .[0:10] | map("\(.k): \(.n)") | join("; ")' alerts.jsonl)
+          echo "::notice title=Open alerts on $BRANCH: $total::$by_tool"
+          echo "::notice title=Top rules::$top_rules"
+          echo "::notice title=Top files::$top_files"
+          {
+            echo "## Open code-scanning alerts on \`$BRANCH\`: $total"
+            echo
+            echo "### By tool"
+            jq -s -r 'group_by(.tool) | sort_by(-length) | .[] | "- \(.[0].tool): \(length)"' alerts.jsonl
+            echo
+            echo "### Top rules"
+            jq -s -r 'group_by(.tool + " / " + .rule) | map({k: (.[0].tool + " / " + .[0].rule), n: length}) | sort_by(-.n) | .[0:15][] | "- \(.k): \(.n)"' alerts.jsonl
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dismiss style/lint alerts
+        if: ${{ inputs.dismiss }}
+        env:
+          MAX: ${{ inputs.max_dismiss }}
+        run: |
+          case "$MAX" in ''|*[!0-9]*) echo "::error::max_dismiss must be a whole number"; exit 1;; esac
+          jq -r --arg re "$STYLE_TOOLS" 'select(.tool | test("^(" + $re + ")( \\(reported by Codacy\\))?$"; "i")) | .number' alerts.jsonl | head -n "$MAX" > to_dismiss.txt
+          echo "Dismissing $(wc -l < to_dismiss.txt) alerts"
+          done_n=0; failed=0
+          while read -r num; do
+            if gh api -X PATCH "repos/$REPO/code-scanning/alerts/$num" \
+                 -f state=dismissed -f dismissed_reason="won't fix" \
+                 -f dismissed_comment="Style/lint finding from a Codacy tool, not a vulnerability. Style tools are no longer uploaded as code-scanning alerts." --silent; then
+              done_n=$((done_n+1))
+            else
+              failed=$((failed+1))
+            fi
+            sleep 0.3
+          done < to_dismiss.txt
+          echo "::notice title=Dismissed::$done_n dismissed, $failed failed"
