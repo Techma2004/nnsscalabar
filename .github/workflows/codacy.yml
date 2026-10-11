@@ -77,8 +77,16 @@ jobs:
           jq -r '.runs[] | select((.results | length) == 0) | .tool.driver.name' results.categorized.sarif | sort | uniq -c
           jq '.runs = .runs[0:20]' results.categorized.sarif > results-part1.sarif
           jq '.runs = .runs[20:40]' results.categorized.sarif > results-part2.sarif
-          if [ "$(jq '.runs | length' results-part2.sarif)" -eq 0 ]; then
-            rm results-part2.sarif
+          jq '.runs = .runs[40:60]' results.categorized.sarif > results-part3.sarif
+          for part in results-part2.sarif results-part3.sarif; do
+            if [ "$(jq '.runs | length' "$part")" -eq 0 ]; then
+              rm "$part"
+            fi
+          done
+          total_runs=$(jq '.runs | length' results.categorized.sarif)
+          if [ "$total_runs" -gt 60 ]; then
+            echo "::error::Codacy produced $total_runs SARIF runs; only 60 are uploaded. Add another upload step."
+            exit 1
           fi
 
       - name: Upload SARIF results (runs 1–20)
@@ -91,3 +99,9 @@ jobs:
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         with:
           sarif_file: results-part2.sarif
+
+      - name: Upload SARIF results (runs 41–60)
+        if: ${{ hashFiles('results-part3.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+        with:
+          sarif_file: results-part3.sarif
