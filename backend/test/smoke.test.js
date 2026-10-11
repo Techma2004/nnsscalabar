@@ -1,4 +1,3 @@
-'use strict';
 /*
  * Smoke tests that run without MySQL: the database module is replaced with a
  * small in-memory stub, so these exercise the real Express app (boot, routing,
@@ -40,12 +39,16 @@ const dbPath = require.resolve('../db');
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: stub };
 
 const app = require('../server');
-const base = `http://127.0.0.1:${PORT}`;
+// Tests talk to the in-process server on the loopback interface only; TLS does not apply.
+const base = `http://127.0.0.1:${PORT}`; // nosemgrep
+const request = (route, init) => fetch(new URL(route, base), init);
 test.after(() => app.server.close());
 
-const json = (method, url, body, headers = {}) => fetch(base + url, {
-  method, headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body)
-});
+const json = (method, url, body, headers = {}) => {
+  const init = { method, headers: { 'Content-Type': 'application/json', ...headers } };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  return request(url, init);
+};
 
 async function adminCookie() {
   const res = await json('POST', '/api/auth/login', { user_code: 'ADM001', password: PASSWORD });
@@ -54,24 +57,24 @@ async function adminCookie() {
 }
 
 test('server boots and serves the SPA fallback (Express 5 wildcard route)', async () => {
-  const home = await fetch(base + '/');
+  const home = await request('/');
   assert.equal(home.status, 200);
-  const deep = await fetch(base + '/some/client/route');
+  const deep = await request('/some/client/route');
   assert.equal(deep.status, 200);
   assert.match(await deep.text(), /<html/i);
-  const api = await fetch(base + '/api/does-not-exist');
+  const api = await request('/api/does-not-exist');
   assert.equal(api.status, 404);
 });
 
 test('security headers are set, with a script-src that forbids inline scripts', async () => {
-  const res = await fetch(base + '/');
+  const res = await request('/');
   const csp = res.headers.get('content-security-policy');
   assert.ok(csp, 'CSP header missing');
   assert.match(csp, /script-src 'self'(;|$)/);
   assert.doesNotMatch(csp.match(/script-src[^;]*/)[0], /unsafe-inline|unsafe-eval/);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(res.headers.get('x-powered-by'), null);
-  const api = await fetch(base + '/api/health');
+  const api = await request('/api/health');
   assert.equal(api.headers.get('cache-control'), 'no-store');
 });
 
@@ -103,7 +106,7 @@ test('login works, cookie is HttpOnly, and /me returns the user', async () => {
   assert.equal(res.status, 200);
   const cookie = res.headers.get('set-cookie');
   assert.match(cookie, /HttpOnly/i);
-  const me = await fetch(base + '/api/auth/me', { headers: { Cookie: cookie.split(';')[0] } });
+  const me = await request('/api/auth/me', { headers: { Cookie: cookie.split(';')[0] } });
   assert.equal(me.status, 200);
   assert.equal((await me.json()).role, 'admin');
 });
@@ -115,14 +118,14 @@ test('over-long passwords are rejected before any hashing', async () => {
 
 test('malformed cookies no longer crash the request', async () => {
   for (const cookie of ['nnss_token=%E0%A4%A', '__proto__=polluted; nnss_token=abc', 'a=%', '=x;;;']) {
-    const res = await fetch(base + '/api/auth/me', { headers: { Cookie: cookie } });
+    const res = await request('/api/auth/me', { headers: { Cookie: cookie } });
     assert.equal(res.status, 401, `cookie ${JSON.stringify(cookie)} should yield 401, got ${res.status}`);
   }
   assert.equal({}.polluted, undefined);
 });
 
 test('malformed JSON gets a generic 400, not a stack trace', async () => {
-  const res = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"user_code":' });
+  const res = await request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"user_code":' });
   assert.equal(res.status, 400);
   assert.deepEqual(await res.json(), { error: 'Invalid request.' });
 });
