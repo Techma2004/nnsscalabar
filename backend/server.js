@@ -152,7 +152,7 @@ if(fs.existsSync(FRONTEND_DIR)){
   app.get('/{*splat}',(req,res,next)=>{if(req.path.startsWith('/api/'))return next();res.sendFile(path.join(FRONTEND_DIR,'index.html'));});
 }
 app.use((req,res)=>res.status(404).json({error:'Route not found.'}));
-app.use((err,req,res,next)=>{
+app.use((err,_req,res,next)=>{
   const status=Number.isInteger(err.status)&&err.status>=400&&err.status<600?err.status:500;
   if(status>=500)console.error('[server]',err.stack||err.message||err);
   if(res.headersSent)return next(err);
