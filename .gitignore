@@ -13,3 +13,6 @@ npm-debug.log*
 database/.demo-credentials
 # Dependencies
 node_modules/
+
+# Codacy / code scanning output
+results*.sarif
