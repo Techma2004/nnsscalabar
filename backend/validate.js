@@ -28,9 +28,10 @@ function optDate(value) {
 }
 
 /** Positive integer from a route parameter or body field, else null. */
+const MAX_INT = 2 ** 31 - 1;
 function id(value) {
   const n = Number(value);
-  return Number.isInteger(n) && n > 0 && n <= 2147483647 ? n : null;
+  return Number.isInteger(n) && n > 0 && n <= MAX_INT ? n : null;
 }
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
