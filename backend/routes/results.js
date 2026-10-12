@@ -278,7 +278,7 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
 
     const roster = Object.fromEntries(students.map(s => [s.user_code, s.full_name]));
     const ext = imageMatch[1] === 'jpg' ? 'jpeg' : imageMatch[1];
-    tmpPath = path.join(os.tmpdir(), `nnss-ocr-${crypto.randomUUID()}.${ext}`);
+   tmpPath = path.join(os.tmpdir(), `nnss-ocr-${crypto.randomUUID()}.${ext}`);
     await fs.writeFile(tmpPath, Buffer.from(imageMatch[2], 'base64'));
 
     const ocrResult = await runOcr(tmpPath, roster);

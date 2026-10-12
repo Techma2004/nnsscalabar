@@ -12,7 +12,7 @@ with the real class roster (and the score limits) piped to stdin as JSON:
 
 It reads the school's Continuous Assessment Sheet, whose columns are
     1ST TEST | QUIZ | ASSIGNMENT | TOTAL | 2ND TEST | PROJECT | NOTE | TOTAL | EXAM | TERM'S TOTAL | GRADE
-
+ 
 Prints a single JSON object to stdout:
     {
       "rows": [
@@ -84,7 +84,7 @@ def remove_gridlines(img):
     arr = np.array(img)
     h, w = arr.shape
     bw = cv2.adaptiveThreshold(arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                             cv2.THRESH_BINARY_INV, 25, 15)
+                            cv2.THRESH_BINARY_INV, 25, 15)
 
     def long_spanning_components(mask, axis, min_span_frac=0.5):
         n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
