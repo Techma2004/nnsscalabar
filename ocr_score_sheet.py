@@ -84,7 +84,7 @@ def remove_gridlines(img):
     arr = np.array(img)
     h, w = arr.shape
     bw = cv2.adaptiveThreshold(arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                             cv2.THRESH_BINARY_INV, 25, 15)
+                            cv2.THRESH_BINARY_INV, 25, 15)
 
     def long_spanning_components(mask, axis, min_span_frac=0.5):
         n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
