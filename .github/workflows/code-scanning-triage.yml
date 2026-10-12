@@ -16,9 +16,9 @@ on:
         type: boolean
         default: false
       max_dismiss:
-        description: 'Maximum alerts to dismiss in one run (GitHub allows about 1000 API writes per hour; run again for the rest)'
+        description: 'Maximum alerts to dismiss in one run. GitHub allows about 1000 API requests per hour, so the run waits for the limit to reset and keeps going.'
         type: string
-        default: '800'
+        default: '2500'
 
 permissions:
   contents: read
@@ -27,11 +27,12 @@ permissions:
 jobs:
   triage:
     runs-on: ubuntu-latest
+    timeout-minutes: 300
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}
       BRANCH: ${{ github.event.repository.default_branch }}
-      STYLE_TOOLS: 'Biome|Jshint|Pmd|Pmd-7|Markdownlint|Oxlint|Eslint-9|Csslint|Stylelint|Pylint|Pylintpython3|Remark-lint|Lizard|Prospector|SQLint|Sqlfluff|Agentlinter|Spectral|Ruff'
+      STYLE_TOOLS: 'Biome|Jshint|Pmd|Pmd-7|Markdownlint|Oxlint|Eslint-9|Csslint|Stylelint|Pylint|Pylintpython3|Remark-lint|Lizard|Prospector|SQLint|Tsqllint|Sqlfluff|Agentlinter|Spectral|Ruff'
     steps:
       - name: List open alerts on the default branch
         run: |
@@ -64,13 +65,25 @@ jobs:
           echo "Dismissing $(wc -l < to_dismiss.txt) alerts"
           done_n=0; failed=0
           while read -r num; do
-            if gh api -X PATCH "repos/$REPO/code-scanning/alerts/$num" \
-                 -f state=dismissed -f dismissed_reason="won't fix" \
-                 -f dismissed_comment="Style/lint finding from a Codacy tool, not a vulnerability. Style tools are no longer uploaded as code-scanning alerts." --silent; then
-              done_n=$((done_n+1))
-            else
-              failed=$((failed+1))
-            fi
+            ok=0
+            for attempt in 1 2 3; do
+              if gh api -X PATCH "repos/$REPO/code-scanning/alerts/$num" \
+                   -f state=dismissed -f dismissed_reason="won't fix" \
+                   -f dismissed_comment="Style/lint finding from a Codacy tool, not a vulnerability. Style tools are no longer uploaded as code-scanning alerts." --silent 2> err.txt; then
+                ok=1; break
+              fi
+              if grep -qiE 'rate limit|secondary|abuse' err.txt; then
+                reset=$(gh api rate_limit --jq .resources.core.reset 2>/dev/null || echo 0)
+                wait_s=$(( reset - $(date +%s) + 5 ))
+                if [ "$wait_s" -lt 60 ]; then wait_s=60; fi
+                if [ "$wait_s" -gt 3700 ]; then wait_s=3700; fi
+                echo "::notice::Rate limited after $done_n dismissals; sleeping ${wait_s}s"
+                sleep "$wait_s"
+              else
+                break
+              fi
+            done
+            if [ "$ok" -eq 1 ]; then done_n=$((done_n+1)); else failed=$((failed+1)); fi
             sleep 0.3
           done < to_dismiss.txt
           echo "::notice title=Dismissed::$done_n dismissed, $failed failed"

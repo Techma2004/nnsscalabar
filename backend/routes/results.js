@@ -2,7 +2,6 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
-const crypto = require('crypto');
 const { spawn } = require('child_process');
 const db = require('../db');
 const auth = require('../middleware/auth');
@@ -37,6 +36,7 @@ const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 20000);
 const OCR_RATE_WINDOW_MS = 5 * 60 * 1000;
 const OCR_RATE_MAX = 6;
 const OCR_RATE_MAX_ENTRIES = 5000;
+const OCR_IMAGE_EXTENSIONS = Object.freeze({ jpeg: 'jpeg', jpg: 'jpeg', png: 'png', webp: 'webp' });
 const ocrAttempts = new Map();
 function cleanupOcrAttempts(now = Date.now()) {
   for (const [key, entry] of ocrAttempts) if (now >= entry.resetAt) ocrAttempts.delete(key);
@@ -268,7 +268,7 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
   if (!imageMatch) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP score-sheet image.' });
   if (image.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'Score-sheet image is too large. Use an image under 7 MB.' });
 
-  let tmpPath = null;
+  let tmpDir = null;
   try {
     const { ctx, error } = await sheets.resolveSheetContext(req.user, req.body || {});
     if (error) return sendError(res, error);
@@ -277,9 +277,12 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
     if (!students.length) return res.status(409).json({ error: 'No active students were found for this class and arm.' });
 
     const roster = Object.fromEntries(students.map(s => [s.user_code, s.full_name]));
-    const ext = imageMatch[1] === 'jpg' ? 'jpeg' : imageMatch[1];
-   tmpPath = path.join(os.tmpdir(), `nnss-ocr-${crypto.randomUUID()}.${ext}`);
-    await fs.writeFile(tmpPath, Buffer.from(imageMatch[2], 'base64'));
+    // The extension comes from a fixed allow-list and the file lives in a private,
+    // freshly created temp directory, so no request data ever reaches the path.
+    const ext = OCR_IMAGE_EXTENSIONS[imageMatch[1]];
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nnss-ocr-'));
+    const tmpPath = path.join(tmpDir, `scan.${ext}`);
+    await fs.writeFile(tmpPath, Buffer.from(imageMatch[2], 'base64'), { mode: 0o600 });
 
     const ocrResult = await runOcr(tmpPath, roster);
     const known = new Set(students.map(x => x.user_code));
@@ -304,7 +307,7 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
       res.status(503).json({ error: 'Score-sheet import is unavailable right now. Use manual score entry.' });
     }
   } finally {
-    if (tmpPath) { try { await fs.unlink(tmpPath); } catch { /* temp file already gone */ } }
+    if (tmpDir) { try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch { /* temp dir already gone */ } }
   }
 });
 
