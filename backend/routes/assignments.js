@@ -88,7 +88,7 @@ router.put('/teacher/:teacherId', async (req,res) => {
     const current=await session();
     if(!current){await conn.rollback();return res.status(409).json({error:'No current academic session is configured.'});}
     const ids=[...new Set([...subjectIds,...assignments.map(x=>x.subject_id)])];
-    if(ids.length){const [valid]=await conn.query(`SELECT id,dept_id FROM subjects WHERE is_active=1 AND id IN (${ids.map(()=>'?').join(',')})`,ids);if(valid.length!==ids.length) throw new Error('One or more selected subjects are invalid or inactive.');if(hodDeptId!==null&&valid.some(s=>s.dept_id!==hodDeptId)) throw new Error('A selected subject is outside the HOD department.');}
+    if(ids.length){const [valid]=await conn.query('SELECT id,dept_id FROM subjects WHERE is_active=1 AND id IN (?)',[ids]);if(valid.length!==ids.length) throw new Error('One or more selected subjects are invalid or inactive.');if(hodDeptId!==null&&valid.some(s=>s.dept_id!==hodDeptId)) throw new Error('A selected subject is outside the HOD department.');}
     for(const x of assignments){const [[mapped]]=await conn.query(`SELECT ts.id FROM track_subjects ts JOIN class_levels cl ON cl.id=? JOIN arms a ON a.id=? WHERE ts.track=CASE WHEN cl.is_junior=1 THEN 'junior' ELSE a.arm_type END AND ts.subject_id=? LIMIT 1`,[x.class_level_id,x.arm_id,x.subject_id]);if(!mapped) throw new Error('One or more assignments do not match the configured curriculum.');}
     // HODs may manage only their department's subjects. Preserve assignments
     // owned by other departments instead of wiping a cross-department teacher's
