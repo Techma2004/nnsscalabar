@@ -4,7 +4,7 @@ A production-oriented school management platform and public website for Nigerian
 
 > Before production use, replace the sample academic data with the school's official register, staff records, assignments, academic calendar, and operational policies.
 
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
 ## Contents
 
@@ -60,7 +60,7 @@ Browser -> Node.js + Express -> MySQL/MariaDB
 
 ### Optional OCR support
 
-- Python 3.9+
+- Python 3.10+
 - [uv](https://docs.astral.sh/uv/)
 - Tesseract OCR with English language data
 
@@ -233,16 +233,16 @@ Edit `backend/.env`:
 ```dotenv
 NODE_ENV=development
 PORT=5000
-HOST=0.0.0.0
+HOST=127.0.0.1
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=nnss_admin
-DB_PASSWORD='1234#$'
+DB_PASSWORD='replace-with-a-long-unique-password'
 DB_NAME=nnss_calabar
 DB_POOL_SIZE=10
-JWT_SECRET='generate-a-random-secret-of-at-least-32-characters'
+JWT_SECRET=
 FRONTEND_ORIGIN=
-TRUST_PROXY=false
+TRUST_PROXY_HOPS=0
 COOKIE_SECURE=false
 ```
 
@@ -251,12 +251,12 @@ COOKIE_SECURE=false
 For passwords containing characters such as `#`, spaces, `;`, or shell-like symbols, enclose the value in single quotes in `.env`:
 
 ```dotenv
-DB_PASSWORD='1234#$'
+DB_PASSWORD='replace-with-a-long-unique-password#1'
 ```
 
-The quotes tell the dotenv parser that the complete value is the password. Do not add extra quotes around the password when entering it at the interactive `mysql -p` prompt; enter only the password itself. Never commit `.env` or real credentials.
+The quotes tell the dotenv parser that the complete value is the password. Replace this placeholder with the database user's actual unique password; the application intentionally refuses to start while this placeholder is used. Do not add extra quotes around the password at the interactive `mysql -p` prompt; enter only the password itself. Never commit `.env` or real credentials.
 
-Simple passwords may work without quotes, but quoting database passwords consistently avoids parsing problems. Use a long, unique password instead of the example `1234#$` outside local testing.
+Simple passwords may work without quotes, but quoting database passwords consistently avoids parsing problems. Use the same long, unique password configured for the database user.
 
 Other important settings:
 
@@ -264,18 +264,19 @@ Other important settings:
 |---|---|
 | `NODE_ENV` | `development` or `production` |
 | `PORT` | HTTP port; defaults to `5000` |
-| `HOST` | `0.0.0.0` for LAN access, `127.0.0.1` for local-only access |
+| `HOST` | Defaults to `127.0.0.1` for local-only access; use `0.0.0.0` only when intentionally enabling LAN access |
 | `DB_HOST`, `DB_PORT` | Database connection address |
 | `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Database credentials and name |
 | `DB_POOL_SIZE` | MySQL connection pool size |
 | `JWT_SECRET` | At least 32 random characters |
 | `FRONTEND_ORIGIN` | Additional permitted origins, comma-separated |
-| `COOKIE_SECURE` | `true` with HTTPS; `false` for plain HTTP LAN testing |
+| `TRUST_PROXY_HOPS` | Verified proxy hop count (`0`–`10`). |
+| `COOKIE_SECURE` | Keep `true` with HTTPS; `false` is only for isolated HTTP testing with synthetic data |
 | `AI_SCORE_IMPORT_ENABLED` | Enable/disable OCR |
 | `OCR_RUNNER` | `uv` or `python` |
 | `OCR_TIMEOUT_MS` | OCR timeout in milliseconds |
 
-Generate a random JWT secret with:
+Generate a random JWT secret and paste the output into `JWT_SECRET` (never leave it blank or copy a placeholder):
 
 ```bash
 openssl rand -base64 48
@@ -336,7 +337,7 @@ With `HOST=0.0.0.0`, the server prints LAN addresses at startup. Other devices o
 http://192.168.1.42:5000
 ```
 
-Allow the port through the host firewall. For plain HTTP on a private LAN, use `COOKIE_SECURE=false`; secure cookies require HTTPS. Set `HOST=127.0.0.1` to prevent other devices from connecting. Do not expose a plain-HTTP installation directly to the public internet.
+Allow the port through the host firewall. Use `COOKIE_SECURE=false` only for isolated local/LAN demonstrations with synthetic data. Real student records require HTTPS and `COOKIE_SECURE=true`, even on a private LAN, because HTTP can expose session cookies and student information. Set `HOST=127.0.0.1` for local-only testing. Never expose a plain-HTTP installation to the public internet.
 
 ## Portal workflows
 
@@ -429,7 +430,11 @@ For production:
 4. Create the first administrator and remove bootstrap secrets after use.
 5. Terminate HTTPS at the hosting platform or reverse proxy.
 6. Use `NODE_ENV=production` and `COOKIE_SECURE=true` with HTTPS.
-7. Set `TRUST_PROXY=true` only behind a trusted reverse proxy.
+7. Configure `TRUST_PROXY_HOPS` to the verified number of trusted hops.
+   Use `1` for one proxy before Express; use `0` for direct connections.
+   Never set Express `trust proxy` to unrestricted `true`.
+   The trusted proxy must overwrite forwarded headers, and the hop count must
+   match the actual network path.
 8. Restrict database/firewall access, configure backups, and monitor logs.
 9. Replace demo records with verified school data.
 
@@ -451,7 +456,7 @@ mysql -h 127.0.0.1 -u nnss_admin -p nnss_calabar
 
 ### Login immediately logs out
 
-For plain HTTP, set `COOKIE_SECURE=false`. Use `true` only with HTTPS.
+For local-only HTTP testing with synthetic data, `COOKIE_SECURE=false` may be necessary. For any deployment handling real student data, configure HTTPS and use `COOKIE_SECURE=true`.
 
 ### Other devices cannot connect
 
@@ -468,12 +473,16 @@ Students see results only after an authorized HOD approves them. Check approval 
 ## Security
 
 - Never commit `.env`, passwords, JWT secrets, or real student/staff data.
-- Use HTTPS and secure cookies for public deployments.
-- Use a unique production JWT secret of at least 32 characters.
+- Use HTTPS and secure cookies for every deployment that handles real student records, including private school LANs.
+- Use a unique, randomly generated production JWT secret of at least 32 characters; never copy an example placeholder.
 - Restrict database privileges and network exposure.
 - Back up the database and test restoration.
 - Replace the in-memory login limiter with Redis for multiple backend instances.
 - Treat OCR output as a draft requiring teacher verification and HOD approval.
+- The server sends a strict Content-Security-Policy (`script-src 'self'`), so pages must not use inline `<script>` blocks or inline `onclick=` handlers; use external scripts and `data-action` attributes instead. `npm test` fails if one is added.
+- State-changing API requests from another site are rejected (Origin / Sec-Fetch-Site check) in addition to `SameSite` cookies.
+- Demo seed scripts generate a random password and write it to `database/.demo-credentials` (git-ignored) instead of printing a fixed one. Set `DEMO_PASSWORD` to choose your own.
+- Run `cd backend && npm test` before deploying; it starts the real app against a stub database and checks boot, headers, CSRF, cookies and input validation.
 
 ## Contributing
 

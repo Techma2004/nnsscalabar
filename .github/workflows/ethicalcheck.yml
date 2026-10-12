@@ -1,0 +1,13 @@
+name: EthicalCheck (disabled — needs a real API specification)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Disabled: the old workflow targeted an unrelated sample banking API and its action could not be resolved."
+          echo "Configure a verified scanner, the actual API specification and an authorized test target before enabling."
+          exit 1

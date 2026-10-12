@@ -84,7 +84,7 @@ def remove_gridlines(img):
     arr = np.array(img)
     h, w = arr.shape
     bw = cv2.adaptiveThreshold(arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                cv2.THRESH_BINARY_INV, 25, 15)
+                             cv2.THRESH_BINARY_INV, 25, 15)
 
     def long_spanning_components(mask, axis, min_span_frac=0.5):
         n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
@@ -147,12 +147,21 @@ def deskew(arr):
     return cv2.warpAffine(arr, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
 
+# Bound decoded image size, not just compressed upload size. A small compressed
+# image can expand to gigabytes of pixels and exhaust memory during OCR.
+MAX_IMAGE_PIXELS = 25_000_000
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+
+
 def preprocess(image_path):
     """Preprocessing tuned for real phone photos of paper, including messy
     handwriting: local contrast correction for uneven lighting, light
     denoising, deskewing, grid-line removal, then upscaling small images
     since Tesseract does noticeably better with more pixels per character."""
-    img = Image.open(image_path).convert("L")
+    with Image.open(image_path) as source:
+        if source.width < 1 or source.height < 1 or source.width * source.height > MAX_IMAGE_PIXELS:
+            raise ValueError("Image dimensions are too large for safe OCR. Resize it and try again.")
+        img = source.convert("L")
     arr = np.array(img)
     arr = enhance_contrast(arr)
     arr = cv2.medianBlur(arr, 3)

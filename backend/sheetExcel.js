@@ -198,12 +198,49 @@ function detectColumns(row) {
   return map;
 }
 
+
+// ------------------------------------------------------------ safety limits --
+// An .xlsx is a zip archive, and a few kilobytes of zip can expand to gigabytes
+// ("zip bomb"). The upload is capped at 4 MB compressed, but ExcelJS inflates it
+// fully in memory, so check the sizes the archive declares *before* parsing.
+const MAX_ENTRIES = 300;
+const MAX_ENTRY_BYTES = 40 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 80 * 1024 * 1024;
+const MAX_SHEET_ROWS = 2000;
+
+function assertSafeXlsx(buffer) {
+  const bad = () => new Error('That file is not a valid Excel (.xlsx) score sheet.');
+  if (!Buffer.isBuffer(buffer) || buffer.length < 22 || buffer.readUInt32LE(0) !== 0x04034b50) throw bad(); // NOPMD
+  let eocd = -1;
+  for (let i = buffer.length - 22; i >= Math.max(0, buffer.length - 22 - 65535); i -= 1) {
+    if (buffer.readUInt32LE(i) === 0x06054b50) { eocd = i; break; } // NOPMD
+  }
+  if (eocd < 0) throw bad();
+  const entries = buffer.readUInt16LE(eocd + 10);
+  const cdSize = buffer.readUInt32LE(eocd + 12);
+  const cdOffset = buffer.readUInt32LE(eocd + 16);
+  // 0xFFFF / 0xFFFFFFFF mean ZIP64, which a score sheet never needs.
+  if (entries === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff) throw bad(); // NOPMD
+  if (entries === 0 || entries > MAX_ENTRIES || cdOffset + cdSize > buffer.length) throw bad();
+  let pos = cdOffset; let total = 0;
+  for (let i = 0; i < entries; i += 1) {
+    if (pos + 46 > buffer.length || buffer.readUInt32LE(pos) !== 0x02014b50) throw bad(); // NOPMD
+    const uncompressed = buffer.readUInt32LE(pos + 24);
+    if (uncompressed === 0xffffffff || uncompressed > MAX_ENTRY_BYTES) throw new Error('That Excel file is too large when unpacked.'); // NOPMD
+    total += uncompressed;
+    if (total > MAX_TOTAL_BYTES) throw new Error('That Excel file is too large when unpacked.');
+    pos += 46 + buffer.readUInt16LE(pos + 28) + buffer.readUInt16LE(pos + 30) + buffer.readUInt16LE(pos + 32);
+  }
+}
+
 /** Returns { rows: [{ line, student_id, name, scores, problems }], warnings } */
 async function parseWorkbook(buffer) {
+  assertSafeXlsx(buffer);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
   const ws = wb.getWorksheet(SHEET_NAME) || wb.worksheets[0];
   if (!ws) throw new Error('The workbook has no worksheet.');
+  if (ws.rowCount > MAX_SHEET_ROWS) throw new Error(`The sheet has more than ${MAX_SHEET_ROWS} rows. Use the NNSS score-sheet template.`);
 
   let headerRowNo = null; let cols = null;
   for (let r = 1; r <= Math.min(ws.rowCount, 40); r += 1) {
@@ -260,4 +297,4 @@ function matchToRoster(parsedRows, roster) {
   return { matched, unmatched };
 }
 
-module.exports = { buildWorkbook, parseWorkbook, matchToRoster, SHEET_NAME, HEADER_ROW, FIRST_DATA_ROW, INPUT_KEYS };
+module.exports = { buildWorkbook, parseWorkbook, assertSafeXlsx, matchToRoster, SHEET_NAME, HEADER_ROW, FIRST_DATA_ROW, INPUT_KEYS };

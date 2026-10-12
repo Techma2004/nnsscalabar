@@ -1,0 +1,12 @@
+name: CodeQL Advanced (disabled — using GitHub default setup)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "GitHub default CodeQL setup is active. Do not enable this workflow unless default setup is disabled first."
+          exit 1

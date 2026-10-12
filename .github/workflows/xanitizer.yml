@@ -1,0 +1,12 @@
+name: Xanitizer (disabled — optional licensed scanner)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Disabled: this project has no Maven build and requires a valid Xanitizer license."
+          exit 1

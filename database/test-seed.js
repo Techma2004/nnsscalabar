@@ -12,14 +12,31 @@
  */
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
 const mysql = require('../backend/node_modules/mysql2/promise');
 const bcrypt = require('../backend/node_modules/bcryptjs');
 require('dotenv').config({ path: path.join(__dirname, '..', 'backend', '.env') });
 
+
+// Demo/test accounts must never ship with a published password. Use DEMO_PASSWORD
+// if the operator supplied one, otherwise generate a random one per run. The value
+// is written to a private (0600, git-ignored) file instead of being printed.
+function resolveDemoPassword() {
+  const supplied = process.env.DEMO_PASSWORD;
+  if (supplied) return { password: supplied, generated: false };
+  return { password: crypto.randomBytes(12).toString('base64url'), generated: true };
+}
+function saveDemoPassword(password, generated) {
+  const file = path.join(__dirname, '.demo-credentials');
+  fs.writeFileSync(file, `Demo account password: ${password}\n`, { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch { /* best effort on filesystems without modes */ }
+  return generated ? `A random password was generated and saved to ${file}` : `The password from DEMO_PASSWORD was saved to ${file}`;
+}
+
 const DB_NAME = 'nnss_calabar_test';
-const PASSWORD = 'DemoPass123!';
+const { password: PASSWORD, generated: PASSWORD_GENERATED } = resolveDemoPassword();
 const STUDENT_COUNT = 600;
 const TEACHER_COUNT = 48;
 const HOD_DEPARTMENTS = [
@@ -31,7 +48,6 @@ const firstNames = ['Amina','Daniel','Emem','Favour','Grace','Hassan','Ifeoma','
 const lastNames = ['Bello','Okoro','Williams','Etim','Ekanem','Ibrahim','Johnson','Obi','Udo','Adebayo','Essien','Musa','George','Nwankwo','Archibong','Lawal','Udoh','Otu','Edem','Balogun'];
 const teacherFirstNames = ['Abasi','Blessing','Chinedu','David','Esther','Fatima','Gabriel','Helen','Irene','Joseph','Kemi','Lawrence','Margaret','Nathan','Olumide','Patience','Rita','Stephen','Theresa','Victor','Zainab','Andrew','Caroline','Emmanuel','Janet','Michael'];
 const teacherLastNames = ['Akan','Bassey','Chukwu','Duke','Ekong','Essien','Eyo','Ita','King','Mba','Ndi','Obot','Okon','Onyema','Peter','Sani','Udo','Ufot','Wright','Yakubu'];
-const qualifications = ['B.Ed.','B.Sc. Education','B.A. Education','B.Tech. Education','M.Ed.'];
 const juniorArms = ['OBUDU','CALABAR','KWA'];
 
 function nameFrom(listA, listB, n) {
@@ -149,10 +165,10 @@ async function main() {
       );
       const userId = userResult.insertId;
       const [teacherResult] = await connection.query(
-        `INSERT INTO teachers (user_id, staff_no, dept_id, qualification, date_joined)
-         VALUES (?, ?, ?, ?, '2020-09-01')
-         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), dept_id=VALUES(dept_id), qualification=VALUES(qualification)`,
-        [userId, code, dept.id, qualifications[(i - 1) % qualifications.length]]
+        `INSERT INTO teachers (user_id, staff_no, dept_id, date_joined)
+         VALUES (?, ?, ?, '2020-09-01')
+         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), dept_id=VALUES(dept_id)`,
+        [userId, code, dept.id]
       );
       const teacherId = teacherResult.insertId;
       const deptSubjects = subjects.filter(s => s.dept_id === dept.id);
@@ -204,7 +220,7 @@ async function main() {
       (SELECT COUNT(*) FROM results) results`);
     console.log(`Created test database: ${DB_NAME}`);
     console.log(`Students: ${counts.students}; teachers: ${counts.teachers}; HODs: ${counts.hods}; enrollments: ${counts.enrollments}; results: ${counts.results}`);
-    console.log(`Shared test password: ${PASSWORD}`);
+    console.log(saveDemoPassword(PASSWORD, PASSWORD_GENERATED));
     console.log('Student login range: STU0001–STU0600');
     console.log('Teacher login range: TCH001–TCH048');
     console.log('HOD login range: HOD001–HOD006');

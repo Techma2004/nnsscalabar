@@ -1,0 +1,9 @@
+{
+  "esversion": 2022,
+  "node": true,
+  "browser": true,
+  "module": true,
+  "undef": true,
+  "unused": false,
+  "asi": true
+}

@@ -1,0 +1,12 @@
+name: CodeScan (disabled — optional external service)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Disabled until CodeScan credentials and project-specific configuration are deliberately supplied."
+          exit 1

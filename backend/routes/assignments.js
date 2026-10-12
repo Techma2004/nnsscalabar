@@ -1,7 +1,16 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const router = express.Router();
+// Apply a route-specific ceiling in addition to the API-wide limiter.
+router.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many assignment requests. Please try again later.' }
+}));
 router.use(auth);
 const MANAGEMENT = ['admin', 'commandant'];
 
@@ -24,7 +33,7 @@ router.get('/meta', async (req, res) => {
     const current = await session();
     if (!current) return res.status(409).json({error:'No current academic session is configured.'});
     const teacherWhere = deptId ? 'AND t.dept_id=?' : '';
-    const subjectWhere = deptId ? 'AND (s.dept_id=? OR s.dept_id IS NULL)' : '';
+    const subjectWhere = deptId ? 'AND s.dept_id=?' : '';
     const params = deptId ? [deptId] : [];
     const subjectParams = deptId ? [deptId] : [];
     const [teachers, subjects, classes, arms, departments] = await Promise.all([
@@ -50,8 +59,11 @@ router.get('/teacher/:teacherId', async (req,res) => {
     else if(!['admin','commandant','hod'].includes(req.user.role)) return res.status(403).json({error:'Assignment access denied.'});
     const current=await session();
     if(!current) return res.status(409).json({error:'No current academic session is configured.'});
-    const [subjects]=await db.query(`SELECT DISTINCT ts.subject_id,s.subject_name FROM teacher_subjects ts JOIN subjects s ON s.id=ts.subject_id WHERE ts.teacher_id=? ORDER BY s.subject_name`,[teacherId]);
-    const [assignments]=await db.query(`SELECT tca.id,tca.subject_id,s.subject_name,tca.class_level_id,cl.level_name,tca.arm_id,a.arm_name,tca.session_id,ac.session_name FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id JOIN arms a ON a.id=tca.arm_id JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tca.teacher_id=? AND tca.session_id=? ORDER BY cl.sort_order,a.arm_name,s.subject_name`,[teacherId,current.id]);
+    const subjectScope = req.user.role === 'hod' ? 'AND s.dept_id=?' : '';
+    const subjectParams = req.user.role === 'hod' ? [teacherId, deptId] : [teacherId];
+    const assignmentParams = req.user.role === 'hod' ? [teacherId, current.id, deptId] : [teacherId, current.id];
+    const [subjects]=await db.query(`SELECT DISTINCT ts.subject_id,s.subject_name FROM teacher_subjects ts JOIN subjects s ON s.id=ts.subject_id WHERE ts.teacher_id=? ${subjectScope} ORDER BY s.subject_name`,subjectParams);
+    const [assignments]=await db.query(`SELECT tca.id,tca.subject_id,s.subject_name,tca.class_level_id,cl.level_name,tca.arm_id,a.arm_name,tca.session_id,ac.session_name FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id JOIN arms a ON a.id=tca.arm_id JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tca.teacher_id=? AND tca.session_id=? ${subjectScope} ORDER BY cl.sort_order,a.arm_name,s.subject_name`,assignmentParams);
     res.json({teacher,session:current,subjects,assignments});
   } catch(err) { console.error('[assignments/teacher]',err); res.status(500).json({error:'Unable to load teacher assignments.'}); }
 });
@@ -67,15 +79,31 @@ router.put('/teacher/:teacherId', async (req,res) => {
     await conn.beginTransaction();
     const [[teacher]]=await conn.query('SELECT id,dept_id FROM teachers WHERE id=? LIMIT 1',[teacherId]);
     if(!teacher){await conn.rollback();return res.status(404).json({error:'Teacher not found.'});}
-    if(req.user.role==='hod'){const [[hod]]=await conn.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1',[req.user.id]);if(!hod||hod.dept_id!==teacher.dept_id){await conn.rollback();return res.status(403).json({error:'You can only reassign teachers in your department.'});}}
+    let hodDeptId = null;
+    if(req.user.role==='hod'){
+      const [[hod]]=await conn.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1',[req.user.id]);
+      if(!hod||hod.dept_id!==teacher.dept_id){await conn.rollback();return res.status(403).json({error:'You can only reassign teachers in your department.'});}
+      hodDeptId = hod.dept_id;
+    }
     const current=await session();
     if(!current){await conn.rollback();return res.status(409).json({error:'No current academic session is configured.'});}
     const ids=[...new Set([...subjectIds,...assignments.map(x=>x.subject_id)])];
-    if(ids.length){const [valid]=await conn.query(`SELECT id,dept_id FROM subjects WHERE is_active=1 AND id IN (${ids.map(()=>'?').join(',')})`,ids);if(valid.length!==ids.length) throw new Error('One or more selected subjects are invalid or inactive.');if(req.user.role==='hod'&&valid.some(s=>s.dept_id!==null&&s.dept_id!==teacher.dept_id)) throw new Error('A selected subject is outside the teacher department.');}
+    if(ids.length){const [valid]=await conn.query(`SELECT id,dept_id FROM subjects WHERE is_active=1 AND id IN (${ids.map(()=>'?').join(',')})`,ids);if(valid.length!==ids.length) throw new Error('One or more selected subjects are invalid or inactive.');if(hodDeptId!==null&&valid.some(s=>s.dept_id!==hodDeptId)) throw new Error('A selected subject is outside the HOD department.');}
     for(const x of assignments){const [[mapped]]=await conn.query(`SELECT ts.id FROM track_subjects ts JOIN class_levels cl ON cl.id=? JOIN arms a ON a.id=? WHERE ts.track=CASE WHEN cl.is_junior=1 THEN 'junior' ELSE a.arm_type END AND ts.subject_id=? LIMIT 1`,[x.class_level_id,x.arm_id,x.subject_id]);if(!mapped) throw new Error('One or more assignments do not match the configured curriculum.');}
-    await conn.query('DELETE FROM teacher_class_assignments WHERE teacher_id=? AND session_id=?',[teacherId,current.id]);
+    // HODs may manage only their department's subjects. Preserve assignments
+    // owned by other departments instead of wiping a cross-department teacher's
+    // complete assignment set when one HOD edits their own portion.
+    if(hodDeptId!==null){
+      await conn.query('DELETE FROM teacher_class_assignments WHERE teacher_id=? AND session_id=? AND subject_id IN (SELECT id FROM subjects WHERE dept_id=?)',[teacherId,current.id,hodDeptId]);
+    } else {
+      await conn.query('DELETE FROM teacher_class_assignments WHERE teacher_id=? AND session_id=?',[teacherId,current.id]);
+    }
     for(const x of assignments) await conn.query('INSERT INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)',[teacherId,x.subject_id,x.class_level_id,x.arm_id,current.id]);
-    await conn.query('DELETE FROM teacher_subjects WHERE teacher_id=?',[teacherId]);
+    if(hodDeptId!==null){
+      await conn.query('DELETE FROM teacher_subjects WHERE teacher_id=? AND subject_id IN (SELECT id FROM subjects WHERE dept_id=?)',[teacherId,hodDeptId]);
+    } else {
+      await conn.query('DELETE FROM teacher_subjects WHERE teacher_id=?',[teacherId]);
+    }
     for(const id of ids) await conn.query('INSERT INTO teacher_subjects(teacher_id,subject_id) VALUES(?,?)',[teacherId,id]);
     await conn.query('INSERT INTO activity_log(user_id,action,entity_type,entity_id,detail) VALUES(?,?,?,?,?)',[req.user.id,'UPDATE_TEACHER_ASSIGNMENTS','teacher',teacherId,JSON.stringify({session_id:current.id,subject_ids:ids,assignment_count:assignments.length})]);
     await conn.commit();

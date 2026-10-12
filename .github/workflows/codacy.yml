@@ -1,0 +1,107 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# This workflow checks out code, performs a Codacy security scan
+# and integrates the results with the
+# GitHub Advanced Security code scanning feature. For more information on
+# the Codacy security scan action usage and parameters, see
+# https://github.com/codacy/codacy-analysis-cli-action.
+# For more information on Codacy Analysis CLI in general, see
+# https://github.com/codacy/codacy-analysis-cli.
+
+name: Codacy Security Scan
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '36 10 * * 4'
+
+permissions:
+  contents: read
+
+jobs:
+  codacy-security-scan:
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    name: Codacy Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Run Codacy Analysis CLI
+        uses: codacy/codacy-analysis-cli-action@562ee3e92b8e92df8b67e0a5ff8aa8e261919c08 # v4.4.7
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          verbose: true
+          output: results.sarif
+          format: sarif
+          gh-code-scanning-compat: true
+          max-allowed-issues: 2147483647
+
+      # Codacy runs ~20 tools. Style/lint tools (Biome, JSHint, PMD, markdownlint,
+      # ...) are quality signals, not vulnerabilities, and uploading them here
+      # buried the real security alerts under thousands of style warnings.
+      # Only security-focused tools are uploaded as code-scanning alerts; every
+      # other run is kept but emptied, so alerts it raised earlier are closed
+      # and category ids (codacy-<index>) stay stable. Full lint results remain
+      # in the Codacy dashboard.
+      #
+      # GitHub limits each SARIF upload to 20 runs, so the report is split into
+      # chunks without dropping any runs. partialFingerprints are removed so
+      # GitHub computes its own (Codacy's often disagree with the file content
+      # and produce "inconsistent fingerprint" warnings).
+      - name: Prepare SARIF upload batches
+        run: |
+          SECURITY_TOOLS='opengrep|semgrep|bandit|checkov|trivy|gitleaks|secret'
+          jq --arg re "$SECURITY_TOOLS" '
+            (.runs) |= (to_entries | map(
+              . as $entry | $entry.value
+              | ((.tool.driver.name? // "") | ascii_downcase | test($re)) as $security
+              | .automationDetails = ((.automationDetails // {}) + {id: ("codacy-" + ($entry.key | tostring))})
+              | if $security then . else .results = [] end
+              | .results |= map(del(.partialFingerprints))
+            ))' results.sarif > results.categorized.sarif
+          echo "Runs kept with results (security tools):"
+          jq -r '.runs[] | select((.results | length) > 0) | "\(.tool.driver.name): \(.results | length)"' results.categorized.sarif
+          echo "Runs emptied (style/lint tools):"
+          jq -r '.runs[] | select((.results | length) == 0) | .tool.driver.name' results.categorized.sarif | sort | uniq -c
+          jq '.runs = .runs[0:20]' results.categorized.sarif > results-part1.sarif
+          jq '.runs = .runs[20:40]' results.categorized.sarif > results-part2.sarif
+          jq '.runs = .runs[40:60]' results.categorized.sarif > results-part3.sarif
+          for part in results-part2.sarif results-part3.sarif; do
+            if [ "$(jq '.runs | length' "$part")" -eq 0 ]; then
+              rm "$part"
+            fi
+          done
+          total_runs=$(jq '.runs | length' results.categorized.sarif)
+          if [ "$total_runs" -gt 60 ]; then
+            echo "::error::Codacy produced $total_runs SARIF runs; only 60 are uploaded. Add another upload step."
+            exit 1
+          fi
+
+      - name: Upload SARIF results (runs 1–20)
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+        with:
+          sarif_file: results-part1.sarif
+
+      - name: Upload SARIF results (runs 21–40)
+        if: ${{ hashFiles('results-part2.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+        with:
+          sarif_file: results-part2.sarif
+
+      - name: Upload SARIF results (runs 41–60)
+        if: ${{ hashFiles('results-part3.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
+        with:
+          sarif_file: results-part3.sarif
