@@ -12,7 +12,7 @@ with the real class roster (and the score limits) piped to stdin as JSON:
 
 It reads the school's Continuous Assessment Sheet, whose columns are
     1ST TEST | QUIZ | ASSIGNMENT | TOTAL | 2ND TEST | PROJECT | NOTE | TOTAL | EXAM | TERM'S TOTAL | GRADE
-
+ 
 Prints a single JSON object to stdout:
     {
       "rows": [
