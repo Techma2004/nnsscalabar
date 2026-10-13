@@ -16,3 +16,8 @@ node_modules/
 
 # Codacy / code scanning output
 results*.sarif
+
+# Generated student login sheets (temporary passwords)
+database/.imported-credentials*.csv
+*-credentials-*.csv
+__pycache__/

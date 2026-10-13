@@ -8,6 +8,7 @@ const auth = require('../middleware/auth');
 const scheme = require('../scheme');
 const sheets = require('../sheets');
 const sheetExcel = require('../sheetExcel');
+const { loadTermStats } = require('../termStats');
 const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
 router.use(routeLimiter(300, 'Too many result requests. Please try again later.'));
@@ -25,7 +26,7 @@ const OCR_SCRIPT = path.join(OCR_DIR, 'ocr_score_sheet.py');
 // only if uv genuinely cannot be installed on a given machine.
 const OCR_RUNNER = String(process.env.OCR_RUNNER || 'uv').toLowerCase();
 const OCR_PYTHON_BIN = process.env.OCR_PYTHON_BIN || 'python3';
-const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 20000);
+const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 60000);
 
 // SECURITY FIX: OCR (Tesseract, now with multiple preprocessing/PSM passes)
 // is genuinely CPU-expensive, and this route had no rate limiting at all —
@@ -36,7 +37,7 @@ const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 20000);
 const OCR_RATE_WINDOW_MS = 5 * 60 * 1000;
 const OCR_RATE_MAX = 6;
 const OCR_RATE_MAX_ENTRIES = 5000;
-const OCR_IMAGE_EXTENSIONS = Object.freeze({ jpeg: 'jpeg', jpg: 'jpeg', png: 'png', webp: 'webp' });
+const OCR_IMAGE_EXTENSIONS = Object.freeze({ jpeg: 'jpeg', jpg: 'jpeg', png: 'png', webp: 'webp', pdf: 'pdf' });
 const ocrAttempts = new Map();
 function cleanupOcrAttempts(now = Date.now()) {
   for (const [key, entry] of ocrAttempts) if (now >= entry.resetAt) ocrAttempts.delete(key);
@@ -243,20 +244,23 @@ router.get('/ai-status', async (req, res) => {
   // more honest than pinging a network service, since OCR runs locally with
   // no server to be "down". Use the same runner (uv or raw python) as a real
   // scan would, so this reflects what will actually happen.
+  const probe = code => new Promise((resolve, reject) => {
+    const [cmd, args] = OCR_RUNNER === 'python'
+      ? [OCR_PYTHON_BIN, ['-c', code]]
+      : ['uv', ['run', '--project', OCR_DIR, 'python', '-c', code]];
+    const child = spawn(cmd, args, { stdio: 'ignore', cwd: OCR_DIR });
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('timeout')); }, 8000);
+    child.on('error', err => { clearTimeout(timer); reject(err); });
+    child.on('close', exit => { clearTimeout(timer); exit === 0 ? resolve() : reject(new Error('exit ' + exit)); });
+  });
   try {
-    await new Promise((resolve, reject) => {
-      const [cmd, args] = OCR_RUNNER === 'python'
-        ? [OCR_PYTHON_BIN, ['-c', 'import pytesseract; pytesseract.get_tesseract_version()']]
-        : ['uv', ['run', '--project', OCR_DIR, 'python', '-c', 'import pytesseract; pytesseract.get_tesseract_version()']];
-      const child = spawn(cmd, args, { stdio: 'ignore', cwd: OCR_DIR });
-      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('timeout')); }, 8000);
-      child.on('error', reject);
-      child.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error('exit ' + code)); });
-    });
-    res.json({ enabled: true, available: true, model: 'Tesseract OCR' });
+    await probe('import pytesseract; pytesseract.get_tesseract_version()');
   } catch {
-    res.json({ enabled: true, available: false, model: 'Tesseract OCR' });
+    return res.json({ enabled: true, available: false, pdf: false, model: 'Tesseract OCR' });
   }
+  // PDF scans (CamScanner etc.) need the pypdfium2 renderer; without it photos still work.
+  const pdf = await probe('import pypdfium2').then(() => true, () => false);
+  res.json({ enabled: true, available: true, pdf, model: 'Tesseract OCR' });
 });
 
 router.post('/ai-import', ocrRateLimit, async (req, res) => {
@@ -264,9 +268,13 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
   const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
   if (!enabled) return res.status(503).json({ error: 'Score-sheet import is disabled. Use manual score entry.' });
   const image = String(req.body?.image || '');
-  const imageMatch = image.match(/^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=\s]+)$/);
-  if (!imageMatch) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP score-sheet image.' });
-  if (image.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'Score-sheet image is too large. Use an image under 7 MB.' });
+  const imageMatch = image.match(/^data:(?:image\/(jpeg|jpg|png|webp)|application\/(pdf));base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!imageMatch) return res.status(400).json({ error: 'Upload a JPG, PNG or WebP photo, or a PDF, of the score sheet.' });
+  if (image.length > 10 * 1024 * 1024) return res.status(413).json({ error: 'Score-sheet file is too large. Use a file under 7 MB.' });
+  const kind = imageMatch[1] || imageMatch[2];
+  const fileBytes = Buffer.from(imageMatch[3], 'base64');
+  // A data URL's declared type is client-supplied, so confirm a "PDF" really is one (and nothing else is).
+  if (kind === 'pdf' && fileBytes.subarray(0, 5).toString('latin1') !== '%PDF-') return res.status(400).json({ error: 'That file is not a valid PDF.' });
 
   let tmpDir = null;
   try {
@@ -279,10 +287,10 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
     const roster = Object.fromEntries(students.map(s => [s.user_code, s.full_name]));
     // The extension comes from a fixed allow-list and the file lives in a private,
     // freshly created temp directory, so no request data ever reaches the path.
-    const ext = OCR_IMAGE_EXTENSIONS[imageMatch[1]];
+    const ext = OCR_IMAGE_EXTENSIONS[kind];
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nnss-ocr-'));
     const tmpPath = path.join(tmpDir, `scan.${ext}`);
-    await fs.writeFile(tmpPath, Buffer.from(imageMatch[2], 'base64'), { mode: 0o600 });
+    await fs.writeFile(tmpPath, fileBytes, { mode: 0o600 });
 
     const ocrResult = await runOcr(tmpPath, roster);
     const known = new Set(students.map(x => x.user_code));
@@ -472,6 +480,43 @@ router.get('/student/:studentCode', async (req, res) => {
       WHERE u.user_code=? AND (r.is_approved=1 OR ?) ${extraWhere} ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, [studentCode, canSeePending ? 1 : 0, ...extraParams]);
     res.json(rows);
   } catch (err) { console.error('[results/student]', err); res.status(500).json({ error: 'Unable to load results.' }); }
+});
+
+// Optional report-card figures (result average, arm average, class average,
+// position, per-subject averages) for every term in which the student has
+// approved results. Only approved results are used, so nothing unpublished can
+// leak into an average, and any figure that cannot be worked out is simply null.
+router.get('/student/:studentCode/term-stats', async (req, res) => {
+  const studentCode = String(req.params.studentCode || '').trim().toUpperCase();
+  const role = req.user.role;
+  if (role === 'student' && req.user.user_code !== studentCode) return res.status(403).json({ error: 'You can only view your own results.' });
+  if (!['student', 'teacher', 'admin', 'commandant'].includes(role)) return res.status(403).json({ error: 'Report-card statistics are not available for your role.' });
+  try {
+    const [[stu]] = await db.query(`SELECT s.id, s.class_level_id, s.arm_id FROM students s JOIN users u ON u.id=s.user_id WHERE u.user_code=? LIMIT 1`, [studentCode]);
+    if (!stu) return res.status(404).json({ error: 'Student not found.' });
+    if (role === 'teacher') {
+      const [[assigned]] = await db.query(`SELECT 1 AS ok FROM teacher_class_assignments tca JOIN teachers tc ON tc.id=tca.teacher_id JOIN academic_sessions asx ON asx.id=tca.session_id
+        WHERE tc.user_id=? AND tca.class_level_id=? AND tca.arm_id=? AND asx.is_current=1 LIMIT 1`, [req.user.id, stu.class_level_id, stu.arm_id]);
+      if (!assigned) return res.status(403).json({ error: 'You are not assigned to this student\'s class.' });
+    }
+    const [mine] = await db.query(`SELECT r.term_id, r.subject_id, sub.subject_name, r.total_score, t.term_name, t.term_number, ac.session_name
+      FROM results r JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
+      WHERE r.student_id=? AND r.is_approved=1 ORDER BY ac.start_date DESC, t.term_number DESC`, [stu.id]);
+    const byTerm = new Map();
+    for (const r of mine) {
+      if (!byTerm.has(r.term_id)) byTerm.set(r.term_id, { term_id: r.term_id, term_name: r.term_name, session_name: r.session_name, rows: [] });
+      byTerm.get(r.term_id).rows.push({ subject_id: r.subject_id, subject_name: r.subject_name, total: Number(r.total_score) });
+    }
+    const terms = [];
+    for (const t of byTerm.values()) {
+      const stats = await loadTermStats(db, { studentId: stu.id, classLevelId: stu.class_level_id, armId: stu.arm_id, termId: t.term_id, studentSubjects: t.rows });
+      if (!stats) continue;
+      const subjects = {};
+      for (const row of t.rows) subjects[row.subject_name] = stats.subjects[row.subject_id];
+      terms.push({ term_id: t.term_id, term_name: t.term_name, session_name: t.session_name, stats: { ...stats, subjects } });
+    }
+    res.json({ terms });
+  } catch (err) { console.error('[results/term-stats]', err); res.status(500).json({ error: 'Unable to load report-card statistics.' }); }
 });
 
 module.exports = router;
