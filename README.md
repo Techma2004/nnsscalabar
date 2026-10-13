@@ -296,13 +296,16 @@ CREATE DATABASE IF NOT EXISTS nnss_calabar
 
 CREATE USER IF NOT EXISTS 'nnss_user'@'localhost'
   IDENTIFIED BY 'replace-with-a-long-unique-password';
+CREATE USER IF NOT EXISTS 'nnss_user'@'127.0.0.1'
+  IDENTIFIED BY 'replace-with-a-long-unique-password';
 
 GRANT ALL PRIVILEGES ON nnss_calabar.* TO 'nnss_user'@'localhost';
+GRANT ALL PRIVILEGES ON nnss_calabar.* TO 'nnss_user'@'127.0.0.1';
 FLUSH PRIVILEGES;
 EXIT;
 ```
 
-If the account already exists and its password is unknown, update it intentionally with `ALTER USER` rather than assuming `CREATE USER IF NOT EXISTS` changed its password.
+The two host entries allow the app's default `DB_HOST=127.0.0.1` and local socket-based MySQL commands to use the same account name. Use the same unique password for both entries. If an account already exists and its password is unknown, update it intentionally with `ALTER USER` rather than assuming `CREATE USER IF NOT EXISTS` changed its password.
 
 ### Step 3 — Import the schema
 
