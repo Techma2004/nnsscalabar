@@ -56,7 +56,6 @@ router.post('/users', requireManagement, async (req, res) => {
   const gender = body.gender || null;
   const admission_no = v.optText(body.admission_no, 20);
   const staff_no = v.optText(body.staff_no, 20);
-  const qualification = v.optText(body.qualification, 120);
 
   if (!/^[A-Z0-9][A-Z0-9_-]{2,19}$/.test(user_code)) return res.status(400).json({ error: 'User ID must be 3–20 characters using letters, numbers, _ or -.' });
   if (!full_name || full_name.length < 3) return res.status(400).json({ error: 'Full name is required.' });
@@ -64,7 +63,7 @@ router.post('/users', requireManagement, async (req, res) => {
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   if (v.passwordTooLong(password)) return res.status(400).json({ error: 'Password must be 72 bytes or fewer.' });
   if (email !== null && !v.isEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
-  if (admission_no === undefined || staff_no === undefined || qualification === undefined) return res.status(400).json({ error: 'Admission number, staff number or qualification is invalid or too long.' });
+  if (admission_no === undefined || staff_no === undefined) return res.status(400).json({ error: 'Admission number or staff number is invalid or too long.' });
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Invalid account role.' });
   if (['admin','commandant'].includes(role) && req.user.role !== 'commandant') return res.status(403).json({ error: 'Only the Commandant can create management-level accounts.' });
   if (gender && !['M', 'F'].includes(gender)) return res.status(400).json({ error: 'Invalid gender.' });
@@ -113,8 +112,8 @@ router.post('/users', requireManagement, async (req, res) => {
       }
       if (!deptRow) throw new Error('A valid department is required.');
       if (role === 'teacher') {
-        const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, qualification, date_joined) VALUES (?, ?, ?, ?, CURDATE())',
-          [userId, staff_no, deptRow.id, qualification]);
+        const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, date_joined) VALUES (?, ?, ?, CURDATE())',
+          [userId, staff_no, deptRow.id]);
         const rawSubjects = Array.isArray(body.subjects) ? body.subjects : (body.subject ? [body.subject] : []);
         if (rawSubjects.length > 50 || rawSubjects.some(x => typeof x !== 'string' || x.length > 120)) throw new Error('Subject not found: invalid subject list');
         const subjectNames = rawSubjects;
@@ -187,7 +186,7 @@ router.get('/teachers', requireStaffDirectory, async (req, res) => {
   let searchClause = '';
   if (q) { searchClause = 'HAVING u.full_name LIKE ? OR u.user_code LIKE ? OR subjects LIKE ?'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
-    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.email,u.gender,t.id AS teacher_id,t.staff_no,d.dept_name AS department,t.qualification,t.date_joined,
+    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.email,u.gender,t.id AS teacher_id,t.staff_no,d.dept_name AS department,t.date_joined,
       GROUP_CONCAT(DISTINCT s.subject_name ORDER BY s.subject_name SEPARATOR ', ') AS subjects
       FROM teachers t JOIN users u ON u.id=t.user_id LEFT JOIN departments d ON d.id=t.dept_id
       LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects s ON s.id=ts.subject_id
@@ -509,7 +508,7 @@ router.get('/departments/:deptId', requireStaffReference, async (req, res) => {
         (SELECT COUNT(*) FROM results r WHERE r.subject_id=s.id) AS result_count
         FROM subjects s LEFT JOIN track_subjects ts ON ts.subject_id=s.id
         WHERE s.dept_id=? GROUP BY s.id ORDER BY s.is_active DESC, s.subject_name`, [deptId]).then(r => r[0]),
-      db.query(`SELECT u.id AS user_id, u.user_code, u.full_name, u.email, t.staff_no, t.qualification, t.date_joined,
+      db.query(`SELECT u.id AS user_id, u.user_code, u.full_name, u.email, t.staff_no, t.date_joined,
         GROUP_CONCAT(DISTINCT sub.subject_name ORDER BY sub.subject_name SEPARATOR ', ') AS subjects
         FROM teachers t JOIN users u ON u.id=t.user_id
         LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects sub ON sub.id=ts.subject_id

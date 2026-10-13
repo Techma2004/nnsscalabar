@@ -1,5 +1,5 @@
 import {
-  getCurrentUser, logout, getStats, getStudentSummary, getStudentResults, getStudentSubjects,
+  getCurrentUser, logout, getStats, getStudentSummary, getStudentResults, getStudentTermStats, getStudentSubjects,
   getAllStudents, getAllTeachers, getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
   getTeacherStudents, getAssignments, getPendingResults, approveResult, rejectResult, approveSheet, getRejections,
   getAnnouncements, createAnnouncement, removeUser,
@@ -9,6 +9,7 @@ import {
   getDepartments, getDepartmentDetail, getClassesAndArms, createClassLevel, updateClassLevel, deleteClassLevel, createArm, updateArm, deleteArm, getHodSummary
 } from './api.js';
 import * as Sheets from './sheets.js';
+import * as Scanner from './scanner.js';
 import * as Cmd from './commandant.js';
 
 const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], rejections:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], curriculumHistory:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{}, cmdSummary:null, cmdTermId:null, topFilters:{term_id:'',class_level_id:''} };
@@ -20,14 +21,14 @@ const STUDENT_STATUSES = ['active','pending','withdrawn','graduated','repeating'
 const statusBadgeClass = {active:'ok', pending:'pending', withdrawn:'danger', graduated:''};
 const menus = {
   student:[['Dashboard','dashboard'],['My Results','results'],['My Subjects','subjects'],['Announcements','announcements'],['My Profile','profile']],
-  teacher:[['Dashboard','dashboard'],['My Department','departments'],['Score Sheet','sheet'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
+  teacher:[['Dashboard','dashboard'],['My Department','departments'],['Score Sheet','sheet'],['Manual Entry','manual'],['AI Scanner','scanner'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
   hod:[['Dashboard','dashboard'],['My Department','departments'],['Result Approval','approval'],['Result Sheets','sheets'],['Department Teachers','teachers'],['Announcements','announcements'],['My Profile','profile']],
   admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Result Sheets','sheets'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
   commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Result Sheets','sheets'],['Top Performers','top'],['Students','students'],['Teachers','teachers'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
 };
 const panelIcons = {
   dashboard:'grid', results:'document', subjects:'book', announcements:'bell', profile:'user',
-  sheet:'pencil', sheets:'document', students:'users', teachers:'idbadge', approval:'checksquare',
+  sheet:'pencil', manual:'user', scanner:'cpu', sheets:'document', students:'users', teachers:'idbadge', approval:'checksquare',
   system:'settings', accounts:'userplus', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar', classes:'grid', departments:'shield'
 };
 const ic = (name,size) => (typeof window.Icon==='function') ? window.Icon(name,{size:size||18}) : '';
@@ -117,12 +118,12 @@ async function render(panel,{silent=false}={}){
   try {
     if(panel==='dashboard') await loadCommon();
     if(state.user.role==='student'){
-      if(panel==='results') state.results=await getStudentResults(state.user.user_code);
+      if(panel==='results'){ state.results=await getStudentResults(state.user.user_code); state.termStats=await getStudentTermStats(state.user.user_code).then(r=>r.terms||[]).catch(()=>[]); }
       if(panel==='subjects') state.subjects=await getStudentSubjects(state.user.user_code);
       if(panel==='dashboard') { state.studentSummary=await getStudentSummary(); state.rejections=await getRejections(); }
     }
     if(state.user.role==='teacher'){
-      if(panel==='sheet') { state.assignments=await getAssignments(); await loadMeta(); await Sheets.loadScheme(); }
+      if(['sheet','manual','scanner'].includes(panel)) { state.assignments=await getAssignments(); await loadMeta(); await Sheets.loadScheme(); await Scanner.loadScheme(); }
       if(panel==='dashboard') { state.assignments=await getAssignments(); state.rejections=await getRejections(); }
       if(panel==='students') { const r=await getTeacherStudents(state.user.user_code,state.search.students); state.students=r; }
     }
@@ -172,6 +173,8 @@ function renderPanel(panel){
   if(panel==='announcements') return renderAnnouncements();
   if(panel==='profile') return renderProfile();
   if(panel==='sheet') return Sheets.renderTeacherSheet();
+  if(panel==='manual') return Scanner.renderManual();
+  if(panel==='scanner') return Scanner.renderScanner();
   if(panel==='sheets') return Sheets.renderSheetBrowser();
   if(panel==='students') return renderStudents();
   if(panel==='approval') return renderApproval();
@@ -217,7 +220,7 @@ function renderDashboard(){
     ${renderRejectionNotice('teacher')}
     <div class="portal-grid">${stat('My students',state.stats.students??0,'users')}${stat('My subjects',state.stats.subjects??0,'book')}${stat('Awaiting approval',state.stats.pending_results??0,'clock')}${stat('Approved results',state.stats.results??0,'checkcircle')}</div>
     ${card('What I teach',teachingRows)}
-    ${card('Workflow',`<div class="portal-kpi"><span>1. Open the Score Sheet for a class, subject and term</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Fill the CA columns and exam (type it, import Excel, or scan the paper sheet)</span><strong>${ic('pencil',16)}</strong></div><div class="portal-kpi"><span>3. Save &amp; submit — your HOD approves the sheet</span><strong>${ic('checkcircle',16)}</strong></div><button class="btn btn-primary" data-go="sheet" style="margin-top:.8rem">Open Score Sheet ${ic('arrowright',15)}</button>`)}`;
+    ${card('Workflow',`<div class="portal-kpi"><span>1. Choose a class, subject and term</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter marks: full class sheet, one student at a time, Excel import, or scan the paper sheet with the AI Scanner</span><strong>${ic('pencil',16)}</strong></div><div class="portal-kpi"><span>3. Check, then submit — your HOD approves the sheet</span><strong>${ic('checkcircle',16)}</strong></div><div class="portal-actions" style="margin-top:.8rem"><button class="btn btn-primary" data-go="sheet">Score Sheet ${ic('arrowright',15)}</button><button class="btn btn-secondary" data-go="manual">Manual Entry</button><button class="btn btn-secondary" data-go="scanner">${ic('cpu',15)} AI Scanner</button></div>`)}`;
   }
   if(r==='student') return '';
   const title={admin:'Administration control centre',commandant:'Commandant overview'}[r];
@@ -351,8 +354,15 @@ function renderResults(){
 // term/session and lays each term out as its own printable report-card
 // sheet: school header, student bio, subject breakdown, summary and a
 // grading key, with a page break between terms.
+// Every comparison figure on a report card is optional. Each one is shown only
+// when (a) the school's data can actually produce it and (b) the person printing
+// the card has it ticked - the choice is remembered on this device.
+const REPORT_OPTIONS=[['resultAvg','Result average'],['armAvg','Arm average'],['classAvg','Class average'],['position','Position in arm'],['subjectAvg','Subject arm averages'],['passes','Subjects passed']];
+function reportOpts(){ let saved={}; try{ saved=JSON.parse(localStorage.getItem('nnss_report_opts')||'{}'); }catch{ /* storage unavailable */ } return Object.fromEntries(REPORT_OPTIONS.map(([k])=>[k,saved[k]!==false])); }
+function ordinal(n){ const v=n%100; return `${n}${(v>=11&&v<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')}`; }
+function reportStatsFor(session,term){ return (state.termStats||[]).find(t=>t.session_name===session && t.term_name===term)?.stats||null; }
 function renderReportCards(){
-  const u=state.user;
+  const u=state.user, opts=reportOpts();
   const groups=new Map();
   state.results.forEach(r=>{
     const key=`${r.session_name}|${r.term_name}`;
@@ -362,13 +372,24 @@ function renderReportCards(){
   const printedOn=fmtDate(new Date());
   const legend='Grading key: A1/B2/B3 Excellent–Very Good · C4/C5/C6 Credit · D7/E8 Pass · F9 Fail';
   const cards=[...groups.values()].map(g=>{
+    const st=reportStatsFor(g.session_name,g.term_name);
     const dash=v=>v===null||v===undefined?'—':Number(v);
     const ca1=r=>r.test1_score===null||r.test1_score===undefined?'—':Number(r.test1_score)+Number(r.quiz_score||0)+Number(r.assignment_score||0);
     const ca2=r=>r.test2_score===null||r.test2_score===undefined?'—':Number(r.test2_score)+Number(r.project_score||0)+Number(r.note_score||0);
-    const subjectRows=g.rows.map(r=>`<tr><td>${esc(r.subject_name)}</td><td>${dash(r.test1_score)}</td><td>${dash(r.quiz_score)}</td><td>${dash(r.assignment_score)}</td><td>${ca1(r)}</td><td>${dash(r.test2_score)}</td><td>${dash(r.project_score)}</td><td>${dash(r.note_score)}</td><td>${ca2(r)}</td><td>${Number(r.exam_score)}</td><td><strong>${Number(r.total_score)}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${esc(r.remark||'—')}</td></tr>`).join('');
+    const showSub=opts.subjectAvg && st && g.rows.some(r=>st.subjects?.[r.subject_name]?.arm_average!=null);
+    const subjectRows=g.rows.map(r=>`<tr><td>${esc(r.subject_name)}</td><td>${dash(r.test1_score)}</td><td>${dash(r.quiz_score)}</td><td>${dash(r.assignment_score)}</td><td>${ca1(r)}</td><td>${dash(r.test2_score)}</td><td>${dash(r.project_score)}</td><td>${dash(r.note_score)}</td><td>${ca2(r)}</td><td>${Number(r.exam_score)}</td><td><strong>${Number(r.total_score)}</strong></td>${showSub?`<td>${dash(st.subjects[r.subject_name]?.arm_average)}</td>`:''}<td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${esc(r.remark||'—')}</td></tr>`).join('');
     const count=g.rows.length;
     const average=count?(g.rows.reduce((a,r)=>a+Number(r.total_score),0)/count).toFixed(1):'0.0';
     const passes=g.rows.filter(r=>Number(r.total_score)>=50).length;
+    const summary=[
+      ['Subjects offered',count,true],
+      ['Result average',`${average}%`,opts.resultAvg],
+      ['Arm average',st?.arm_average!=null?`${st.arm_average}%`:null,opts.armAvg],
+      ['Class average',st?.class_average!=null?`${st.class_average}%`:null,opts.classAvg],
+      ['Position in arm',st?.position?`${ordinal(st.position)} of ${st.arm_size}`:null,opts.position],
+      ['Subjects passed',`${passes}/${count}`,opts.passes]
+    ].filter(([,v,on])=>on && v!==null && v!==undefined).map(([l,v])=>`<span>${esc(l)}<strong>${esc(v)}</strong></span>`).join('');
+    const headers=['Subject','1st Test /15','Quiz /5','Assign. /5','CA1 /25','2nd Test /5','Project /5','Note /5','CA2 /15','Exam /60','Total /100',...(showSub?['Arm avg']:[]),'Grade','Remark'];
     return `<section class="report-card">
       <div class="report-card-head"><h2>Nigerian Navy Secondary School Akpabuyo Calabar</h2><p>Termly Report Card</p></div>
       <div class="report-card-bio">
@@ -379,17 +400,14 @@ function renderReportCards(){
         <span>Session<strong>${esc(g.session_name)}</strong></span>
         <span>Printed<strong>${esc(printedOn)}</strong></span>
       </div>
-      ${table(['Subject','1st Test /15','Quiz /5','Assign. /5','CA1 /25','2nd Test /5','Project /5','Note /5','CA2 /15','Exam /60','Total /100','Grade','Remark'],subjectRows,'No approved results for this term.')}
-      <div class="report-card-summary">
-        <span>Subjects offered<strong>${count}</strong></span>
-        <span>Average score<strong>${average}%</strong></span>
-        <span>Subjects passed<strong>${passes}/${count}</strong></span>
-      </div>
+      ${table(headers,subjectRows,'No approved results for this term.')}
+      <div class="report-card-summary">${summary}</div>
       <p class="report-card-legend">${esc(legend)}</p>
       <div class="report-card-signatures"><div>Class Teacher</div><div>Principal / Commandant</div></div>
     </section>`;
   }).join('') || card('Published results','<div class="portal-empty">No approved results have been published yet.</div>');
-  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${cards}`;
+  const optionBar=groups.size?`<div class="report-options no-print"><strong>Show on report card:</strong>${REPORT_OPTIONS.map(([k,l])=>`<label><input type="checkbox" data-report-opt="${k}" ${opts[k]?'checked':''}> ${esc(l)}</label>`).join('')}<small>Figures the school cannot work out yet (for example, no other results approved in your class) are left off automatically.</small></div>`:'';
+  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${optionBar}${cards}`;
 }
 function renderSubjects(){ const rows=state.subjects.map((s,i)=>`<tr><td>${i+1}</td><td><strong>${esc(s.subject_name)}</strong></td><td>${s.ca_max}</td><td>${s.exam_max}</td><td>${s.ca_max+s.exam_max}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic programme</div><h1>My Subjects</h1></div></div>${card('Enrolled subjects',table(['#','Subject','CA max','Exam max','Total'],rows,'No subjects have been enrolled for this session.'))}`; }
 function renderAnnouncements(){
@@ -543,7 +561,10 @@ function studentStatusModal(id,currentStatus,name){
 
 function bindPanel(panel){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>render(b.dataset.go));
+  if(panel==='results') document.querySelectorAll('[data-report-opt]').forEach(c=>c.onchange=()=>{ const o=reportOpts(); document.querySelectorAll('[data-report-opt]').forEach(x=>{o[x.dataset.reportOpt]=x.checked;}); try{ localStorage.setItem('nnss_report_opts',JSON.stringify(o)); }catch{ /* storage unavailable */ } $('#appRoot').innerHTML=renderPanel('results'); bindPanel('results'); });
   if(panel==='sheet') Sheets.bindTeacherSheet();
+  if(panel==='manual') Scanner.bindManual();
+  if(panel==='scanner') Scanner.bindScanner();
   if(panel==='sheets') Sheets.bindSheetBrowser();
   if(state.user.role==='commandant' && ['dashboard','overview','top'].includes(panel)) Cmd.bind(panel);
   if(panel==='approval') document.querySelectorAll('[data-approve-sheet]').forEach(b=>b.onclick=()=>approveWholeSheet(b));
@@ -684,5 +705,5 @@ async function userModal(){ const m=await loadMeta(); const classOpts=m.classes.
 // Admin can use the same student screen to create accounts. Keep the feature visible but controlled.
 window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 const ctx={state,esc,ic,toast,card,table,stat,gradeClass,render,openModal,closeModal};
-Sheets.init(ctx); Cmd.init(ctx);
+Sheets.init(ctx); Scanner.init(ctx); Cmd.init(ctx);
 init();

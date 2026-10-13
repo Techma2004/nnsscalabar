@@ -102,6 +102,7 @@ export const approveResult = (id, note) => apiFetch(`/results/approve/${id}`, { 
 export const rejectResult = (id, note) => apiFetch(`/results/reject/${id}`, { method: 'PUT', body: JSON.stringify({ note }) });
 export const getRejections = () => apiFetch('/results/rejections');
 export const getStudentResults = code => apiFetch(`/results/student/${encodeURIComponent(code)}`);
+export const getStudentTermStats = code => apiFetch(`/results/student/${encodeURIComponent(code)}/term-stats`);
 
 export const getAnnouncements = () => apiFetch('/announcements');
 export const createAnnouncement = data => apiFetch('/announcements', { method: 'POST', body: JSON.stringify(data) });
