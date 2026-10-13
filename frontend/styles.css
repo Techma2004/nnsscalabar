@@ -775,3 +775,8 @@ tr.row-error { background: rgba(214,69,69,.07); }
 .approval-card .portal-table th, .approval-card .portal-table td { padding: .5rem .35rem; }
 .approval-card .portal-actions { flex-wrap: nowrap; }
 .approval-card .portal-actions .btn { white-space: nowrap; }
+
+/* Report card: optional comparison figures */
+.report-options { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.1rem; margin: 0 0 1rem; padding: .75rem 1rem; background: var(--accent-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: .85rem; }
+.report-options label { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
+.report-options small { flex-basis: 100%; color: var(--text-secondary); }
