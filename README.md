@@ -120,13 +120,20 @@ Confirm that `node --version` reports v20 or newer.
 
 ### Step 3 — Start the database service
 
+Run **one** command, matching the database you installed:
+
 ```bash
+# MariaDB (common on Debian)
 sudo systemctl enable --now mariadb
-# If you installed Oracle MySQL instead, the service may be named mysql:
+```
+
+For Oracle MySQL instead:
+
+```bash
 sudo systemctl enable --now mysql
 ```
 
-If one service name does not exist, use the service name for the database you installed. Confirm the service is running before continuing.
+Confirm that the selected service is running before continuing.
 
 ### Step 4 — Clone the project and install Node dependencies
 
