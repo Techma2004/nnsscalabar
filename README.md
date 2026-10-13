@@ -1,108 +1,233 @@
 # NNSS Calabar School Management System
 
-A production-oriented school management platform and public website for Nigerian Navy Secondary School, Calabar. It provides a responsive public website, role-based portals, academic result workflows, curriculum management, announcements, and an optional local score-sheet OCR assistant.
+A web-based school management platform and public website for Nigerian Navy Secondary School, Calabar. The application includes role-based portals for the Commandant, administrators, Heads of Department (HODs), teachers, and students; academic result entry and approval; curriculum and account management; announcements; and optional local score-sheet OCR.
 
-> Before production use, replace the sample academic data with the school's official register, staff records, assignments, academic calendar, and operational policies.
+> **Before real school use:** replace sample/demo records with verified school data, review account permissions and school workflows, configure HTTPS, and establish database backups. Do not use real student information over plain HTTP.
 
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+
+## Documentation
+
+- **[Portal User Guide](PORTAL_GUIDE.md)** — step-by-step usage instructions for Commandant, Admin, HOD, teachers, and students.
+- **[Security Policy](SECURITY.md)** — security controls, safe deployment requirements, and vulnerability reporting.
+- **[License](LICENSE)** — proprietary-use terms. This repository is **not open source**.
 
 ## Contents
 
 - [Features](#features)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
-- [Installation](#installation)
-- [Database setup](#database-setup)
-- [MySQL access denied fix](#mysql-access-denied-fix)
-- [Configuration](#configuration)
-- [Create the first administrator](#create-the-first-administrator)
-- [Run the application](#run-the-application)
-- [Local-network access](#local-network-access)
-- [Score-sheet OCR](#score-sheet-ocr-optional)
-- [Deployment](#deployment)
+- [Installation at a glance](#installation-at-a-glance)
+- [Install on Linux](#1-install-on-linux)
+- [Install on macOS](#2-install-on-macos)
+- [Install on Windows](#3-install-on-windows)
+- [Create the database](#create-the-database)
+- [Configure the application](#configure-the-application)
+- [Create the first management account](#create-the-first-management-account)
+- [Start and open the portal](#start-and-open-the-portal)
+- [Optional score-sheet OCR](#optional-score-sheet-ocr)
+- [Existing database and roster tools](#existing-database-and-roster-tools)
+- [Production deployment checklist](#production-deployment-checklist)
 - [Troubleshooting](#troubleshooting)
-- [Security](#security)
-- [License](#license)
+- [Testing](#testing)
+- [License and security](#license-and-security)
 
 ## Features
 
-- Public home, about, blog, newsletter, contact, responsive navigation, hero carousel, theme switching, and portal login.
-- Single Node/Express application serving the API and `frontend/` from one origin.
-- Student, teacher, HOD, administrator, and commandant portals.
-- HTTP-only JWT authentication cookies, bcrypt password hashing, login rate limiting, security headers, CORS controls, health checks, and graceful shutdown.
-- Student lifecycle states: `active`, `pending`, `withdrawn`, and `graduated`, while preserving academic history.
-- Curriculum and subject management for junior, science, technical, and arts tracks.
-- Teacher class/arm/subject assignments with server-side authorization.
-- CA/examination result entry, generated totals, grades, remarks, HOD approval, revisions, and audit logging.
-- Audience-aware announcements, printable result sheets, performance summaries, and attendance schema/views.
-- Optional local Tesseract OCR score-sheet import with roster matching, confidence values, validation, teacher review, and manual fallback.
+- Responsive public website, news/blog pages, newsletter/contact pages, theme switching, and portal sign-in.
+- One Node.js/Express application serves both the API and `frontend/` from the same origin.
+- Five account roles: `commandant`, `admin`, `hod`, `teacher`, and `student`.
+- HTTP-only JWT session cookie, bcrypt password hashing, login throttling, request rate limits, security headers, origin checks, and server-side role/assignment authorization.
+- Student lifecycle statuses, including active, pending, withdrawn, graduated, and repeating, with academic history retained.
+- Curriculum, departments, subjects, class levels, arms, academic sessions, and terms.
+- Teacher class/arm/subject assignments.
+- Continuous-assessment score sheets, generated totals/grades/remarks, HOD approval, return-for-correction workflow, and activity logging.
+- Excel score-sheet import/export, printable results, optional report-card statistics, and optional local Tesseract OCR for photos/PDFs.
+- Audience-aware announcements, dashboards, health endpoint, and graceful shutdown.
 
 ## Architecture
 
 ```text
-Browser -> Node.js + Express -> MySQL/MariaDB
-             ├── /api/auth
-             ├── /api/admin
-             ├── /api/students
-             ├── /api/results
-             ├── /api/announcements
-             ├── /api/dashboard
-             └── frontend/
+Browser
+  └── Node.js + Express (frontend + /api)
+        ├── Authentication and role checks
+        ├── Student / staff / results / assignments / announcements / dashboard routes
+        └── MySQL or MariaDB
 ```
+
+The application is served from one origin. For local development, the default address is `http://localhost:5000`; no separate frontend development server is required.
 
 ## Requirements
 
 ### Required
 
-- Node.js 20+ and npm
-- MySQL 8+ or MariaDB 10.6+
-- Git
+- **Node.js 20 or newer** (use an active LTS release) and npm.
+- **MySQL 8+ or MariaDB 10.6+**.
+- Git.
+- A modern browser.
 
-### Optional OCR support
+### Optional: score-sheet OCR
 
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/)
-- Tesseract OCR with English language data
+- Python 3.10+.
+- [uv](https://docs.astral.sh/uv/).
+- Tesseract OCR and its English language data.
+- PDF scanning additionally uses the Python dependencies declared by this repository.
 
-## Installation
+If OCR is not needed, you can skip all optional OCR dependencies and use manual or Excel score entry.
 
-Clone the repository:
+## Installation at a glance
+
+1. Install Node.js, Git, and MySQL/MariaDB for your operating system.
+2. Clone this repository.
+3. Create the `nnss_calabar` database and a dedicated database user.
+4. Import `database/schema.sql`.
+5. Create `backend/.env` from `backend/.env.example` and set real credentials and a JWT secret.
+6. Install backend dependencies with `npm install`.
+7. Create the first Commandant or administrator account.
+8. Start the server and open `http://localhost:5000/login.html`.
+
+Follow the operating-system section below before continuing to [Create the database](#create-the-database).
+
+## 1. Install on Linux
+
+Examples below target Ubuntu/Debian. Other Linux distributions need equivalent packages and service commands.
+
+### Step 1 — Install Git, a database server, and supporting tools
+
+```bash
+sudo apt update
+sudo apt install -y git curl ca-certificates default-mysql-server
+```
+
+On Debian, `default-mysql-server` commonly installs MariaDB, which is supported. If you already run MySQL/MariaDB, do not install a second database server.
+
+### Step 2 — Install Node.js 20+
+
+Use an active LTS version from the official Node.js distribution or a version manager. Do not assume the distribution's `nodejs` package is new enough.
+
+For example, with [nvm](https://github.com/nvm-sh/nvm):
+
+```bash
+# Follow the current installation instructions at https://github.com/nvm-sh/nvm
+# in your normal user account, then:
+nvm install --lts
+nvm use --lts
+node --version
+npm --version
+```
+
+Confirm that `node --version` reports v20 or newer.
+
+### Step 3 — Start the database service
+
+```bash
+sudo systemctl enable --now mariadb
+# If you installed Oracle MySQL instead, the service may be named mysql:
+sudo systemctl enable --now mysql
+```
+
+If one service name does not exist, use the service name for the database you installed. Confirm the service is running before continuing.
+
+### Step 4 — Clone the project and install Node dependencies
 
 ```bash
 git clone https://github.com/Techma2004/nnsscalabar.git
 cd nnsscalabar
-```
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt update
-sudo apt install -y git mysql-server nodejs npm
-sudo apt install -y tesseract-ocr tesseract-ocr-eng  # optional OCR
-curl -LsSf https://astral.sh/uv/install.sh | sh         # optional OCR
 cd backend
 npm install
 cd ..
 ```
 
-### macOS
+### Step 5 — Continue
 
-Using Homebrew:
+Follow [Create the database](#create-the-database), [Configure the application](#configure-the-application), and [Create the first management account](#create-the-first-management-account).
+
+Optional OCR packages:
+
+```bash
+sudo apt install -y tesseract-ocr tesseract-ocr-eng
+```
+
+Install `uv` using the official [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/) only if you plan to use OCR.
+
+## 2. Install on macOS
+
+These steps use [Homebrew](https://brew.sh/). If you do not have Homebrew, install it using the instructions on its official website first.
+
+### Step 1 — Install dependencies
+
+Open Terminal:
 
 ```bash
 brew update
-brew install node mysql git tesseract uv
+brew install git node mysql
+node --version
+npm --version
+mysql --version
+```
+
+Confirm Node.js is v20 or newer. If Homebrew supplies an older version in your environment, install an active LTS version from [nodejs.org](https://nodejs.org/) or use a Node version manager.
+
+### Step 2 — Start MySQL
+
+```bash
 brew services start mysql
+```
+
+Homebrew MySQL installations may initially allow local administrative access without a password, depending on how they were initialized. Use the account and password configured on your own machine when creating the application database.
+
+### Step 3 — Clone the project and install Node dependencies
+
+```bash
+git clone https://github.com/Techma2004/nnsscalabar.git
+cd nnsscalabar
 cd backend
 npm install
 cd ..
 ```
 
-Tesseract and uv are optional if OCR is not required.
+### Step 4 — Continue
 
-### Windows
+Follow [Create the database](#create-the-database), [Configure the application](#configure-the-application), and [Create the first management account](#create-the-first-management-account).
 
-Install [Git for Windows](https://git-scm.com/download/win), [Node.js](https://nodejs.org/), and [MySQL Installer](https://dev.mysql.com/downloads/installer/). Then use PowerShell or Git Bash:
+Optional OCR packages:
+
+```bash
+brew install tesseract uv
+```
+
+OCR is optional; do not install these packages unless you need score-sheet scanning.
+
+## 3. Install on Windows
+
+Use a supported 64-bit Windows version and open **PowerShell** or **Windows Terminal**.
+
+### Step 1 — Install the required software
+
+Install these from their official download pages:
+
+- [Git for Windows](https://git-scm.com/download/win)
+- [Node.js LTS](https://nodejs.org/) — choose a release that is v20 or newer and includes npm.
+- [MySQL Installer](https://dev.mysql.com/downloads/installer/) — install MySQL Server. MySQL Workbench is useful but optional.
+
+Close and reopen the terminal after installation so updated PATH entries are loaded.
+
+Verify:
+
+```powershell
+git --version
+node --version
+npm --version
+mysql --version
+```
+
+If PowerShell says `mysql` is not recognized, add the MySQL Server `bin` directory to PATH or use the full path to `mysql.exe` for database commands.
+
+### Step 2 — Start MySQL
+
+Use **Services** in Windows to confirm that the MySQL service is running, or start it from the MySQL Installer. Remember the MySQL administrative password chosen during installation.
+
+### Step 3 — Clone the project and install Node dependencies
 
 ```powershell
 git clone https://github.com/Techma2004/nnsscalabar.git
@@ -112,17 +237,50 @@ npm install
 cd ..
 ```
 
-For OCR, install [Tesseract for Windows](https://github.com/UB-Mannheim/tesseract/wiki), add it to `PATH`, and install [uv](https://docs.astral.sh/uv/getting-started/installation/).
+### Step 4 — Continue
 
-## Database setup
+Follow [Create the database](#create-the-database), [Configure the application](#configure-the-application), and [Create the first management account](#create-the-first-management-account).
 
-The consolidated `database/schema.sql` creates `nnss_calabar`, tables, seed academic records, indexes, views, and upgrade-safe blocks.
+Optional OCR on Windows:
 
-Create the database user as a MySQL/MariaDB administrator:
+- Install [Tesseract OCR for Windows](https://github.com/UB-Mannheim/tesseract/wiki) and ensure `tesseract.exe` is on PATH.
+- Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and a supported Python version if you intend to scan score sheets.
+
+## Create the database
+
+Create a dedicated application database user. Do not run the web application as the database root/administrator account.
+
+### Step 1 — Open a database administrator session
+
+Choose the command for your system:
+
+**Linux (typical local MariaDB installation):**
 
 ```bash
-sudo mysql
+sudo mariadb
 ```
+
+If your system uses MySQL, `sudo mysql` may be the correct command.
+
+**macOS:**
+
+```bash
+mysql -u root -p
+```
+
+If your local Homebrew setup uses passwordless root access, omit `-p`. If root login is not available, use the database administrator account configured during installation.
+
+**Windows PowerShell:**
+
+```powershell
+mysql -u root -p
+```
+
+Enter the MySQL administrator password when prompted. The prompt should change to something like `mysql>`.
+
+### Step 2 — Create the database and application user
+
+Run this SQL inside the MySQL/MariaDB prompt. Replace the example password with a long, unique password. Keep the single quotes around the SQL password.
 
 ```sql
 CREATE DATABASE IF NOT EXISTS nnss_calabar
@@ -130,105 +288,56 @@ CREATE DATABASE IF NOT EXISTS nnss_calabar
   COLLATE utf8mb4_unicode_ci;
 
 CREATE USER IF NOT EXISTS 'nnss_user'@'localhost'
-  IDENTIFIED BY 'replace-with-a-strong-password';
+  IDENTIFIED BY 'replace-with-a-long-unique-password';
 
 GRANT ALL PRIVILEGES ON nnss_calabar.* TO 'nnss_user'@'localhost';
 FLUSH PRIVILEGES;
 EXIT;
 ```
 
-Import the schema from the normal Linux terminal, not from inside the `MariaDB>` prompt:
+If the account already exists and its password is unknown, update it intentionally with `ALTER USER` rather than assuming `CREATE USER IF NOT EXISTS` changed its password.
+
+### Step 3 — Import the schema
+
+Run these commands from the repository root (the folder containing `database/`), **not inside** the `mysql>` prompt.
+
+**Linux and macOS:**
 
 ```bash
 mysql -u nnss_user -p nnss_calabar < database/schema.sql
 ```
 
-You can also use MySQL Workbench by opening `database/schema.sql` and executing the complete script.
-
-## MySQL access denied fix
-
-If you see:
-
-```text
-ERROR 1045 (28000): Access denied for user 'test'@'localhost' (using password: YES)
-```
-
-or the same error for `temp` or another account, MySQL rejected the account/password or the account does not have permission. This is not a schema error.
-
-Linux users and MySQL users are different. `sudo` gives operating-system privileges; it does not automatically grant database privileges to MySQL users such as `test` or `temp`.
-
-Use the local MariaDB/MySQL administrator:
-
-```bash
-sudo mysql
-```
-
-Then use one consistent database and account name:
-
-```sql
-CREATE DATABASE IF NOT EXISTS nnss_calabar
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-CREATE USER IF NOT EXISTS 'nnss_admin'@'localhost'
-  IDENTIFIED BY '1234#$';
-
-GRANT ALL PRIVILEGES ON nnss_calabar.* TO 'nnss_admin'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
-```
-
-**Important:** the SQL password must be enclosed in single quotes. This is correct:
-
-```sql
-IDENTIFIED BY '1234#$';
-```
-
-This is incorrect:
-
-```sql
-IDENTIFIED BY 1234#$;
-```
-
-The earlier combination of creating `nnss_admin`, granting access to `nnss_school`, and importing into `nnss_school` uses inconsistent database names. This project uses `nnss_calabar` by default.
-
-Test the account:
-
-```bash
-mysql -u nnss_admin -p -h 127.0.0.1 nnss_calabar
-```
-
-Then import:
-
-```bash
-mysql -u nnss_admin -p -h 127.0.0.1 nnss_calabar < database/schema.sql
-```
-
-If MySQL is stopped:
-
-```bash
-sudo systemctl start mysql
-sudo systemctl status mysql
-```
-
-If the MariaDB prompt shows `->`, an SQL statement is unfinished. Cancel it with `\\c`, then use `EXIT;` to leave the prompt. Shell commands such as `mysql -u ... < database/schema.sql` must be run after returning to the Linux terminal.
-
-## Configuration
-
-Create the environment file:
-
-```bash
-cd backend
-cp .env.example .env
-```
-
-PowerShell:
+**Windows PowerShell:**
 
 ```powershell
-Copy-Item .env.example .env
+Get-Content .\database\schema.sql -Raw | mysql -u nnss_user -p nnss_calabar
 ```
 
-Edit `backend/.env`:
+If PowerShell cannot find `mysql`, use the full path to `mysql.exe` in that command. When prompted, enter the database user's password.
+
+The consolidated `database/schema.sql` creates the database tables and reference/seed data used by the application. The repository also contains migration scripts for particular existing installations; see [Existing database and roster tools](#existing-database-and-roster-tools) before applying a migration to a database that already contains data.
+
+## Configure the application
+
+### Step 1 — Create the environment file
+
+From the repository root:
+
+**Linux/macOS:**
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+**Windows PowerShell:**
+
+```powershell
+Copy-Item backend/.env.example backend/.env
+```
+
+### Step 2 — Edit `backend/.env`
+
+Open the file in your preferred text editor and set the database user/password to match the account created above. The essential local-development settings should look similar to:
 
 ```dotenv
 NODE_ENV=development
@@ -236,165 +345,133 @@ PORT=5000
 HOST=127.0.0.1
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_USER=nnss_admin
-DB_PASSWORD='replace-with-a-long-unique-password'
+DB_USER=nnss_user
+DB_PASSWORD='replace-with-your-actual-database-password'
 DB_NAME=nnss_calabar
 DB_POOL_SIZE=10
-JWT_SECRET=
+JWT_SECRET=replace-this-with-a-random-secret
 FRONTEND_ORIGIN=
 TRUST_PROXY_HOPS=0
 COOKIE_SECURE=false
 ```
 
-### Password quoting in `.env`
+- Replace **every** placeholder, especially `DB_PASSWORD` and `JWT_SECRET`. The server intentionally refuses to start with known placeholder values or a JWT secret shorter than 32 characters.
+- If the database password contains `#` or spaces, quote it in `.env`; avoid passwords containing a literal single quote when using single-quoted dotenv values.
+- Keep `HOST=127.0.0.1` for this computer only. Use `0.0.0.0` only when deliberately enabling same-network/LAN access.
+- `COOKIE_SECURE=false` is for isolated local testing with synthetic data only. Real school data requires HTTPS and `COOKIE_SECURE=true`.
+- Leave `FRONTEND_ORIGIN` empty for a normal local install. It is for additional explicitly permitted origins.
+- Keep `TRUST_PROXY_HOPS=0` for direct local connections. Only change it to the verified proxy hop count behind a trusted reverse proxy.
 
-For passwords containing characters such as `#`, spaces, `;`, or shell-like symbols, enclose the value in single quotes in `.env`:
+### Step 3 — Generate a strong JWT secret
 
-```dotenv
-DB_PASSWORD='replace-with-a-long-unique-password#1'
-```
-
-The quotes tell the dotenv parser that the complete value is the password. Replace this placeholder with the database user's actual unique password; the application intentionally refuses to start while this placeholder is used. Do not add extra quotes around the password at the interactive `mysql -p` prompt; enter only the password itself. Never commit `.env` or real credentials.
-
-Simple passwords may work without quotes, but quoting database passwords consistently avoids parsing problems. Use the same long, unique password configured for the database user.
-
-Other important settings:
-
-| Variable | Purpose |
-|---|---|
-| `NODE_ENV` | `development` or `production` |
-| `PORT` | HTTP port; defaults to `5000` |
-| `HOST` | Defaults to `127.0.0.1` for local-only access; use `0.0.0.0` only when intentionally enabling LAN access |
-| `DB_HOST`, `DB_PORT` | Database connection address |
-| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Database credentials and name |
-| `DB_POOL_SIZE` | MySQL connection pool size |
-| `JWT_SECRET` | At least 32 random characters |
-| `FRONTEND_ORIGIN` | Additional permitted origins, comma-separated |
-| `TRUST_PROXY_HOPS` | Verified proxy hop count (`0`–`10`). |
-| `COOKIE_SECURE` | Keep `true` with HTTPS; `false` is only for isolated HTTP testing with synthetic data |
-| `AI_SCORE_IMPORT_ENABLED` | Enable/disable OCR |
-| `OCR_RUNNER` | `uv` or `python` |
-| `OCR_TIMEOUT_MS` | OCR timeout in milliseconds |
-
-Generate a random JWT secret and paste the output into `JWT_SECRET` (never leave it blank or copy a placeholder):
+Run this from any terminal where Node.js is installed. The same command works in PowerShell, macOS, and Linux:
 
 ```bash
-openssl rand -base64 48
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 ```
 
-## Create the first administrator
+Copy the generated value into `JWT_SECRET` in `backend/.env`. Do not share it or commit it to Git. Keep `.env` private.
 
-Add these values to `backend/.env`:
+## Create the first management account
+
+Choose **one** bootstrap account to start with. For a fresh school installation, creating the Commandant first is convenient because the Commandant can create administrator and Commandant accounts through Account Management.
+
+### Option A — Create the first Commandant
+
+Add or edit these values in `backend/.env`:
+
+```dotenv
+INITIAL_COMMANDANT_CODE=CMD001
+INITIAL_COMMANDANT_PASSWORD='use-a-strong-unique-password'
+INITIAL_COMMANDANT_NAME='The Commandant'
+INITIAL_COMMANDANT_EMAIL=
+```
+
+Choose a unique ID and password for the actual operator. Then run:
+
+```bash
+cd backend
+npm run seed:commandant
+cd ..
+```
+
+### Option B — Create the first administrator
+
+Instead, configure these values in `backend/.env`:
 
 ```dotenv
 INITIAL_ADMIN_CODE=ADM001
 INITIAL_ADMIN_PASSWORD='use-a-strong-unique-password'
 INITIAL_ADMIN_NAME='NNSS System Administrator'
-INITIAL_ADMIN_EMAIL='admin@example.edu.ng'
+INITIAL_ADMIN_EMAIL=
 ```
 
-From `backend/` run:
+Then run:
 
 ```bash
+cd backend
 npm run seed:admin
+cd ..
 ```
 
-To create the Commandant account (who can then create admin accounts from Account Management):
+Use PowerShell equivalents for changing directories if needed. The seed scripts read `backend/.env` and connect to the database configured there. The seed scripts can update an account if the same user ID already exists, so run them deliberately and protect the credentials.
+
+After successfully creating the bootstrap account, remove or replace the bootstrap password values in `backend/.env` and store credentials securely. Do not commit the environment file.
+
+## Start and open the portal
+
+### Development mode
+
+From the repository root:
 
 ```bash
-INITIAL_COMMANDANT_CODE=CMD001 INITIAL_COMMANDANT_PASSWORD='use-a-strong-unique-password' npm run seed:commandant
+cd backend
+npm run dev
 ```
 
-No default administrator password is embedded in the source code.
+This uses Node's watch mode and restarts the server when backend files change.
 
-## Run the application
+### Normal mode
 
-From `backend/`:
+Stop the development server with `Ctrl+C`, then from `backend/` run:
 
 ```bash
-npm run dev                 # development with automatic restart
-NODE_ENV=production npm start
-```
-
-On Windows PowerShell:
-
-```powershell
-$env:NODE_ENV = "production"
 npm start
 ```
 
-Open:
+For a production-mode smoke check, configure HTTPS first and then set `NODE_ENV=production` and `COOKIE_SECURE=true` in the environment. Do not expose a production-mode server over plain HTTP.
 
-- Website: `http://localhost:5000`
-- Portal login: `http://localhost:5000/login.html`
-- Health check: `http://localhost:5000/api/health`
+### Open these addresses
 
-## Local-network access
+- Public website: [http://localhost:5000](http://localhost:5000)
+- Portal sign-in: [http://localhost:5000/login.html](http://localhost:5000/login.html)
+- API health check: [http://localhost:5000/api/health](http://localhost:5000/api/health)
 
-With `HOST=0.0.0.0`, the server prints LAN addresses at startup. Other devices on the same network can open an address such as:
+The health endpoint reports whether the API can reach the database. It does not replace a full backup/restore check or deployment review.
 
-```text
-http://192.168.1.42:5000
-```
+### Use the portal from another device on the same network
 
-Allow the port through the host firewall. Use `COOKIE_SECURE=false` only for isolated local/LAN demonstrations with synthetic data. Real student records require HTTPS and `COOKIE_SECURE=true`, even on a private LAN, because HTTP can expose session cookies and student information. Set `HOST=127.0.0.1` for local-only testing. Never expose a plain-HTTP installation to the public internet.
+1. Stop the server.
+2. Set `HOST=0.0.0.0` in `backend/.env`.
+3. Restart the server and note the LAN address printed in the terminal.
+4. Allow inbound port `5000` through the computer's firewall only on the trusted private network.
+5. From another device on the same network, open `http://<server-LAN-IP>:5000/login.html`.
 
-## Portal workflows
+**LAN warning:** plain HTTP is not safe for real student records, even on a private Wi-Fi network. Use synthetic data for a local demonstration. For real data, configure HTTPS, set `COOKIE_SECURE=true`, and restrict access to trusted users and networks.
 
-### Student
+## Optional score-sheet OCR
 
-Secure login, dashboard, approved results, curriculum subjects, announcements, profile, and printable result sheets.
+OCR is optional. Teachers can use Score Sheet, Manual Entry, or Excel import without enabling OCR.
 
-### Teacher
+### Install the OCR tools
 
-View assignments, select class/arm/subject, enter CA (0–30) and exam (0–70), submit to HOD approval, view assigned students, and optionally scan score sheets.
-
-### HOD
-
-Department dashboard, pending result review, approval, and department teacher directory. Students see results only after approval.
-
-### Administrator
-
-Statistics, controlled account creation, student lifecycle management, curriculum/subject management, teacher directory, result oversight, announcements, security overview, and supported password resets.
-
-### Commandant
-
-Dashboard with a term selector: headcount, results pipeline (approved / awaiting HOD / sent back), term average and pass rate, grade distribution, class-sheet progress with the sheets furthest behind, and top 5 students. Also School Overview (per class and per department), Result Sheets (read-only view of every class sheet), Top Performers (filter by term and class), plus students, teachers, curriculum, classes, sessions, announcements and account management.
-
-### Continuous Assessment Sheet (results)
-
-Results follow the school's paper sheet: one subject, one class + arm, one term.
-1st Test 15 + Quiz 5 + Assignment 5 (= 25) · 2nd Test 5 + Project 5 + Note 5 (= 15) · Exam 60 · Term's total 100 · WAEC grade.
-
-- Teachers fill the sheet as a grid (**Score Sheet**), with live totals and grade, draft autosave, Excel import/export and photo scan; blank rows are skipped, filled rows need every column (0 is valid).
-- HODs approve a whole sheet at once (**Result Approval**) or send single scores back with a reason.
-- A blank reusable Excel template is at `score-sheet-template.xlsx` (and downloadable in the portal); regenerate it with `npm run build:template` in `backend/`.
-
-Upgrading an existing database (back up first), then run `npm install` in `backend/`:
-
-```bash
-mysql -u <user> -p nnss_calabar < database/004_ca_sheet_scheme.sql
-mysql -u <user> -p nnss_calabar < database/005_session_version.sql
-```
-
-
-Result lifecycle:
-
-```text
-Teacher enters score -> server validates -> Pending result
-    -> HOD approves -> student can view
-    -> teacher edits -> approval resets and audit entry is recorded
-```
-
-## Score-sheet OCR (optional)
-
-Install Tesseract and uv, then from the repository root:
+Install Tesseract and English language data using your operating system's package manager/installer. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then from the repository root run:
 
 ```bash
 uv sync
 ```
 
-In `backend/.env`:
+In `backend/.env`, set:
 
 ```dotenv
 AI_SCORE_IMPORT_ENABLED=true
@@ -402,123 +479,112 @@ OCR_RUNNER=uv
 OCR_TIMEOUT_MS=60000
 ```
 
-The scanner runs locally, matches extracted codes against the real class roster, validates CA/exam ranges, and requires teacher review. It never publishes a result automatically. To disable it:
+Restart the server after changing environment values. Check the scanner's status in the teacher portal. The scanner runs locally using Tesseract; it is OCR, not a hosted generative-AI service. It matches extracted text to the roster, validates score ranges, and requires a teacher to review and confirm entries. It never publishes results directly.
+
+If OCR is unavailable, select Manual Entry or use the score-sheet grid. To disable scanning:
 
 ```dotenv
 AI_SCORE_IMPORT_ENABLED=false
 ```
 
-Fallback Python environment:
+The fallback `OCR_RUNNER=python` mode requires `OCR_PYTHON_BIN` to point to a Python interpreter with the project's OCR dependencies installed. Use the documented `uv` workflow unless there is a specific reason not to.
+
+## Existing database and roster tools
+
+**Back up an existing database before running any schema, migration, import, or upgrade command.** Do not re-import the initial schema over a live school database without reviewing its SQL.
+
+Migration files are version-specific. The repository includes `database/migrations/001_upgrade.sql`, `database/004_ca_sheet_scheme.sql`, and `database/005_session_version.sql`. Apply only the migration(s) required by your current schema, in the order intended for that installation. If you are unsure which version is installed, stop and inspect the schema rather than running every SQL file blindly.
+
+### Importing the included scanned-sheet rosters
+
+The file `database/rosters/2025-2026-second-term.json` contains transcribed names for SS1 SIRI and JSS3 AYAM. It is roster data, not score data. Review it against the official register before use.
+
+From the repository root:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install pytesseract Pillow
+node database/import-rosters.js
+node database/import-rosters.js --apply
 ```
 
-```dotenv
-OCR_RUNNER=python
-OCR_PYTHON_BIN=/full/path/to/nnsscalabar/.venv/bin/python3
-```
+The first command is a dry run; the second writes records. Temporary imported credentials are written to a git-ignored file. Protect and securely dispose of that file after authorized delivery. Use `--mirror-assignments` only when you deliberately want to copy teaching assignments from the current session.
 
-## Deployment
+## Production deployment checklist
 
-For production:
+Before a live deployment:
 
-1. Provision Node.js 20+, MySQL/MariaDB, and persistent hosting.
-2. Import `database/schema.sql`.
-3. Create a production `.env` with unique credentials and a random JWT secret.
-4. Create the first administrator and remove bootstrap secrets after use.
-5. Terminate HTTPS at the hosting platform or reverse proxy.
-6. Use `NODE_ENV=production` and `COOKIE_SECURE=true` with HTTPS.
-7. Configure `TRUST_PROXY_HOPS` to the verified number of trusted hops.
-   Use `1` for one proxy before Express; use `0` for direct connections.
-   Never set Express `trust proxy` to unrestricted `true`.
-   The trusted proxy must overwrite forwarded headers, and the hop count must
-   match the actual network path.
-8. Restrict database/firewall access, configure backups, and monitor logs.
-9. Replace demo records with verified school data.
+1. Use supported Node.js and MySQL/MariaDB versions and persistent hosting.
+2. Use a dedicated least-privilege database account; do not run the application as database root.
+3. Import or migrate the schema after taking a verified backup.
+4. Replace all demo records with verified school data and review user/teacher assignments.
+5. Generate a unique random `JWT_SECRET` of at least 32 characters.
+6. Set `NODE_ENV=production`, terminate HTTPS at the application host or a correctly configured reverse proxy, and set `COOKIE_SECURE=true`.
+7. Set `TRUST_PROXY_HOPS` to the exact, verified proxy hop count. Use `0` for direct connections. Never enable unrestricted proxy trust; the trusted proxy must overwrite forwarded headers.
+8. Keep `.env`, bootstrap credentials, imported credentials, backups, and student data out of Git and public storage.
+9. Restrict network access to the web server and database; enable monitoring and tested backups.
+10. Run the targeted backend test suite and verify sign-in, each role's access, result approval, and restoration procedures before go-live.
+11. For multiple backend instances, replace the in-memory rate-limit stores with a shared store such as Redis.
+12. Review [SECURITY.md](SECURITY.md) and the [License](LICENSE) before operating or redistributing the software.
 
-For an existing database, back it up first and apply the migration when required:
-
-```bash
-mysql -u <user> -p nnss_calabar < database/migrations/001_upgrade.sql
-```
+Never expose a plain-HTTP installation containing real student or staff information to the public internet.
 
 ## Troubleshooting
 
-### Database connection failed
+### `node` or `npm` is not recognized
 
-Check that MySQL/MariaDB is running, credentials match `.env`, and the database exists:
+Install Node.js 20+ and reopen the terminal. On Windows, confirm the Node.js installation directory is on PATH.
 
-```bash
-mysql -h 127.0.0.1 -u nnss_admin -p nnss_calabar
-```
+### `mysql` is not recognized
 
-### Login immediately logs out
+The database client may not be on PATH. On Windows, use the full path to `mysql.exe` or add the MySQL Server `bin` directory to PATH. On macOS, confirm Homebrew installed MySQL and that its `bin` directory is available.
 
-For local-only HTTP testing with synthetic data, `COOKIE_SECURE=false` may be necessary. For any deployment handling real student data, configure HTTPS and use `COOKIE_SECURE=true`.
+### Database access denied (MySQL error 1045)
 
-### Other devices cannot connect
+The database rejected the account/password or the account lacks permission. This is not necessarily a schema error. Confirm that:
 
-Confirm `HOST=0.0.0.0`, use the server LAN IP instead of `localhost`, allow port `5000` through the firewall, and verify both devices share the same network.
+- `DB_USER`, `DB_PASSWORD`, `DB_HOST`, and `DB_NAME` in `backend/.env` match the database account you created.
+- The SQL account has privileges on `nnss_calabar.*`.
+- The SQL password was quoted in the SQL statement and is entered without extra quote characters at the interactive password prompt.
+- You are connecting to the same database service where you created the user.
 
-### OCR unavailable
+On Linux, `sudo` is an operating-system privilege and does not automatically grant a MySQL account named `test`, `temp`, or another username database access.
 
-Check `tesseract --version`, `uv --version`, and `python --version`. Run `uv sync`, or disable OCR and use manual entry.
+### Server exits immediately and mentions `JWT_SECRET` or `DB_PASSWORD`
 
-### Results are not visible
+Edit `backend/.env` and replace the placeholders with a random JWT secret and the actual dedicated database password. The application deliberately rejects placeholder values.
 
-Students see results only after an authorized HOD approves them. Check approval status, department, current term, and term lock state.
+### Portal sign-in does not stay logged in
 
-## Security
+For local-only HTTP testing with synthetic data, set `COOKIE_SECURE=false` in `backend/.env` and restart the server. For real data, configure HTTPS and `COOKIE_SECURE=true` instead; do not weaken cookie security on a live deployment.
 
-- Never commit `.env`, passwords, JWT secrets, or real student/staff data.
-- Use HTTPS and secure cookies for every deployment that handles real student records, including private school LANs.
-- Use a unique, randomly generated production JWT secret of at least 32 characters; never copy an example placeholder.
-- Restrict database privileges and network exposure.
-- Back up the database and test restoration.
-- Replace the in-memory login limiter with Redis for multiple backend instances.
-- Treat OCR output as a draft requiring teacher verification and HOD approval.
-- The server sends a strict Content-Security-Policy (`script-src 'self'`), so pages must not use inline `<script>` blocks or inline `onclick=` handlers; use external scripts and `data-action` attributes instead. `npm test` fails if one is added.
-- State-changing API requests from another site are rejected (Origin / Sec-Fetch-Site check) in addition to `SameSite` cookies.
-- Demo seed scripts generate a random password and write it to `database/.demo-credentials` (git-ignored) instead of printing a fixed one. Set `DEMO_PASSWORD` to choose your own.
-- Run `cd backend && npm test` before deploying; it starts the real app against a stub database and checks boot, headers, CSRF, cookies and input validation.
+### Another device cannot open the portal
 
-## Contributing
+Set `HOST=0.0.0.0`, use the server's LAN IP rather than `localhost`, check that both devices are on the same network, and allow the port through the host firewall. Do not expose the server to the public internet just to solve a LAN connectivity issue.
 
-Create a feature branch, keep secrets out of commits, test authentication/authorization/database/UI changes, document schema changes, and update this README when installation or operational behavior changes.
+### Results are not visible to a student
 
-## Class rosters, score entry and report-card figures
+Students can view results after the HOD approval workflow completes. Confirm the correct term/session, the teacher's class/arm/subject assignment, and the sheet's approval status. A returned or pending result is not a published result.
 
-### Importing class rosters from the scanned sheets
+### OCR is unavailable
 
-`database/rosters/2025-2026-second-term.json` holds the SS1 SIRI (44) and JSS3 AYAM (33) rosters
-transcribed from the scanned Continuous Assessment Sheets. The sheets carried names only, so this
-creates students, not scores.
+Check `tesseract --version`, `uv --version`, and `python --version`; run `uv sync` from the repository root; and confirm the OCR settings in `backend/.env`. Use Manual Entry or Excel import if scanning is not available.
+
+### A SQL prompt shows `->`
+
+The SQL statement is incomplete. Enter `\c` to cancel it, then `EXIT;` to leave the SQL prompt. Shell commands such as `mysql ... < database/schema.sql` must be run in the operating-system terminal, not inside `mysql>`.
+
+## Testing
+
+From the repository root:
 
 ```bash
-node database/import-rosters.js          # dry run - shows what would change
-node database/import-rosters.js --apply  # writes students; saves temporary passwords to
-                                         # database/.imported-credentials.csv (git-ignored)
+cd backend
+npm test
 ```
 
-It is safe to re-run (existing students are skipped), never changes the current session, and creates
-the 2025/2026 Second Term only if it is missing. Add `--mirror-assignments` to copy teaching
-assignments for these classes from the current session so teachers can open the 2025/2026 sheets.
+The test suite uses a stub database for application smoke/security checks and unit tests. It does not prove that a live deployment is configured securely; perform deployment checks and a database backup/restore test separately.
 
-### Teacher score entry
+## License and security
 
-Teachers have three ways in, all saved through the same validated endpoint and approval flow:
-**Score Sheet** (whole class grid), **Manual Entry** (one student at a time) and **AI Scanner**
-(photo or PDF of the paper sheet, read by Tesseract, then reviewed row by row; nothing is submitted
-until the teacher ticks the confirmation box). PDF input needs `pypdfium2` (`uv sync`).
+This is proprietary school software. Public visibility of this repository does not grant permission to reuse, modify, deploy, redistribute, or sell it. Read the full [LICENSE](LICENSE).
 
-### Optional report-card figures
-
-`GET /api/results/student/:code/term-stats` returns result average, arm average, class average,
-position and per-subject arm averages from approved results only. Any figure that cannot be worked
-out is `null` and is left off the report card; students can also untick each one before printing.
-
-## License
-
-Proprietary school software. Intended for authorized use by NNSS Calabar and its development/administrative team.
+For security expectations, safe deployment configuration, and how to privately report a suspected vulnerability, read [SECURITY.md](SECURITY.md). For practical day-to-day instructions for each account role, read the [Portal User Guide](PORTAL_GUIDE.md).
