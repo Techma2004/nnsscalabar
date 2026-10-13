@@ -9,7 +9,7 @@ A web-based school management platform and public website for Nigerian Navy Seco
 ## Documentation
 
 - **[Portal User Guide](PORTAL_GUIDE.md)** — step-by-step usage instructions for Commandant, Admin, HOD, teachers, and students.
-- **[Security Policy](.github/workflows/SECURITY.md)** — security controls, safe deployment requirements, and vulnerability reporting.
+- **[Security Policy](SECURITY.md)** — security controls, safe deployment requirements, and vulnerability reporting.
 - **[License](LICENSE)** — proprietary-use terms. This repository is **not open source**.
 
 ## Contents
