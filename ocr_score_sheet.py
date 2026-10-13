@@ -41,6 +41,7 @@ Design notes:
 import sys
 import json
 import re
+import difflib
 
 try:
     import pytesseract
@@ -64,6 +65,16 @@ NUMERIC_RE = re.compile(r"^\d{1,3}(?:[.,]\d{1,2})?$")
 SCORE_KEYS = ["test1", "quiz", "assignment", "test2", "project", "note", "exam"]
 DEFAULT_LIMITS = {"test1": 15, "quiz": 5, "assignment": 5, "test2": 5, "project": 5, "note": 5, "exam": 60}
 NAME_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z.'-]*$")
+
+
+# Tesseract frequently reads a capital "I" in bold sans-serif print as "!" or "|"
+# (e.g. "OKOLOSI" -> "OKOLOS!"). Repair those before judging whether a token is
+# a name word, otherwise the whole row is dropped.
+_NAME_FIXES = str.maketrans({"!": "I", "|": "I", "\u00a1": "I"})
+
+
+def clean_name_token(text):
+    return text.translate(_NAME_FIXES)
 
 
 def normalize_name(s):
@@ -153,15 +164,46 @@ MAX_IMAGE_PIXELS = 25_000_000
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 
+MAX_PDF_PAGES = 6        # a class sheet is one or two pages; refuse to grind through a huge document
+PDF_RENDER_SCALE = 200 / 72  # render PDF pages at ~200 dpi
+
+
+def load_pages(path):
+    """Returns the list of PIL images to read: one for a photo, one per page for a PDF
+    (CamScanner and similar apps export PDFs)."""
+    with open(path, "rb") as fh:
+        is_pdf = fh.read(5) == b"%PDF-"
+    if not is_pdf:
+        with Image.open(path) as source:
+            if source.width < 1 or source.height < 1 or source.width * source.height > MAX_IMAGE_PIXELS:
+                raise ValueError("Image dimensions are too large for safe OCR. Resize it and try again.")
+            return [source.convert("L")]
+    try:
+        import pypdfium2 as pdfium
+    except ImportError as e:
+        raise ValueError(f"PDF support is not installed on this server ({e}). Run: uv sync") from e
+    pdf = pdfium.PdfDocument(path)
+    try:
+        if len(pdf) > MAX_PDF_PAGES:
+            raise ValueError(f"This PDF has {len(pdf)} pages; scan one class sheet (up to {MAX_PDF_PAGES} pages) at a time.")
+        pages = []
+        for index in range(len(pdf)):
+            page = pdf[index]
+            width, height = page.get_size()
+            if width * height * PDF_RENDER_SCALE ** 2 > MAX_IMAGE_PIXELS:
+                raise ValueError("A PDF page is too large for safe OCR.")
+            pages.append(page.render(scale=PDF_RENDER_SCALE).to_pil().convert("L"))
+        return pages
+    finally:
+        pdf.close()
+
+
 def preprocess(image_path):
     """Preprocessing tuned for real phone photos of paper, including messy
     handwriting: local contrast correction for uneven lighting, light
     denoising, deskewing, grid-line removal, then upscaling small images
     since Tesseract does noticeably better with more pixels per character."""
-    with Image.open(image_path) as source:
-        if source.width < 1 or source.height < 1 or source.width * source.height > MAX_IMAGE_PIXELS:
-            raise ValueError("Image dimensions are too large for safe OCR. Resize it and try again.")
-        img = source.convert("L")
+    img = image_path if isinstance(image_path, Image.Image) else load_pages(image_path)[0]
     arr = np.array(img)
     arr = enhance_contrast(arr)
     arr = cv2.medianBlur(arr, 3)
@@ -222,13 +264,42 @@ def match_roster_name(words, start, roster_by_name, max_words=4):
     best = None
     for length in range(min(max_words, n - start), 0, -1):
         chunk = words[start:start + length]
-        if not all(NAME_TOKEN_RE.match(w["text"]) for w in chunk):
+        texts = [clean_name_token(w["text"]) for w in chunk]
+        if not all(NAME_TOKEN_RE.match(t) for t in texts):
             continue
-        norm = normalize_name(" ".join(w["text"] for w in chunk))
+        norm = normalize_name(" ".join(texts))
         if norm in roster_by_name:
             best = (start + length - 1, roster_by_name[norm])
             break  # longest match wins (checked longest-first)
     return best or (None, None)
+
+
+FUZZY_CUTOFF = 0.88   # similarity needed to accept an approximate name match
+FUZZY_MARGIN = 0.04   # the best candidate must beat the runner-up by at least this much
+
+
+def match_roster_name_fuzzy(words, start, roster_by_name, max_words=6):
+    """Fallback for when a name is read with a wrong or missing letter. Only
+    accepts a match that is both close AND clearly better than every other
+    student's name, so a blurry row is never quietly assigned to a lookalike.
+    Returns (end_index, user_code) or (None, None); the caller flags the row
+    so the teacher checks the student before submitting."""
+    run = []
+    for w in words[start:start + max_words]:
+        t = clean_name_token(w["text"])
+        if not NAME_TOKEN_RE.match(t):
+            break
+        run.append(t)
+    best = None
+    for length in range(2, len(run) + 1):
+        norm = normalize_name(" ".join(run[:length]))
+        if len(norm) < 6:
+            continue
+        scored = sorted(((difflib.SequenceMatcher(None, norm, cand).ratio(), cand) for cand in roster_by_name), reverse=True)
+        top, runner = scored[0], (scored[1][0] if len(scored) > 1 else 0.0)
+        if top[0] >= FUZZY_CUTOFF and top[0] - runner >= FUZZY_MARGIN and (best is None or top[0] > best[0]):
+            best = (top[0], start + length - 1, roster_by_name[top[1]])
+    return (best[1], best[2]) if best else (None, None)
 
 
 def to_number(text):
@@ -306,6 +377,14 @@ def parse_rows(lines, roster, limits):
                     code_idx, matched_code = end_idx, name_code
                     break
 
+        fuzzy = False
+        if matched_code is None:
+            for start in range(min(3, len(words))):
+                end_idx, name_code = match_roster_name_fuzzy(words, start, roster_by_name)
+                if name_code:
+                    code_idx, matched_code, fuzzy = end_idx, name_code, True
+                    break
+
         if matched_code is None:
             continue  # not a data row (header, title, blank line, unmatched noise)
 
@@ -317,6 +396,9 @@ def parse_rows(lines, roster, limits):
         conf_values = [words[code_idx]["conf"]] + [w["conf"] for w in used]
         confidence = round(sum(conf_values) / len(conf_values) / 100, 2)
 
+        if fuzzy:
+            confidence = min(confidence, 0.6)
+            note = ("Name matched approximately - check this is the right student. " + note).strip()
         rows.append({
             "user_code": matched_code,
             "full_name": roster.get(matched_code),
@@ -357,39 +439,57 @@ def main():
         sys.exit(1)
 
     try:
-        image = preprocess(image_path)
+        pages = load_pages(image_path)
     except Exception as e:
-        print(json.dumps({"error": f"Could not read the image: {e}"}))
+        print(json.dumps({"error": f"Could not read the file: {e}"}))
         sys.exit(1)
 
     # Try the fast, structured-table config first; only spend time on the
     # sparser/less-structured configs if it clearly under-performed against
     # the class roster. Selection is by how many rows come out with ALL seven
-    # scores readable and inside their limits, not raw row count — a
+    # scores readable and inside their limits, not raw row count - a
     # sparse-text config can produce more matched names by fragmenting the
     # table into extra rows while losing the scores that sit beside each name,
     # which raw-count selection would wrongly prefer.
     def count_valid(rows):
         return sum(1 for r in rows if r["_ok"])
 
-    best_rows, best_valid = [], -1
-    for psm in (6, 4, 11):
-        try:
-            lines = extract_words(image, psm=psm)
-        except pytesseract.TesseractNotFoundError:
-            print(json.dumps({"error": "Tesseract is not installed on this server. Ask an administrator to install tesseract-ocr."}))
-            sys.exit(1)
-        except Exception as e:
-            if not best_rows and psm == 6:
-                print(json.dumps({"error": f"OCR failed: {e}"}))
+    def read_page(page):
+        image = preprocess(page)
+        best_rows, best_valid = [], -1
+        for psm in (6, 4, 11):
+            try:
+                lines = extract_words(image, psm=psm)
+            except pytesseract.TesseractNotFoundError:
+                print(json.dumps({"error": "Tesseract is not installed on this server. Ask an administrator to install tesseract-ocr."}))
                 sys.exit(1)
-            continue
-        rows = parse_rows(lines, roster, limits)
-        valid = count_valid(rows)
-        if valid > best_valid or (valid == best_valid and len(rows) > len(best_rows)):
-            best_rows, best_valid = rows, valid
-        if best_valid >= len(roster):
-            break
+            except Exception as e:
+                if not best_rows and psm == 6:
+                    print(json.dumps({"error": f"OCR failed: {e}"}))
+                    sys.exit(1)
+                continue
+            rows = parse_rows(lines, roster, limits)
+            valid = count_valid(rows)
+            if valid > best_valid or (valid == best_valid and len(rows) > len(best_rows)):
+                best_rows, best_valid = rows, valid
+            if best_valid >= len(roster):
+                break
+        return best_rows
+
+    # A student can appear on more than one page of a multi-page PDF (or twice on
+    # one page if a line is read twice). Keep the better-read copy; the portal's
+    # review table still flags any remaining duplicates for the teacher.
+    merged = {}
+    try:
+        for page in pages:
+            for row in read_page(page):
+                prev = merged.get(row["user_code"])
+                if prev is None or (row["_ok"], row["confidence"]) > (prev["_ok"], prev["confidence"]):
+                    merged[row["user_code"]] = row
+    except Exception as e:
+        print(json.dumps({"error": f"Could not read the file: {e}"}))
+        sys.exit(1)
+    best_rows = list(merged.values())
     rows = [{k: v for k, v in r.items() if k != "_ok"} for r in best_rows]
     print(json.dumps({
         "rows": rows,

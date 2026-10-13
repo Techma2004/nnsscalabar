@@ -399,7 +399,7 @@ In `backend/.env`:
 ```dotenv
 AI_SCORE_IMPORT_ENABLED=true
 OCR_RUNNER=uv
-OCR_TIMEOUT_MS=20000
+OCR_TIMEOUT_MS=60000
 ```
 
 The scanner runs locally, matches extracted codes against the real class roster, validates CA/exam ranges, and requires teacher review. It never publishes a result automatically. To disable it:
@@ -487,6 +487,37 @@ Students see results only after an authorized HOD approves them. Check approval 
 ## Contributing
 
 Create a feature branch, keep secrets out of commits, test authentication/authorization/database/UI changes, document schema changes, and update this README when installation or operational behavior changes.
+
+## Class rosters, score entry and report-card figures
+
+### Importing class rosters from the scanned sheets
+
+`database/rosters/2025-2026-second-term.json` holds the SS1 SIRI (44) and JSS3 AYAM (33) rosters
+transcribed from the scanned Continuous Assessment Sheets. The sheets carried names only, so this
+creates students, not scores.
+
+```bash
+node database/import-rosters.js          # dry run - shows what would change
+node database/import-rosters.js --apply  # writes students; saves temporary passwords to
+                                         # database/.imported-credentials.csv (git-ignored)
+```
+
+It is safe to re-run (existing students are skipped), never changes the current session, and creates
+the 2025/2026 Second Term only if it is missing. Add `--mirror-assignments` to copy teaching
+assignments for these classes from the current session so teachers can open the 2025/2026 sheets.
+
+### Teacher score entry
+
+Teachers have three ways in, all saved through the same validated endpoint and approval flow:
+**Score Sheet** (whole class grid), **Manual Entry** (one student at a time) and **AI Scanner**
+(photo or PDF of the paper sheet, read by Tesseract, then reviewed row by row; nothing is submitted
+until the teacher ticks the confirmation box). PDF input needs `pypdfium2` (`uv sync`).
+
+### Optional report-card figures
+
+`GET /api/results/student/:code/term-stats` returns result average, arm average, class average,
+position and per-subject arm averages from approved results only. Any figure that cannot be worked
+out is `null` and is left off the report card; students can also untick each one before printing.
 
 ## License
 
