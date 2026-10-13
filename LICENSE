@@ -2,36 +2,42 @@ NNSS CALABAR PROPRIETARY SOFTWARE LICENSE
 
 Copyright and Rights Holder: NNSS Calabar Development Team
 
-1. OWNERSHIP
+This is a proprietary license, not an open-source license.
 
-The NNSS Calabar software, including its source code, original documentation, original database schema, original application logic, and other original project materials, is proprietary software and is not released under an open-source license.
+1. COVERED MATERIALS AND OWNERSHIP
+
+Subject to applicable law and third-party rights, the original NNSS Calabar School Management System materials in this repository—including original source code, application logic, database schema, documentation, configuration, and original project assets—are proprietary materials of the NNSS Calabar Development Team.
+
+This license does not claim ownership of third-party software, libraries, fonts, images, icons, datasets, or other materials that are subject to separate licenses or rights.
 
 2. NO GENERAL PERMISSION
 
-No permission is granted to copy, reproduce, modify, adapt, redistribute, publish, sublicense, sell, lease, deploy, host, or create derivative works from the covered project materials except as expressly authorized in writing by the NNSS Calabar Development Team.
+Except where the NNSS Calabar Development Team gives explicit written permission or applicable law requires otherwise, no permission is granted to copy, reproduce, modify, adapt, redistribute, publish, sublicense, sell, lease, deploy, host, or create derivative works from the covered proprietary materials.
 
-Viewing the source code through a public repository does not by itself grant permission to reuse, modify, distribute, deploy, or incorporate the project into another software product or service.
+The fact that this repository or its source code can be viewed publicly does not grant permission to reuse, modify, distribute, deploy, host, or incorporate the covered materials into another product or service.
 
-3. AUTHORIZED USE
+3. AUTHORIZED USE AND EXCEPTIONS
 
-The NNSS Calabar Development Team may grant permission for specific uses on a case-by-case basis. Any such permission must be explicit and may be subject to additional terms, limitations, or conditions.
+The NNSS Calabar Development Team may grant written permission for specific uses on a case-by-case basis. Any permission may be subject to additional terms, limitations, or conditions.
+
+An authorized school or development team must not treat access to the repository as blanket permission to disclose student/staff data, credentials, or operational records. This license does not itself authorize access to or use of personal data.
 
 4. THIRD-PARTY MATERIALS
 
-This license applies only to materials for which the NNSS Calabar Development Team has the relevant rights to grant permission. Third-party software, libraries, fonts, images, icons, datasets, and other materials included with or used by the project remain subject to their respective licenses, terms, and ownership rights.
+Third-party software, dependencies, fonts, images, icons, datasets, and other materials included with or used by the project remain subject to their respective licenses, terms, and ownership rights. Users are responsible for identifying and complying with those separate terms.
 
-5. TRADEMARKS AND NAMES
+5. TRADEMARKS AND SCHOOL IDENTITY
 
 This license does not grant permission to use any trademarks, service marks, school names, logos, insignia, or other protected names or branding associated with NNSS Calabar or any third party.
 
 6. NO WARRANTY
 
-The project is provided "as is", without warranties of any kind, to the extent permitted by applicable law. The NNSS Calabar Development Team shall not be liable for claims, damages, or other liability arising from unauthorized use of the project.
+To the extent permitted by applicable law, the covered materials are provided "as is", without warranties of any kind, express or implied. The NNSS Calabar Development Team disclaims liability for claims, damages, or other liability arising from unauthorized use or from use of the materials, subject to applicable law.
 
 7. RESERVATION OF RIGHTS
 
-All rights not expressly granted by written permission are reserved.
+All rights not expressly granted in a separate written permission are reserved.
 
-For permission requests, contact the authorized NNSS Calabar Development Team through the project's official communication channel.
+For permission requests, contact the authorized NNSS Calabar Development Team through a verified official communication channel.
 
-This license is intended to establish the project's proprietary status. It is not an open-source license.
+This license establishes the proprietary status of the covered project materials. It is not an open-source license and does not grant the rights normally provided by an open-source license.
