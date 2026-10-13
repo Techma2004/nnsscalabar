@@ -23,7 +23,7 @@ If real student/staff data may already be exposed, notify the school's authorize
 
 The application includes several controls intended to reduce common risks. These controls are not a guarantee that every deployment is secure.
 
-- **Authentication:** signed JWTs in HTTP-only cookies, bcrypt password hashing, account active-state checks, token/session-version validation, and an eight-hour token lifetime.
+- **Authentication:** signed JWTs in HTTP-only cookies, bcrypt password hashing, account active state checks, token/session version validation, and an eight-hour token lifetime.
 - **Login protection:** rate limiting by account/IP and request ceilings for API routes. Current rate-limit storage is in memory and is intended for a single backend process; use a shared store before scaling horizontally.
 - **Authorization:** backend routes enforce roles, student ownership, departmental scope, and teacher class/arm/subject assignments. Hiding a menu item in the browser is not the security boundary.
 - **Input and database safety:** parameterized SQL queries and input validation are used in application routes.
