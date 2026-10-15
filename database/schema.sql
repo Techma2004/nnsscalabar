@@ -528,7 +528,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   UNIQUE KEY (student_id, att_date)
 );
 
-CREATE VIEW IF NOT EXISTS attendance_summary AS
+CREATE OR REPLACE VIEW attendance_summary AS
   SELECT
     s.id AS student_id,
     u.full_name,
