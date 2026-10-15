@@ -97,7 +97,19 @@ router.get('/me', auth, async (req, res) => {
       );
       if (p) placement = p;
     }
-    res.json({ ...safeUser(user), ...placement });
+    // A teacher is shown by what they actually teach ("Mathematics Teacher"): the first
+    // subject on their record, alphabetically. A teacher with no subject yet is just
+    // "Teacher" rather than a guess. An HOD is shown with their department.
+    let title = null;
+    if (user.role === 'teacher') {
+      const [[first]] = await db.query(`SELECT sub.subject_name FROM teachers t JOIN teacher_subjects ts ON ts.teacher_id=t.id JOIN subjects sub ON sub.id=ts.subject_id
+        WHERE t.user_id=? ORDER BY sub.subject_name LIMIT 1`, [user.id]);
+      title = first ? `${first.subject_name} Teacher` : 'Teacher';
+    } else if (user.role === 'hod') {
+      const [[dept]] = await db.query('SELECT d.dept_name FROM hods h JOIN departments d ON d.id=h.dept_id WHERE h.user_id=? LIMIT 1', [user.id]);
+      title = dept ? `Head of ${dept.dept_name}` : 'Head of Department';
+    }
+    res.json({ ...safeUser(user), phone: user.phone, title, ...placement });
   } catch (err) {
     console.error('[auth/me]', err);
     res.status(500).json({ error: 'Unable to load account.' });

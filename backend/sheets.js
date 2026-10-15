@@ -231,13 +231,14 @@ async function saveSheetRows(ctx, user, submitted) {
  * sheet has got. Powers the HOD / admin / Commandant "Result Sheets" and
  * "Submission Progress" views.
  */
-async function sheetIndex(termId, { deptId = null } = {}) {
+async function sheetIndex(termId, { deptId = null, teacherId = null } = {}) {
   const [[term]] = await db.query(`SELECT t.id, t.term_name, t.session_id, t.result_locked, ac.session_name
     FROM terms t JOIN academic_sessions ac ON ac.id=t.session_id WHERE t.id=? LIMIT 1`, [termId]);
   if (!term) return null;
   const params = [termId, term.session_id];
   let deptClause = '';
   if (deptId) { deptClause = 'AND sub.dept_id=?'; params.push(deptId); }
+  if (teacherId) { deptClause += ' AND tca.teacher_id=?'; params.push(teacherId); }
   const [rows] = await db.query(`SELECT tca.id AS assignment_id, tca.subject_id, tca.class_level_id, tca.arm_id,
       sub.subject_name, sub.dept_id, d.dept_name, cl.level_name AS class_name, a.arm_name, tu.full_name AS teacher_name,
       (SELECT COUNT(*) FROM students st JOIN users su ON su.id=st.user_id

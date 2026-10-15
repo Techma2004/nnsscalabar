@@ -3,6 +3,7 @@
 // which only the commandant role may call.
 import { getCommandantSummary, getTopPerformers } from './api.js';
 
+import * as Dash from './dashboards.js';
 let C = null;
 export function init(ctx) { C = ctx; }
 
@@ -44,6 +45,7 @@ export function renderDashboard() {
   const behind = s.sheets.behind.map(b => `<div class="ai-note-row"><div><strong>${C.esc(b.class_name)} ${C.esc(b.arm_name)} · ${C.esc(b.subject_name)}</strong><br><small>${C.esc(b.teacher_name)} · ${b.entered}/${b.roster_count} entered · ${SHEET_LABEL[b.status]}</small></div></div>`).join('') || '<p style="color:var(--text-secondary)">Every sheet is under way or finished.</p>';
   const top = s.top.map((t, i) => `<tr><td><span class="portal-badge ${i < 3 ? 'ok' : ''}">#${i + 1}</span></td><td><strong>${C.esc(t.full_name)}</strong><br><small>${C.esc(t.user_code)}</small></td><td>${C.esc(t.class)} ${C.esc(t.arm)}</td><td><strong>${t.avg_score}%</strong></td></tr>`).join('');
   return `<div class="portal-toolbar"><div><div class="eyebrow">Commandant</div><h1>Commandant overview</h1><p>${C.esc(s.term.term_name)}, ${C.esc(s.term.session_name)}${s.term.result_locked ? ' · results locked' : ''}</p></div>${termPicker()}</div>
+    ${Dash.managementCard('commandant')}
     <div class="portal-grid">${C.stat('Students', h.students, 'users')}${C.stat('Teachers', h.teachers, 'idbadge')}${C.stat('Heads of department', h.hods, 'shield')}${C.stat('Departments', h.departments, 'grid')}</div>
     <div class="portal-grid">${C.stat('Term average', v(perf.average, '%'), 'trendingup')}${C.stat('Pass rate (≥50)', v(perf.pass_rate, '%'), 'checkcircle')}${C.stat('Approved results', p.approved, 'barchart')}${C.stat('Awaiting approval', p.pending, 'clock')}</div>
     ${C.card('Results pipeline', `<p style="margin-bottom:.6rem">${p.total} result${p.total === 1 ? '' : 's'} entered this term.</p>

@@ -177,7 +177,7 @@ def load_pages(path):
         with Image.open(path) as source:
             if source.width < 1 or source.height < 1 or source.width * source.height > MAX_IMAGE_PIXELS:
                 raise ValueError("Image dimensions are too large for safe OCR. Resize it and try again.")
-            return [source.convert("L")]
+            return [source.convert("RGB")]
     try:
         import pypdfium2 as pdfium
     except ImportError as e:
@@ -192,19 +192,39 @@ def load_pages(path):
             width, height = page.get_size()
             if width * height * PDF_RENDER_SCALE ** 2 > MAX_IMAGE_PIXELS:
                 raise ValueError("A PDF page is too large for safe OCR.")
-            pages.append(page.render(scale=PDF_RENDER_SCALE).to_pil().convert("L"))
+            pages.append(page.render(scale=PDF_RENDER_SCALE).to_pil().convert("RGB"))
         return pages
     finally:
         pdf.close()
 
 
-def preprocess(image_path):
+def ink_gray(img, thicken=False, mode="ink"):
+    """Teachers fill score sheets in pen, usually blue or black, so the pen has
+    to survive the conversion to grey. A plain luminance conversion turns pale
+    blue ballpoint into a mid-grey that barely stands out. Blue ink is dark in
+    the red and green channels while white paper is bright in all of them, and
+    black ink is dark in all three - so the darkest channel at each pixel is a
+    clear 'ink' signal for blue pen, black pen and pencil alike. Optionally
+    thickens strokes, which helps thin ballpoint lines that become hairlines
+    once the photo is downscaled."""
+    if img.mode == "L" or mode == "luma":
+        arr = np.array(img.convert("L"))
+    else:
+        rgb = np.array(img.convert("RGB"))
+        arr = rgb.min(axis=2)
+    if thicken:
+        arr = cv2.erode(arr, np.ones((2, 2), np.uint8), iterations=1)  # erode on grey = thicken dark strokes
+    return arr
+
+
+def preprocess(image_path, thicken=False, mode="ink"):
     """Preprocessing tuned for real phone photos of paper, including messy
-    handwriting: local contrast correction for uneven lighting, light
-    denoising, deskewing, grid-line removal, then upscaling small images
-    since Tesseract does noticeably better with more pixels per character."""
+    handwriting in blue or black pen: ink-aware grey conversion, local contrast
+    correction for uneven lighting, light denoising, deskewing, grid-line
+    removal, then upscaling small images since Tesseract does noticeably
+    better with more pixels per character."""
     img = image_path if isinstance(image_path, Image.Image) else load_pages(image_path)[0]
-    arr = np.array(img)
+    arr = ink_gray(img, thicken, mode)
     arr = enhance_contrast(arr)
     arr = cv2.medianBlur(arr, 3)
     arr = deskew(arr)
@@ -451,11 +471,14 @@ def main():
     # sparse-text config can produce more matched names by fragmenting the
     # table into extra rows while losing the scores that sit beside each name,
     # which raw-count selection would wrongly prefer.
+    def filled_cells(rows):
+        return sum(1 for r in rows for v in r["scores"].values() if v is not None)
+
     def count_valid(rows):
         return sum(1 for r in rows if r["_ok"])
 
-    def read_page(page):
-        image = preprocess(page)
+    def read_variant(page, thicken, mode):
+        image = preprocess(page, thicken, mode)
         best_rows, best_valid = [], -1
         for psm in (6, 4, 11):
             try:
@@ -470,7 +493,21 @@ def main():
                 continue
             rows = parse_rows(lines, roster, limits)
             valid = count_valid(rows)
-            if valid > best_valid or (valid == best_valid and len(rows) > len(best_rows)):
+            if (valid, filled_cells(rows)) > (best_valid, filled_cells(best_rows)):
+                best_rows, best_valid = rows, valid
+            if best_valid >= len(roster):
+                break
+        return best_rows, best_valid
+
+    def read_page(page):
+        # Ink-aware grey first (blue or black pen); if the roster is not fully
+        # read, retry with the plain luminance conversion and with thickened
+        # strokes (thin ballpoint lines), keeping whichever variant read the
+        # most rows completely and, on a tie, the most score cells.
+        best_rows, best_valid = [], -1
+        for thicken, mode in ((False, "ink"), (False, "luma"), (True, "ink")):
+            rows, valid = read_variant(page, thicken, mode)
+            if (valid, filled_cells(rows)) > (best_valid, filled_cells(best_rows)):
                 best_rows, best_valid = rows, valid
             if best_valid >= len(roster):
                 break

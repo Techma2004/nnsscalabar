@@ -1,6 +1,6 @@
 # Fresh install on a new PC
 
-On a new machine, **`database/schema.sql` is the only SQL file you run.** It is the complete, current database: all tables, the classes, arms, subjects and terms, and every upgrade that was ever made (files `002`–`005`). Do **not** run the other `.sql` files in `database/`. They exist only to upgrade older databases that already hold data.
+On a new machine, **`database/schema.sql` is the only SQL file you run.** It is the complete, current database: all tables, the classes, arms, subjects and terms, and every upgrade that was ever made (files `002`–`006`). Do **not** run the other `.sql` files in `database/`. They exist only to upgrade older databases that already hold data.
 
 ## Steps
 
@@ -38,7 +38,7 @@ On a new machine, **`database/schema.sql` is the only SQL file you run.** It is 
 
 ## What you do NOT need
 
-- The other `.sql` files in `database/` (`002`–`005`): already inside `schema.sql`.
+- The other `.sql` files in `database/` (`002`–`006`): already inside `schema.sql`.
 - `database/import-rosters.js`: optional, only to load the SS1 SIRI and JSS3 AYAM class lists.
 - `seed-demo.js` and `test-seed.js`: demo and test data only.
 - Python, uv and Tesseract: only for the AI Scanner. Manual Entry and Excel upload work without them.

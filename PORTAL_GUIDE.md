@@ -129,10 +129,15 @@ Administrators handle routine operational setup and records. An Admin account do
 
 Use Account Management to create supported user roles:
 
-- **Student:** enter a unique User ID, full name, initial password, and required student details including class, arm, and track.
-- **Teacher:** enter a unique User ID, full name, initial password, department, and subject details required by the form.
-- **HOD:** enter a unique User ID, full name, initial password, and the department the HOD is responsible for.
-- **Admin/Commandant:** creation of these management-level roles is restricted to the Commandant.
+- **Student:** unique User ID, full name, initial password, class, arm (the track is set automatically) and the **parent or guardian's name and phone number**. All are required.
+- **Teacher:** unique User ID, full name, initial password, **phone number**, department, and **one or more subjects** (tick as many as the teacher takes). Then choose the classes: **all classes and arms that study the chosen subjects**, or **only specific classes** (pick subject + class + arm one by one). A subject can only be given to a class and arm that study it.
+- **HOD:** unique User ID, full name, initial password, phone number and the department.
+- **News team (editor):** unique User ID, full name, initial password and phone number. See [Blog and newsletter](#blog-and-newsletter-news-team).
+- **Admin/Commandant:** creation of these management-level roles is restricted to the Commandant. A phone number is required.
+
+Every account needs a phone number so the HOD, Administrator and Commandant can reach staff, or a student's parent or guardian, when a student is absent, a teacher is away, or a result needs follow-up. Numbers appear as tap-to-call links in the Teachers and Students lists and on each profile.
+
+**If a number changes:** only the Administrator or Commandant can change it. Open the person's profile (Teachers, Students or Account Management, then *Open profile*) and press *Update contact details*. HODs can see numbers but cannot edit them.
 
 Important account rules:
 - User IDs must be 3–20 characters and use letters, numbers, underscores, or hyphens.
@@ -191,7 +196,12 @@ The HOD portal focuses on departmental monitoring and review of teachers' submit
 
 An HOD's review scope is department-related. If a teacher or sheet is missing, ask the administrator to verify the department, subject mapping, session, and assignment.
 
-### Department dashboard and staff directory
+### Department dashboard, teachers and students
+
+- **Teachers** and **Students** each have their own list showing only people in your department, with a search bar. Students in your department are those enrolled this session in any of your department's subjects.
+- Click a name (or *Open profile*) to see that person's ID, contact numbers and real activity: for a teacher, their classes and the score sheets they entered; for a student, their results, subjects and requests. Nothing on a profile is placeholder data.
+- **Change Requests:** students ask to change arm, or add or drop a subject. Review each one and *Accept* (the change is made straight away) or *Decline* (a reason is required and the student sees it). Dropping a subject is blocked once results exist for it this session.
+- The dashboard's *Needs your attention* card lists what is waiting: results to approve, requests to decide, teachers with no phone number.
 
 - Review department-level counts and result progress.
 - Check the department's active teachers and subject coverage.
@@ -303,6 +313,8 @@ If the template needs to be regenerated on the server, the operator can run `npm
 
 ### Option D — AI Scanner (optional OCR)
 
+The scanner reads blue or black pen as well as print: it converts the photo using the darkest colour channel, and retries with other settings when the first read is incomplete. Rows it cannot read fully are left blank for you to type in. Always check the review table before saving.
+
 The **AI Scanner** reads text from a photo or PDF of a paper score sheet using local Tesseract OCR. It may misread handwriting, printed digits, or names.
 
 1. Open **AI Scanner** and confirm the scanner status says it is available.
@@ -335,6 +347,10 @@ The student portal is for viewing your own school information and approved acade
 
 Students cannot create accounts or view another student's private record.
 
+### Change Requests (arm or subject)
+
+Open **Change Requests**, choose *Change my arm*, *Add a subject* or *Drop a subject*, give a short reason, and send. Your HOD accepts or declines; you can see the answer (and the reason for a decline) on the same page and on your dashboard. You can withdraw a request that is still waiting.
+
 ### Dashboard and profile
 
 - Review your account and placement information.
@@ -361,6 +377,19 @@ Where the report-card print view is available:
 5. Keep the printed/PDF report private because it contains personal academic information.
 
 Some report-card statistics, such as averages or position, may be optional and may not appear when there is insufficient approved data. Their absence does not necessarily mean the report card failed to load.
+
+## Blog and newsletter (news team)
+
+The public **Blog** and **Newsletter** pages are edited in one place: the portal's **Blog & Newsletter** screen. **We recommend giving this to the school's article or news team** by creating each member an account with the role *News team (blog & newsletter)*. They see only this screen and their own profile, never results or student records. The Administrator and Commandant can use it too.
+
+- *New post*: choose the page (Blog or Newsletter), date, title and text, optionally a picture (pick one of the school photos or upload a PNG, JPEG or WebP up to 2.5 MB), then publish or keep as a draft.
+- Drafts are hidden from the public until published. *Unpublish* hides a post again; *Delete* removes it permanently.
+- Uploaded pictures are saved in `frontend/uploads/` on the server (not in git). Back this folder up with the database.
+- The first time the update is installed, the old fixed articles are copied in as editable posts. Please review them once.
+
+## Class Score Sheets (HOD, Administrator, Commandant)
+
+This screen lists one score sheet per class and subject for the chosen term and how far each has got: not started, in progress, waiting for the HOD, or approved. Open a sheet to read exactly what the teacher entered. *Preview & download* shows the sheet in the browser first; the Excel file downloads only if you press *Download Excel* in the preview.
 
 ## 7. Understanding result statuses
 

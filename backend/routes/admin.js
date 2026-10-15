@@ -8,7 +8,8 @@ const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
 router.use(routeLimiter(400, 'Too many administration requests. Please try again later.'));
 
-const ROLES = ['student', 'teacher', 'hod', 'admin', 'commandant'];
+const ROLES = ['student', 'teacher', 'hod', 'admin', 'commandant', 'editor'];
+const STAFF_ROLES = ['teacher', 'hod', 'admin', 'commandant', 'editor'];
 const TRACKS = ['junior', 'science', 'technical', 'arts'];
 
 function requireManagement(req, res, next) {
@@ -56,6 +57,11 @@ router.post('/users', requireManagement, async (req, res) => {
   const gender = body.gender || null;
   const admission_no = v.optText(body.admission_no, 20);
   const staff_no = v.optText(body.staff_no, 20);
+  // Contact numbers: the school must be able to reach a student's parent/guardian
+  // and every member of staff, so they are required when an account is created.
+  const phone = v.optPhone(body.phone);
+  const parent_phone = v.optPhone(body.parent_phone);
+  const parent_name = v.optText(body.parent_name, 120);
 
   if (!/^[A-Z0-9][A-Z0-9_-]{2,19}$/.test(user_code)) return res.status(400).json({ error: 'User ID must be 3–20 characters using letters, numbers, _ or -.' });
   if (!full_name || full_name.length < 3) return res.status(400).json({ error: 'Full name is required.' });
@@ -67,6 +73,30 @@ router.post('/users', requireManagement, async (req, res) => {
   if (!ROLES.includes(role)) return res.status(400).json({ error: 'Invalid account role.' });
   if (['admin','commandant'].includes(role) && req.user.role !== 'commandant') return res.status(403).json({ error: 'Only the Commandant can create management-level accounts.' });
   if (gender && !['M', 'F'].includes(gender)) return res.status(400).json({ error: 'Invalid gender.' });
+  if (phone === undefined || parent_phone === undefined) return res.status(400).json({ error: 'Enter a valid phone number (7 to 15 digits, for example +234 801 234 5678 or 0801 234 5678).' });
+  if (parent_name === undefined) return res.status(400).json({ error: 'Parent or guardian name is too long.' });
+  if (STAFF_ROLES.includes(role) && !phone) return res.status(400).json({ error: 'A phone number is required so the school can contact this staff member.' });
+  if (role === 'student' && (!parent_name || !parent_phone)) return res.status(400).json({ error: "The parent or guardian's name and phone number are required for a student." });
+
+  // Teachers: which subjects, and which classes. "all" gives every class and arm
+  // that follows the subject's curriculum; "specific" gives exactly the list sent.
+  let teacherSubjects = [];
+  let teacherAssignments = [];
+  const assignmentMode = body.assignment_mode === 'specific' ? 'specific' : 'all';
+  if (role === 'teacher') {
+    const rawSubjects = Array.isArray(body.subjects) ? body.subjects : (body.subject ? [body.subject] : []);
+    if (rawSubjects.length > 50 || rawSubjects.some(x => typeof x !== 'string' || x.length > 120)) return res.status(400).json({ error: 'Subject not found: invalid subject list' });
+    teacherSubjects = [...new Set(rawSubjects.map(x => x.trim()).filter(Boolean))];
+    if (!teacherSubjects.length) return res.status(400).json({ error: 'Choose at least one subject for the teacher.' });
+    if (assignmentMode === 'specific') {
+      const raw = Array.isArray(body.assignments) ? body.assignments : [];
+      if (raw.length > 300) return res.status(400).json({ error: 'Too many class assignments.' });
+      teacherAssignments = raw.map(x => ({ subject: String(x?.subject || '').trim(), class_level: String(x?.class_level || '').trim().toUpperCase(), arm: String(x?.arm || '').trim().toUpperCase() }));
+      if (!teacherAssignments.length) return res.status(400).json({ error: 'Add at least one class and arm for this teacher, or choose "All classes that study the subject".' });
+      if (teacherAssignments.some(x => !x.subject || !x.class_level || !x.arm)) return res.status(400).json({ error: 'Each class assignment needs a subject, a class and an arm.' });
+      if (teacherAssignments.some(x => !teacherSubjects.includes(x.subject))) return res.status(400).json({ error: 'A class assignment uses a subject that is not in the teacher\'s subject list.' });
+    }
+  }
 
   const conn = await db.getConnection();
   try {
@@ -76,8 +106,8 @@ router.post('/users', requireManagement, async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, 12);
     const [userResult] = await conn.query(
-      `INSERT INTO users (user_code, full_name, email, password_hash, role, gender, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)`,
-      [user_code, full_name, email, password_hash, role, gender]
+      `INSERT INTO users (user_code, full_name, email, phone, password_hash, role, gender, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+      [user_code, full_name, email, role === 'student' ? null : phone, password_hash, role, gender]
     );
     const userId = userResult.insertId;
 
@@ -91,8 +121,8 @@ router.post('/users', requireManagement, async (req, res) => {
         conn.query('SELECT id FROM arms WHERE arm_name = ? LIMIT 1', [arm])
       ]);
       if (!classRow.length || !armRow.length) throw new Error('Invalid class or arm.');
-      const [studentInsert] = await conn.query(`INSERT INTO students (user_id, admission_no, class_level_id, arm_id, track, is_boarder) VALUES (?, ?, ?, ?, ?, ?)`,
-        [userId, admission_no, classRow[0].id, armRow[0].id, track, body.is_boarder ? 1 : 0]);
+      const [studentInsert] = await conn.query(`INSERT INTO students (user_id, admission_no, class_level_id, arm_id, track, is_boarder, parent_name, parent_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, admission_no, classRow[0].id, armRow[0].id, track, body.is_boarder ? 1 : 0, parent_name, parent_phone]);
       const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
       if (currentSession) {
         await conn.query(`INSERT INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by)
@@ -114,26 +144,35 @@ router.post('/users', requireManagement, async (req, res) => {
       if (role === 'teacher') {
         const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, date_joined) VALUES (?, ?, ?, CURDATE())',
           [userId, staff_no, deptRow.id]);
-        const rawSubjects = Array.isArray(body.subjects) ? body.subjects : (body.subject ? [body.subject] : []);
-        if (rawSubjects.length > 50 || rawSubjects.some(x => typeof x !== 'string' || x.length > 120)) throw new Error('Subject not found: invalid subject list');
-        const subjectNames = rawSubjects;
-        for (const subject of subjectNames) {
-          const [[subjectRow]] = await conn.query('SELECT id FROM subjects WHERE subject_name = ? LIMIT 1', [subject]);
+        const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
+        const [levels] = await conn.query('SELECT id,level_name,is_junior FROM class_levels');
+        const [arms] = await conn.query('SELECT id,arm_name,arm_type FROM arms');
+        // Track comes from stored data (class_levels.is_junior, arms.arm_type), never
+        // from hardcoded names, so renaming or adding an arm cannot break this.
+        const trackFor = (level, arm) => (level.is_junior ? 'junior' : arm.arm_type);
+        const subjectIds = new Map();
+        for (const subject of teacherSubjects) {
+          const [[subjectRow]] = await conn.query('SELECT id FROM subjects WHERE subject_name = ? AND is_active = 1 LIMIT 1', [subject]);
           if (!subjectRow) throw new Error(`Subject not found: ${subject}`);
+          subjectIds.set(subject, subjectRow.id);
           await conn.query('INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES (?, ?)', [teacherResult.insertId, subjectRow.id]);
-          const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
-          if (currentSession) {
-            // Provision assignments for every class/arm where the subject belongs to the curriculum.
-            // Track is derived from stored data (class_levels.is_junior, arms.arm_type) rather
-            // than hardcoded name lists — otherwise renaming or adding an arm silently breaks
-            // assignment provisioning for every teacher created afterwards.
-            const [levels] = await conn.query('SELECT id,level_name,is_junior FROM class_levels');
-            const [arms] = await conn.query('SELECT id,arm_name,arm_type FROM arms');
-            for (const level of levels) for (const arm of arms) {
-              const track = level.is_junior ? 'junior' : arm.arm_type;
+        }
+        if (currentSession) {
+          if (assignmentMode === 'all') {
+            for (const [, subjectId] of subjectIds) for (const level of levels) for (const arm of arms) {
+              const track = trackFor(level, arm);
               if (!TRACKS.includes(track)) continue;
-              const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1',[track,subjectRow.id]);
-              if (mapped) await conn.query(`INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)`,[teacherResult.insertId,subjectRow.id,level.id,arm.id,currentSession.id]);
+              const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1', [track, subjectId]);
+              if (mapped) await conn.query('INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)', [teacherResult.insertId, subjectId, level.id, arm.id, currentSession.id]);
+            }
+          } else {
+            for (const x of teacherAssignments) {
+              const level = levels.find(l => l.level_name.toUpperCase() === x.class_level);
+              const arm = arms.find(a => a.arm_name.toUpperCase() === x.arm);
+              if (!level || !arm) throw new Error(`Class assignment is invalid: ${x.class_level} ${x.arm}`);
+              const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1', [trackFor(level, arm), subjectIds.get(x.subject)]);
+              if (!mapped) throw new Error(`Class assignment is invalid: ${x.subject} is not on the curriculum for ${x.class_level} ${x.arm}`);
+              await conn.query('INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)', [teacherResult.insertId, subjectIds.get(x.subject), level.id, arm.id, currentSession.id]);
             }
           }
         }
@@ -149,7 +188,7 @@ router.post('/users', requireManagement, async (req, res) => {
   } catch (err) {
     await conn.rollback();
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A unique user or role record already exists.' });
-    if (['Student requires a valid class, arm and track.', 'Invalid class or arm.', 'A valid department is required.'].includes(err.message) || err.message.startsWith('Subject not found:')) {
+    if (['Student requires a valid class, arm and track.', 'Invalid class or arm.', 'A valid department is required.'].includes(err.message) || err.message.startsWith('Subject not found:') || err.message.startsWith('Class assignment is invalid:')) {
       return res.status(400).json({ error: err.message });
     }
     console.error('[admin/users]', err); res.status(500).json({ error: 'Unable to create account.' });
@@ -162,9 +201,9 @@ router.get('/users', requireManagement, async (req, res) => {
   let searchClause = '';
   if (q) { searchClause = 'AND (full_name LIKE ? OR user_code LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   try {
-    const [rows] = await db.query(`SELECT id AS user_id, user_code, full_name, email, role, is_active, last_login
+    const [rows] = await db.query(`SELECT id AS user_id, user_code, full_name, email, phone, role, is_active, last_login
       FROM users WHERE is_active=1 ${searchClause}
-      ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'commandant' THEN 2 WHEN 'hod' THEN 3 WHEN 'teacher' THEN 4 WHEN 'student' THEN 5 ELSE 6 END, full_name
+      ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'commandant' THEN 2 WHEN 'hod' THEN 3 WHEN 'teacher' THEN 4 WHEN 'student' THEN 5 WHEN 'editor' THEN 6 ELSE 7 END, full_name
       LIMIT 300`, params);
     res.json({ rows, truncated: rows.length === 300 });
   } catch (err) { console.error('[admin/users]', err); res.status(500).json({ error: 'Unable to load accounts.' }); }
@@ -186,13 +225,45 @@ router.get('/teachers', requireStaffDirectory, async (req, res) => {
   let searchClause = '';
   if (q) { searchClause = 'HAVING u.full_name LIKE ? OR u.user_code LIKE ? OR subjects LIKE ?'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
-    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.email,u.gender,t.id AS teacher_id,t.staff_no,d.dept_name AS department,t.date_joined,
+    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.email,u.phone,u.gender,t.id AS teacher_id,t.staff_no,d.dept_name AS department,t.date_joined,
       GROUP_CONCAT(DISTINCT s.subject_name ORDER BY s.subject_name SEPARATOR ', ') AS subjects
       FROM teachers t JOIN users u ON u.id=t.user_id LEFT JOIN departments d ON d.id=t.dept_id
       LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects s ON s.id=ts.subject_id
       WHERE u.is_active=1 ${deptClause} GROUP BY u.id,t.id,d.dept_name ${searchClause} ORDER BY u.full_name LIMIT 300`, params);
     res.json({ rows, truncated: rows.length === 300 });
   } catch (err) { console.error('[admin/teachers]', err); res.status(500).json({ error: 'Unable to load teachers.' }); }
+});
+
+// Update the phone numbers (and email) the school uses to reach someone. Admin and
+// Commandant only: a student's number is their parent/guardian's.
+router.patch('/users/:userId/contact', requireManagement, async (req, res) => {
+  const userId = v.id(req.params.userId);
+  if (!userId) return res.status(400).json({ error: 'Invalid user.' });
+  const body = req.body || {};
+  const has = k => Object.prototype.hasOwnProperty.call(body, k);
+  const phone = v.optPhone(body.phone), parentPhone = v.optPhone(body.parent_phone), parentName = v.optText(body.parent_name, 120);
+  const email = has('email') ? (body.email ? String(body.email).trim().toLowerCase() : null) : undefined;
+  if (phone === undefined || parentPhone === undefined) return res.status(400).json({ error: 'Enter a valid phone number (7 to 15 digits).' });
+  if (parentName === undefined) return res.status(400).json({ error: 'Parent or guardian name is too long.' });
+  if (email && !v.isEmail(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  try {
+    const [[target]] = await db.query('SELECT id, role, phone, email FROM users WHERE id=? AND is_active=1 LIMIT 1', [userId]);
+    if (!target) return res.status(404).json({ error: 'Account not found.' });
+    if (['admin', 'commandant'].includes(target.role) && req.user.role !== 'commandant' && target.id !== req.user.id) return res.status(403).json({ error: 'Only the Commandant can change management-level contact details.' });
+    if (email) { const [[dup]] = await db.query('SELECT id FROM users WHERE email=? AND id<>? LIMIT 1', [email, userId]); if (dup) return res.status(409).json({ error: 'That email is already used by another account.' }); }
+    const changes = [];
+    if (target.role === 'student') {
+      if (has('parent_phone')) { if (!parentPhone) return res.status(400).json({ error: "The parent or guardian's phone number cannot be blank." }); await db.query('UPDATE students SET parent_phone=? WHERE user_id=?', [parentPhone, userId]); changes.push('parent_phone'); }
+      if (has('parent_name')) { if (!parentName) return res.status(400).json({ error: "The parent or guardian's name cannot be blank." }); await db.query('UPDATE students SET parent_name=? WHERE user_id=?', [parentName, userId]); changes.push('parent_name'); }
+    } else if (has('phone')) {
+      if (!phone) return res.status(400).json({ error: 'A staff phone number cannot be blank.' });
+      await db.query('UPDATE users SET phone=? WHERE id=?', [phone, userId]); changes.push('phone');
+    }
+    if (email !== undefined && email !== target.email) { await db.query('UPDATE users SET email=? WHERE id=?', [email, userId]); changes.push('email'); }
+    if (!changes.length) return res.status(400).json({ error: 'There was nothing to change.' });
+    await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?,?,?,?,?)', [req.user.id, 'UPDATE_CONTACT', 'user', userId, JSON.stringify({ fields: changes })]);
+    res.json({ message: 'Contact details updated.' });
+  } catch (err) { console.error('[admin/contact]', err); res.status(500).json({ error: 'Unable to update contact details.' }); }
 });
 
 router.get('/results', requireManagement, async (req, res) => {
