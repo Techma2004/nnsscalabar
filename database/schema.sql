@@ -580,7 +580,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
 -- =====================================================
 -- 16. USEFUL VIEWS
 -- =====================================================
-CREATE VIEW IF NOT EXISTS student_result_sheet AS
+CREATE OR REPLACE VIEW student_result_sheet AS
   SELECT
     u.user_code     AS student_id,
     u.full_name     AS student_name,
