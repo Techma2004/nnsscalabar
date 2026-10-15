@@ -44,4 +44,21 @@ const isEmail = s => typeof s === 'string' && s.length <= 120 && EMAIL_RE.test(s
 const PASSWORD_MAX_BYTES = 72;
 const passwordTooLong = s => Buffer.byteLength(String(s), 'utf8') > PASSWORD_MAX_BYTES;
 
-module.exports = { optText, optDate, id, isEmail, passwordTooLong, PASSWORD_MAX_BYTES };
+/**
+ * Phone number a person can actually be called on. Accepts the usual ways of
+ * writing one (+234 707 828 7176, 0707-828-7176, (0707) 8287176) and returns it
+ * in a compact form: digits with an optional leading +. null when blank,
+ * undefined when it is not a plausible number (7-15 digits).
+ */
+function optPhone(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (!/^\+?[0-9(][0-9\s().-]*$/.test(raw)) return undefined;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 7 || digits.length > 15) return undefined;
+  return (raw.startsWith('+') ? '+' : '') + digits;
+}
+
+module.exports = { optPhone, optText, optDate, id, isEmail, passwordTooLong, PASSWORD_MAX_BYTES };

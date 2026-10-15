@@ -116,3 +116,27 @@ export const getCommandantSummary = term_id => apiFetch(`/dashboard/commandant-s
 
 export const getAiStatus = () => apiFetch('/results/ai-status');
 export const aiImportScores = data => apiFetch('/results/ai-import', { method: 'POST', body: JSON.stringify(data) });
+
+// ---- People directory and profiles (HOD: own department; Admin / Commandant: everyone)
+export const getDirectory = (kind, q, status) => apiFetch(`/people/directory${qs({ kind, q, status })}`);
+export const getProfile = userId => apiFetch(`/people/${userId}`);
+export const updateContact = (userId, data) => apiFetch(`/admin/users/${userId}/contact`, { method: 'PATCH', body: JSON.stringify(data) });
+
+// ---- Blog and newsletter (school news team)
+export const getPublicPosts = kind => apiFetch(`/posts${qs({ kind })}`);
+export const getManagedPosts = (kind, q) => apiFetch(`/posts/manage${qs({ kind, q })}`);
+export const createPost = data => apiFetch('/posts', { method: 'POST', body: JSON.stringify(data) });
+export const updatePost = (id, data) => apiFetch(`/posts/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export const deletePost = id => apiFetch(`/posts/${id}`, { method: 'DELETE' });
+export const uploadPostImage = image => apiFetch('/posts/image', { method: 'POST', body: JSON.stringify({ image }) });
+
+// ---- Student change requests
+export const getRequestOptions = () => apiFetch('/requests/options');
+export const getMyRequests = () => apiFetch('/requests/mine');
+export const createRequest = data => apiFetch('/requests', { method: 'POST', body: JSON.stringify(data) });
+export const cancelRequest = id => apiFetch(`/requests/${id}/cancel`, { method: 'PATCH' });
+export const getReviewQueue = status => apiFetch(`/requests/review${qs({ status })}`);
+export const decideRequest = (id, decision, note) => apiFetch(`/requests/${id}/decision`, { method: 'PATCH', body: JSON.stringify({ decision, note }) });
+
+// ---- Dashboard: what needs attention
+export const getAttention = () => apiFetch('/dashboard/attention');

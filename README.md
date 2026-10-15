@@ -507,7 +507,7 @@ The fallback `OCR_RUNNER=python` mode requires `OCR_PYTHON_BIN` to point to a Py
 
 **Back up an existing database before running any schema, migration, import, or upgrade command.** Do not re-import the initial schema over a live school database without reviewing its SQL.
 
-Migration files are version-specific. The repository includes `database/002_result_rejection.sql`, `database/003_promotion_and_departments.sql`, `database/004_ca_sheet_scheme.sql`, and `database/005_session_version.sql`. All of them are already included in `database/schema.sql`, so a new installation needs none of them (see [FRESH_INSTALL.md](FRESH_INSTALL.md)). Apply only the migration(s) required by your current schema, in the order intended for that installation. If you are unsure which version is installed, stop and inspect the schema rather than running every SQL file blindly.
+Migration files are version-specific. The repository includes `database/002_result_rejection.sql`, `database/003_promotion_and_departments.sql`, `database/004_ca_sheet_scheme.sql`, `database/005_session_version.sql` and `database/006_news_team_requests_contacts.sql` (adds the news-team role, blog/newsletter posts and student change requests). All of them are already included in `database/schema.sql`, so a new installation needs none of them (see [FRESH_INSTALL.md](FRESH_INSTALL.md)). Apply only the migration(s) required by your current schema, in the order intended for that installation. If you are unsure which version is installed, stop and inspect the schema rather than running every SQL file blindly.
 
 ### Importing the included scanned-sheet rosters
 
