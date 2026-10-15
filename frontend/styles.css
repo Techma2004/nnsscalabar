@@ -780,3 +780,60 @@ tr.row-error { background: rgba(214,69,69,.07); }
 .report-options { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1.1rem; margin: 0 0 1rem; padding: .75rem 1rem; background: var(--accent-soft); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: .85rem; }
 .report-options label { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
 .report-options small { flex-basis: 100%; color: var(--text-secondary); }
+
+/* ---- Contact links (public pages) ------------------------------------- */
+.footer-col p[data-icon] a { display: inline; margin: 0; color: inherit; }
+.footer-col p[data-icon] a:hover, .info-card a:hover, .content-page a:hover { color: var(--accent); text-decoration: underline; }
+.info-card a, .content-page a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.feature-icon[data-icon], .quick-link-icon[data-icon] { display: inline-flex; align-items: center; justify-content: center; }
+.feature-icon .nnss-icon, .quick-link-icon .nnss-icon { margin: 0; }
+h2[data-icon] .nnss-icon { vertical-align: -3px; margin-right: .5rem; color: var(--accent); }
+
+/* ---- Public blog / newsletter, loaded from the database ----------------- */
+.post-empty { grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: var(--text-secondary); }
+.post-body p + p { margin-top: .6rem; }
+.blog-card-img.no-image { background: linear-gradient(135deg, var(--primary), var(--primary-light, #1e4a8a)); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.75); }
+
+/* ---- Portal: people, requests, news-team editor, dashboards ---- */
+.person-link { display:flex; flex-direction:column; align-items:flex-start; gap:.1rem; background:none; border:0; padding:0; cursor:pointer; text-align:left; color:inherit; font:inherit; }
+.person-link strong { color:var(--primary); text-decoration:underline; text-decoration-color:var(--accent); text-underline-offset:3px; }
+.person-link small { color:var(--text-secondary); }
+.person-link:hover strong, .person-link:focus-visible strong { color:var(--accent-hover); }
+.contact-link { display:inline-flex; align-items:center; gap:.3rem; color:var(--primary); font-weight:600; text-decoration:none; border-bottom:1px solid var(--accent); }
+.contact-link:hover { color:var(--accent-hover); }
+.contact-none { color:var(--text-light); }
+.contact-missing { color:var(--warning); font-weight:600; font-size:.85rem; }
+.profile-head { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+.avatar-lg { width:64px; height:64px; border-radius:50%; background:var(--primary); color:#fff; display:grid; place-items:center; font-weight:700; font-size:1.3rem; flex:none; }
+.chip-row { display:flex; flex-wrap:wrap; gap:.4rem; }
+.chip-x { background:none; border:0; padding:0 0 0 .2rem; cursor:pointer; color:inherit; display:inline-flex; align-items:center; }
+.card-subhead { margin:1rem 0 .4rem; font-size:.85rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-secondary); }
+.field-help { display:block; color:var(--text-secondary); font-size:.8rem; margin-top:.25rem; }
+.check-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.25rem .75rem; max-height:190px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:.6rem; margin-top:.4rem; background:var(--bg-card); }
+.check-item { display:flex; align-items:center; gap:.5rem; font-weight:400; cursor:pointer; padding:.15rem 0; }
+.check-item input { width:auto; margin:0; }
+.check-item[hidden] { display:none; }
+.assign-builder { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:.5rem; align-items:center; }
+.thumb-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:.5rem; }
+.thumb { border:2px solid var(--border); border-radius:8px; background:var(--bg-card); padding:0; cursor:pointer; overflow:hidden; aspect-ratio:4/3; display:grid; place-items:center; font-size:.75rem; color:var(--text-secondary); }
+.thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.thumb.selected { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
+.post-preview { max-width:100%; max-height:180px; border-radius:8px; margin-top:.6rem; border:1px solid var(--border); }
+.tab-row { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.tab-btn { background:var(--bg-card); border:0; padding:.5rem .95rem; cursor:pointer; font:inherit; font-weight:600; color:var(--text-secondary); }
+.tab-btn + .tab-btn { border-left:1px solid var(--border); }
+.tab-btn.active { background:var(--primary); color:#fff; }
+.todo-row { display:grid; grid-template-columns:auto 1fr auto; gap:.9rem; align-items:center; padding:.75rem 0; border-bottom:1px solid var(--border); }
+.todo-row:last-child { border-bottom:0; }
+.todo-count { min-width:2.1rem; height:2.1rem; border-radius:50%; background:var(--accent-soft); color:var(--accent-hover); display:grid; place-items:center; font-weight:700; }
+.all-clear { display:flex; align-items:center; gap:.6rem; color:var(--success); font-weight:600; padding:.4rem 0; }
+@media (max-width:640px) {
+  .assign-builder { grid-template-columns:1fr 1fr; }
+  .todo-row { grid-template-columns:auto 1fr; }
+  .todo-row .btn { grid-column:1/-1; }
+  .tab-row { width:100%; } .tab-btn { flex:1; }
+}
+.sheet-preview-body { overflow:auto; max-height:60vh; border:1px solid var(--border); border-radius:8px; padding:.8rem; background:#fff; }
+.portal-toolbar select, .portal-actions select { appearance:none; -webkit-appearance:none; padding:.55rem 2.2rem .55rem .85rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%235c6470' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right .8rem center; color:var(--text); font:inherit; font-size:.9rem; cursor:pointer; }
+.portal-toolbar select:focus-visible, .portal-actions select:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.modal:has(.sheet-preview-body) { width:min(1100px,96vw); max-width:96vw; }

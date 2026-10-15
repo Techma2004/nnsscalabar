@@ -21,3 +21,6 @@ results*.sarif
 database/.imported-credentials*.csv
 *-credentials-*.csv
 __pycache__/
+
+# Pictures uploaded by the school news team
+frontend/uploads/

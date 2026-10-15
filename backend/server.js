@@ -81,6 +81,8 @@ app.use(originGuard((origin,req)=>{
 app.use('/api/results/ai-import', express.json({limit:'11mb'}));
 // Excel score sheets (<= 4 MB) are also sent as base64 JSON.
 app.use('/api/results/sheet/import', express.json({limit:'6mb'}));
+// News-team pictures (<= 2.5 MB) also arrive as base64 JSON.
+app.use('/api/posts/image', express.json({limit:'4mb'}));
 
 app.use(express.json({limit:'1mb'}));
 app.use(express.urlencoded({extended:true,limit:'1mb'}));
@@ -143,6 +145,9 @@ app.use('/api/results',require('./routes/results'));
 app.use('/api/assignments',require('./routes/assignments'));
 app.use('/api/announcements',require('./routes/announcements'));
 app.use('/api/dashboard',require('./routes/dashboard'));
+app.use('/api/people',require('./routes/people'));
+app.use('/api/posts',require('./routes/posts'));
+app.use('/api/requests',require('./routes/requests'));
 if(fs.existsSync(FRONTEND_DIR)){
   // Static pages touch the file system, so they get their own (generous) ceiling.
   const staticLimit=routeLimiter(1000,'Too many page requests. Please try again later.');

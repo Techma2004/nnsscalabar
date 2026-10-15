@@ -30,6 +30,7 @@ router.get('/stats', async (req, res) => {
       const [[announcements]] = await db.query(`SELECT COUNT(*) total FROM announcements WHERE publish_at<=NOW() AND (expires_at IS NULL OR expires_at>NOW()) AND FIND_IN_SET('student', audience)>0`);
       return res.json({ active_announcements: announcements.total });
     }
+    if (!['admin', 'commandant', 'hod'].includes(req.user.role)) return res.json({});
     const [[[students]],[[teachers]],[[hods]],[[results]],[[pending]],[[announcements]]] = await Promise.all([
       db.query('SELECT COUNT(*) total FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1'),
       db.query('SELECT COUNT(*) total FROM teachers t JOIN users u ON u.id=t.user_id WHERE u.is_active=1'),
@@ -55,6 +56,52 @@ router.get('/student-summary', async (req,res) => {
 // HODs were shown the same school-wide counters as an administrator, with no
 // indication of which department they actually head — they had to infer it.
 // This returns their own department and the figures that are actually theirs.
+// What needs this person's attention right now, for the dashboard. Everything is a
+// count or a list read from the database; nothing is invented.
+router.get('/attention', async (req, res) => {
+  const role = req.user.role;
+  try {
+    if (role === 'student') {
+      const [[st]] = await db.query('SELECT id FROM students WHERE user_id=? LIMIT 1', [req.user.id]);
+      const [[open]] = await db.query("SELECT COUNT(*) n FROM change_requests WHERE student_id=? AND status='pending'", [st?.id || 0]);
+      const [decided] = await db.query(`SELECT cr.request_type, cr.status, cr.review_note, ta.arm_name AS target_arm, sub.subject_name FROM change_requests cr
+        LEFT JOIN arms ta ON ta.id=cr.target_arm_id LEFT JOIN subjects sub ON sub.id=cr.subject_id
+        WHERE cr.student_id=? AND cr.status IN ('approved','declined') AND cr.reviewed_at > NOW() - INTERVAL 14 DAY ORDER BY cr.reviewed_at DESC LIMIT 5`, [st?.id || 0]);
+      return res.json({ open_requests: Number(open.n), recent_decisions: decided });
+    }
+    if (role === 'teacher') {
+      const [[t]] = await db.query('SELECT id FROM teachers WHERE user_id=? LIMIT 1', [req.user.id]);
+      const [[term]] = await db.query(`SELECT t.id, t.term_name, t.result_locked, ac.session_name FROM terms t JOIN academic_sessions ac ON ac.id=t.session_id
+        WHERE t.is_current=1 ORDER BY ac.is_current DESC, ac.start_date DESC LIMIT 1`);
+      if (!t || !term) return res.json({ term: term || null, sheets: [] });
+      const idx = await sheets.sheetIndex(term.id, { teacherId: t.id });
+      return res.json({ term: { id: term.id, term_name: term.term_name, session_name: term.session_name, result_locked: !!term.result_locked }, sheets: idx ? idx.sheets : [] });
+    }
+    if (['hod', 'admin', 'commandant'].includes(role)) {
+      let deptId = null;
+      if (role === 'hod') {
+        const [[hod]] = await db.query('SELECT dept_id FROM hods WHERE user_id=? LIMIT 1', [req.user.id]);
+        if (!hod) return res.json({});
+        deptId = hod.dept_id;
+      }
+      const reqScope = deptId ? "AND (cr.request_type='arm' OR sub.dept_id=?)" : '';
+      const [[reqs]] = await db.query(`SELECT COUNT(*) n FROM change_requests cr LEFT JOIN subjects sub ON sub.id=cr.subject_id WHERE cr.status='pending' ${reqScope}`, deptId ? [deptId] : []);
+      const [[staffNoPhone]] = await db.query(`SELECT COUNT(*) n FROM users u ${deptId ? 'JOIN teachers t ON t.user_id=u.id AND t.dept_id=?' : ''} WHERE u.is_active=1 AND (u.phone IS NULL OR u.phone='') AND u.role IN ('teacher','hod','admin','commandant','editor')`, deptId ? [deptId] : []);
+      let studentsNoPhone = null;
+      if (!deptId) {
+        const [[r]] = await db.query(`SELECT COUNT(*) n FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1 AND s.status IN ('active','repeating') AND (s.parent_phone IS NULL OR s.parent_phone='')`);
+        studentsNoPhone = Number(r.n);
+      }
+      return res.json({ pending_requests: Number(reqs.n), staff_missing_phone: Number(staffNoPhone.n), students_missing_guardian_phone: studentsNoPhone });
+    }
+    if (role === 'editor') {
+      const [[r]] = await db.query(`SELECT COUNT(*) total, COALESCE(SUM(status='draft'),0) drafts, COALESCE(SUM(kind='blog'),0) blog, COALESCE(SUM(kind='newsletter'),0) newsletter FROM posts`);
+      return res.json({ total: Number(r.total), drafts: Number(r.drafts), blog: Number(r.blog), newsletter: Number(r.newsletter) });
+    }
+    res.json({});
+  } catch (err) { console.error('[dashboard/attention]', err); res.status(500).json({ error: 'Unable to load your dashboard.' }); }
+});
+
 router.get('/hod-summary', async (req, res) => {
   if (req.user.role !== 'hod') return res.status(403).json({ error: 'Forbidden.' });
   try {
