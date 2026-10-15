@@ -167,8 +167,7 @@ export function renderTeacherSheet() {
   const terms = (C.state.meta?.terms || []);
   const aOpts = a.map(x => `<option value="${x.id}" data-session="${x.session_id}">${C.esc(x.class_name)} ${C.esc(x.arm_name)} — ${C.esc(x.subject_name)} (${C.esc(x.session_name)})</option>`).join('');
   const tOpts = terms.map(t => `<option value="${t.id}" data-session="${t.session_id}" ${t.is_current ? 'selected' : ''}>${C.esc(t.session_name)} — ${C.esc(t.term_name)}${t.result_locked ? ' (locked)' : ''}</option>`).join('');
-  return `<div class="portal-toolbar no-print"><div><div class="eyebrow">Teacher workflow</div><h1>Score Sheet</h1><p>The same Continuous Assessment Sheet you use on paper. Fill it in, check the totals, then submit it to your HOD.</p></div>
-      <a class="btn btn-secondary btn-auto" href="${sheetDownloadUrl('template')}" download>${C.ic('document', 16)} Blank Excel template</a></div>
+  return `<div class="portal-toolbar no-print"><div><div class="eyebrow">Teacher workflow</div><h1>Score Sheet</h1><p>The same Continuous Assessment Sheet you use on paper. Fill it in, check the totals, then submit it to your HOD.</p></div></div>
     ${C.card('Choose a sheet', `<div class="portal-form-grid"><div class="form-group full"><label for="sheetAssignment">Class, arm and subject</label><select id="sheetAssignment"><option value="">Select…</option>${aOpts}</select></div><div class="form-group"><label for="sheetTerm">Term</label><select id="sheetTerm">${tOpts}</select></div><div class="form-group" style="align-self:end"><button class="btn btn-primary" id="openSheet">Open sheet</button></div></div>${a.length ? '' : '<p style="color:var(--text-secondary);margin-top:.75rem">You have no teaching assignments yet. Ask an administrator to assign your classes and subjects.</p>'}`, '', 'no-print')}
     <div id="sheetArea"></div>`;
 }
@@ -208,10 +207,10 @@ function teacherSheetHtml(sheet) {
       <button class="btn btn-primary" id="sheetSave">Save &amp; submit to HOD</button>
       <label class="btn btn-secondary" for="sheetXlsx">${C.ic('document', 16)} Import Excel<input id="sheetXlsx" type="file" accept=".xlsx" hidden></label>
       <label class="btn btn-secondary" for="sheetPhoto" id="sheetPhotoLabel">${C.ic('cpu', 16)} Scan paper sheet<input id="sheetPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden></label>
-      <a class="btn btn-secondary" href="${sheetDownloadUrl('export', pdfParams)}" download>Download Excel</a>
+      <button class="btn btn-secondary" data-preview-sheet>${C.ic('eye', 16)} Preview &amp; download</button>
       <button class="btn btn-secondary" id="sheetPrint">${C.ic('printer', 16)} Print</button>
       <button class="btn btn-secondary" id="sheetUndo" hidden>Undo last import/scan</button>
-    </div>` : `<div class="sheet-tools no-print"><a class="btn btn-secondary" href="${sheetDownloadUrl('export', pdfParams)}" download>Download Excel</a><button class="btn btn-secondary" id="sheetPrint">${C.ic('printer', 16)} Print</button></div>`;
+    </div>` : `<div class="sheet-tools no-print"><button class="btn btn-secondary" data-preview-sheet>${C.ic('eye', 16)} Preview &amp; download</button><button class="btn btn-secondary" id="sheetPrint">${C.ic('printer', 16)} Print</button></div>`;
   const c = sheet.counts;
   const lock = sheet.locked ? `<div class="ai-review-note ai-review-warn no-print">This term is locked, so the sheet is read-only. Ask an administrator to unlock it if a correction is needed.</div>` : '';
   const rules = edit ? `<div class="ai-review-note no-print"><strong>How it works:</strong> leave a student's row empty if they were not assessed. If you fill a row, fill every column (type 0 for a zero). Rows you do not change keep their approval; rows you change go back to your HOD. Limits: ${scheme.components.map(x => `${C.esc(x.label)} ${x.max}`).join(' · ')} · Exam ${scheme.exam_max}.</div>` : '';
@@ -339,8 +338,7 @@ export function renderSheetBrowser() {
   const classOpts = `<option value="">All classes</option>${classes.map(c => `<option value="${c.id}">${C.esc(c.level_name)}</option>`).join('')}`;
   const deptOpts = role === 'hod' ? '' : `<select id="sbDept" class="btn-auto"><option value="">All departments</option>${depts.map(d => `<option value="${d.id}">${C.esc(d.dept_name)}</option>`).join('')}</select>`;
   const statusOpts = `<option value="">Any status</option>${Object.entries(SHEET_STATUS).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join('')}`;
-  return `<div class="portal-toolbar no-print"><div><div class="eyebrow">${role === 'hod' ? 'Department' : 'School'} results</div><h1>Result Sheets</h1><p>Every class sheet for the term, with how far each one has got. Open one to read it exactly as the teacher entered it.</p></div>
-      <a class="btn btn-secondary btn-auto" href="${sheetDownloadUrl('template')}" download>${C.ic('document', 16)} Blank Excel template</a></div>
+  return `<div class="portal-toolbar no-print"><div><div class="eyebrow">${role === 'hod' ? 'Department' : 'School'} results</div><h1>Class Score Sheets</h1><p>One sheet for each class and subject: the marks a teacher enters each term. This list shows how far every sheet has got (not started, waiting for the HOD, or approved). Open one to read it exactly as the teacher entered it.</p></div></div>
     <div id="sheetBrowser">${C.card('Sheets', `<div class="portal-actions" style="margin-bottom:1rem"><select id="sbTerm" class="btn-auto">${tOpts}</select><select id="sbClass" class="btn-auto">${classOpts}</select>${deptOpts}<select id="sbStatus" class="btn-auto">${statusOpts}</select></div><div id="sbTable"><div class="portal-loading"><span class="loading"></span></div></div>`, '', 'no-print')}</div>
     <div id="sheetArea"></div>`;
 }
@@ -368,7 +366,7 @@ function drawSheetTable() {
     const [label, cls] = SHEET_STATUS[s.status];
     return `<tr><td><strong>${C.esc(s.class_name)} ${C.esc(s.arm_name)}</strong><br><small>${C.esc(s.subject_name)}${s.dept_name ? ` · ${C.esc(s.dept_name)}` : ''}</small></td><td>${C.esc(s.teacher_name)}</td>
       <td style="min-width:140px">${s.entered}/${s.roster_count} entered<div class="portal-progress"><span style="width:${pct}%"></span></div></td>
-      <td>${s.approved} ✓ · ${s.pending} waiting${s.rejected ? ` · <span style="color:var(--danger)">${s.rejected} sent back</span>` : ''}</td>
+      <td>${s.approved} approved · ${s.pending} waiting${s.rejected ? ` · <span style="color:var(--danger)">${s.rejected} sent back</span>` : ''}</td>
       <td>${s.avg_score === null ? '—' : s.avg_score}</td><td><span class="portal-badge ${cls}">${label}</span></td>
       <td><button class="btn btn-secondary btn-sm" data-open-sheet="${s.class_level_id}|${s.arm_id}|${s.subject_id}">Open</button></td></tr>`;
   }).join('');
@@ -392,7 +390,7 @@ async function openReadOnly(params) {
     area.innerHTML = `<section class="portal-card sheet-card"><div class="portal-card-body">
       ${headerBlock(sheet.header)}
       <div class="sheet-statusline no-print"><span class="portal-badge ok">${sheet.counts.approved} approved</span><span class="portal-badge pending">${sheet.counts.pending} awaiting approval</span>${sheet.counts.rejected ? `<span class="portal-badge danger">${sheet.counts.rejected} sent back</span>` : ''}<span class="portal-badge">${sheet.counts.none} not entered</span></div>
-      <div class="sheet-tools no-print">${canApprove ? `<button class="btn btn-primary" id="sheetApprove">Approve ${sheet.counts.pending} pending</button>` : ''}<a class="btn btn-secondary" href="${sheetDownloadUrl('export', params)}" download>Download Excel</a><button class="btn btn-secondary" id="sheetPrint">${C.ic('printer', 16)} Print</button><button class="btn btn-secondary" id="sheetClose">Close</button></div>
+      <div class="sheet-tools no-print">${canApprove ? `<button class="btn btn-primary" id="sheetApprove">Approve ${sheet.counts.pending} pending</button>` : ''}<button class="btn btn-secondary" data-preview-sheet>${C.ic('eye', 16)} Preview &amp; download</button><button class="btn btn-secondary" id="sheetPrint">${C.ic('printer', 16)} Print</button><button class="btn btn-secondary" id="sheetClose">Close</button></div>
       ${gridHtml(sheet, false)}
       <div class="sheet-signatures"><div>Subject teacher</div><div>Head of department</div><div>Form teacher</div></div>
     </div></section>`;
@@ -407,3 +405,17 @@ async function openReadOnly(params) {
     area.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) { area.innerHTML = `<div class="portal-card"><div class="portal-empty">${C.esc(e.message)}</div></div>`; }
 }
+
+// ------------------------------------------------- preview before download
+// The sheet is shown in the browser first; the Excel file is only downloaded if
+// the user presses Download inside the preview.
+export function previewSheet() {
+  const sheet = view.sheet;
+  if (!sheet) return;
+  C.openModal('Preview: Continuous Assessment Sheet', `<p class="field-help" style="margin-bottom:.8rem">This is the sheet as last saved. Nothing is downloaded until you press Download.</p>
+    <div class="sheet-preview-body">${headerBlock(sheet.header)}${gridHtml(sheet, false)}</div>
+    <div class="portal-actions" style="margin-top:1rem"><a class="btn btn-primary btn-auto" href="${sheetDownloadUrl('export', view.params)}" download>${C.ic('download', 16)} Download Excel</a><button class="btn btn-secondary btn-auto" id="previewClose">Close</button></div>`);
+  document.querySelectorAll('.sheet-preview-body .sheet-table tbody tr[data-row]').forEach(recalcRow);
+  document.getElementById('previewClose').onclick = () => { C.closeModal(); };
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-preview-sheet]')) previewSheet(); });

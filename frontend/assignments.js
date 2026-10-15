@@ -3,6 +3,7 @@ import { getAssignmentMeta, getTeacherAssignments, updateTeacherAssignments, mig
 const A = { meta:null, teacher:null, subjects:[], assignments:[], teacherQuery:'' };
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const $ = s => document.querySelector(s);
+const ic = (n,size=14) => (typeof window.Icon==='function') ? window.Icon(n,{size}) : '';
 const toast = (m,t='info') => window.showToast?.(m,t);
 
 function filteredTeachers() {
@@ -25,10 +26,10 @@ function assignmentPanel() {
   const subjectOptions=subjects.map(s=>`<option value="${s.id}">${esc(s.subject_name)}</option>`).join('');
   const classOptions=classes.map(c=>`<option value="${c.id}">${esc(c.level_name)}</option>`).join('');
   const armOptions=arms.map(a=>`<option value="${a.id}">${esc(a.arm_name)} · ${esc(a.category||a.arm_type||'')}</option>`).join('');
-  const chips=A.assignments.map((x,i)=>`<span class="portal-badge ok" data-assignment-chip="${i}">${esc(x.subject_name)} · ${esc(x.level_name)} ${esc(x.arm_name)} <button type="button" data-remove-assignment="${i}" aria-label="Remove assignment">×</button></span>`).join('');
-  const subjectChips=A.subjects.map((s,i)=>`<span class="portal-badge" data-subject-chip="${i}">${esc(s.subject_name)} <button type="button" data-remove-subject="${i}" aria-label="Remove subject">×</button></span>`).join('');
+  const chips=A.assignments.map((x,i)=>`<span class="portal-badge ok" data-assignment-chip="${i}">${esc(x.subject_name)} · ${esc(x.level_name)} ${esc(x.arm_name)} <button type="button" data-remove-assignment="${i}" aria-label="Remove assignment">${ic('x',11)}</button></span>`).join('');
+  const subjectChips=A.subjects.map((s,i)=>`<span class="portal-badge" data-subject-chip="${i}">${esc(s.subject_name)} <button type="button" data-remove-subject="${i}" aria-label="Remove subject">${ic('x',11)}</button></span>`).join('');
   return `<div class="portal-toolbar"><div><div class="eyebrow">Teaching workload</div><h1>Teaching Assignments</h1><p>Set exactly which subjects and class/arm combinations a teacher is responsible for in ${esc(A.meta?.session?.session_name||'the current session')}.</p></div></div>
-  <section class="portal-card"><div class="portal-card-head"><h3>Teacher</h3></div><div class="portal-card-body">\n    <div class="assignment-teacher-picker">\n      <div class="portal-search assignment-teacher-search"><span class="portal-search-icon">⌕</span><input type="search" id="assignmentTeacherSearch" placeholder="Search teachers by name or department" autocomplete="off"></div>\n      <div class="form-group assignment-teacher-select"><label for="assignmentTeacher">Teacher</label><select id="assignmentTeacher"><option value="">Select a teacher</option></select></div>\n      <p class="assignment-search-note" id="assignmentTeacherCount"></p>\n    </div>\n    <div id="assignmentEditor" class="assignment-editor" style="display:none;margin-top:1rem"></div>\n  </div></section>
+  <section class="portal-card"><div class="portal-card-head"><h3>Teacher</h3></div><div class="portal-card-body">\n    <div class="assignment-teacher-picker">\n      <div class="portal-search assignment-teacher-search"><span class="portal-search-icon">${ic('search',15)}</span><input type="search" id="assignmentTeacherSearch" placeholder="Search teachers by name or department" autocomplete="off"></div>\n      <div class="form-group assignment-teacher-select"><label for="assignmentTeacher">Teacher</label><select id="assignmentTeacher"><option value="">Select a teacher</option></select></div>\n      <p class="assignment-search-note" id="assignmentTeacherCount"></p>\n    </div>\n    <div id="assignmentEditor" class="assignment-editor" style="display:none;margin-top:1rem"></div>\n  </div></section>
   <section class="portal-card" id="assignmentHelp"><div class="portal-card-body"><p><strong>How it works:</strong> select a teacher, add one or more subjects, then add as many class/arm assignments as needed. Saving replaces only that teacher's assignments for the current academic session.</p></div></section>`;
 }
 
@@ -45,9 +46,9 @@ function editor() {
   $('#assignmentEditor').style.display='block';
   $('#assignmentEditor').innerHTML=`<div class="portal-kpi"><span>Teacher</span><strong>${esc(A.teacher?.full_name)} · ${esc(A.teacher?.department||'')}</strong></div>
   ${deptControl}
-  <div class="form-group" style="margin-top:1rem"><label>Subjects</label><div class="portal-actions" id="selectedSubjects">${A.subjects.length?A.subjects.map((s,i)=>`<span class="portal-badge">${esc(s.subject_name)} <button type="button" data-remove-subject="${i}" aria-label="Remove subject">×</button></span>`).join(''):'<span class="portal-badge pending">No subjects selected</span>'}</div></div>
+  <div class="form-group" style="margin-top:1rem"><label>Subjects</label><div class="portal-actions" id="selectedSubjects">${A.subjects.length?A.subjects.map((s,i)=>`<span class="portal-badge">${esc(s.subject_name)} <button type="button" data-remove-subject="${i}" aria-label="Remove subject">${ic('x',11)}</button></span>`).join(''):'<span class="portal-badge pending">No subjects selected</span>'}</div></div>
   <div class="portal-form-grid" style="margin-top:1rem"><div class="form-group"><label for="assignmentSubject">Subject</label><select id="assignmentSubject"><option value="">Select subject</option>${subjects.map(s=>`<option value="${s.id}">${esc(s.subject_name)}</option>`).join('')}</select></div><div class="form-group"><label for="assignmentClass">Class</label><select id="assignmentClass"><option value="">Select class</option>${classes.map(c=>`<option value="${c.id}">${esc(c.level_name)}</option>`).join('')}</select></div><div class="form-group"><label for="assignmentArm">Arm</label><select id="assignmentArm"><option value="">Select arm</option>${arms.map(a=>`<option value="${a.id}">${esc(a.arm_name)} · ${esc(a.category||a.arm_type||'')}</option>`).join('')}</select></div><div class="form-group" style="align-self:end"><button type="button" class="btn btn-secondary" id="addAssignment">Add assignment</button></div></div>
-  <div class="form-group" style="margin-top:1rem"><label>Current class/arm assignments</label><div class="portal-actions" id="selectedAssignments">${A.assignments.length?A.assignments.map((x,i)=>`<span class="portal-badge ok">${esc(x.subject_name)} · ${esc(x.level_name)} ${esc(x.arm_name)} <button type="button" data-remove-assignment="${i}" aria-label="Remove assignment">×</button></span>`).join(''):'<span class="portal-badge pending">No class/arm assignments selected</span>'}</div></div>
+  <div class="form-group" style="margin-top:1rem"><label>Current class/arm assignments</label><div class="portal-actions" id="selectedAssignments">${A.assignments.length?A.assignments.map((x,i)=>`<span class="portal-badge ok">${esc(x.subject_name)} · ${esc(x.level_name)} ${esc(x.arm_name)} <button type="button" data-remove-assignment="${i}" aria-label="Remove assignment">${ic('x',11)}</button></span>`).join(''):'<span class="portal-badge pending">No class/arm assignments selected</span>'}</div></div>
   <div class="portal-actions" style="margin-top:1.2rem"><button type="button" class="btn btn-primary" id="saveAssignments">Save assignments</button><button type="button" class="btn btn-secondary" id="reloadAssignments">Reload current</button></div>`;
   document.querySelectorAll('[data-remove-subject]').forEach(b=>b.onclick=()=>{A.subjects.splice(Number(b.dataset.removeSubject),1);editor();});
   document.querySelectorAll('[data-remove-assignment]').forEach(b=>b.onclick=()=>{A.assignments.splice(Number(b.dataset.removeAssignment),1);editor();});
@@ -82,7 +83,7 @@ function installNav(){
   if(!nav||nav.querySelector('[data-assignment-panel]'))return;
   const role=JSON.parse(sessionStorage.getItem('nnss_user')||'null')?.role;
   if(!['admin','commandant','hod'].includes(role))return;
-  const a=document.createElement('a');a.href='#assignments';a.dataset.assignmentPanel='1';a.innerHTML='<span class="icon">▦</span>Teaching Assignments';
+  const a=document.createElement('a');a.href='#assignments';a.dataset.assignmentPanel='1';a.innerHTML='<span class="icon">'+ic('layers',18)+'</span>Teaching Assignments';
   a.onclick=e=>{e.preventDefault();nav.querySelectorAll('a').forEach(x=>x.classList.remove('active'));a.classList.add('active');$('#sidebar')?.classList.remove('open');$('#sidebarOverlay')?.classList.remove('active');openAssignments();};
   nav.appendChild(a);
 }

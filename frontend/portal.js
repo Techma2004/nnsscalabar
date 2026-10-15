@@ -1,6 +1,6 @@
 import {
   getCurrentUser, logout, getStats, getStudentSummary, getStudentResults, getStudentTermStats, getStudentSubjects,
-  getAllStudents, getAllTeachers, getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
+  getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
   getTeacherStudents, getAssignments, getPendingResults, approveResult, rejectResult, approveSheet, getRejections,
   getAnnouncements, createAnnouncement, removeUser,
   updateStudentStatus, getSubjects, createSubject, updateSubject, updateSubjectStatus, toggleCurriculum, createDepartment, deleteDepartment, promoteStudents, getCurriculumHistory,
@@ -11,25 +11,33 @@ import {
 import * as Sheets from './sheets.js';
 import * as Scanner from './scanner.js';
 import * as Cmd from './commandant.js';
+import * as People from './people.js';
+import * as Requests from './requests.js';
+import * as Editor from './editor.js';
+import * as Accounts from './accounts.js';
+import * as Dash from './dashboards.js';
 
 const state = { user:null, stats:{}, studentSummary:{}, results:[], resultsTruncated:false, subjects:[], students:[], studentsTruncated:false, studentStatusFilter:'active', teachers:[], teachersTruncated:false, accounts:[], accountsTruncated:false, assignments:[], pending:[], rejections:[], announcements:[], manageAnnouncements:[], top:[], meta:null, curriculum:[], curriculumHistory:[], sessions:[], classesArms:{classes:[],arms:[]}, hodSummary:null, departments:[], deptDetail:null, activeDeptId:null, search:{}, cmdSummary:null, cmdTermId:null, topFilters:{term_id:'',class_level_id:''} };
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const roleName = {student:'Student',teacher:'Subject Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant'};
+const roleName = {student:'Student',teacher:'Teacher',hod:'Head of Department',admin:'Administrator',commandant:'Commandant',editor:'News Team'};
+// A teacher is shown by what they actually teach ("Mathematics Teacher"), from the database.
+const roleLabel = u => u.title || roleName[u.role] || u.role;
 const TRACKS = ['junior','science','technical','arts'];
 const STUDENT_STATUSES = ['active','pending','withdrawn','graduated','repeating'];
 const statusBadgeClass = {active:'ok', pending:'pending', withdrawn:'danger', graduated:''};
 const menus = {
-  student:[['Dashboard','dashboard'],['My Results','results'],['My Subjects','subjects'],['Announcements','announcements'],['My Profile','profile']],
+  student:[['Dashboard','dashboard'],['My Results','results'],['My Subjects','subjects'],['Change Requests','requests'],['Announcements','announcements'],['My Profile','profile']],
   teacher:[['Dashboard','dashboard'],['My Department','departments'],['Score Sheet','sheet'],['Manual Entry','manual'],['AI Scanner','scanner'],['My Students','students'],['Announcements','announcements'],['My Profile','profile']],
-  hod:[['Dashboard','dashboard'],['My Department','departments'],['Result Approval','approval'],['Result Sheets','sheets'],['Department Teachers','teachers'],['Announcements','announcements'],['My Profile','profile']],
-  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Results','results'],['Result Sheets','sheets'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
-  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Result Sheets','sheets'],['Top Performers','top'],['Students','students'],['Teachers','teachers'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']]
+  hod:[['Dashboard','dashboard'],['My Department','departments'],['Teachers','teachers'],['Students','students'],['Result Approval','approval'],['Class Score Sheets','sheets'],['Change Requests','requests'],['Announcements','announcements'],['My Profile','profile']],
+  admin:[['Dashboard','dashboard'],['Students','students'],['Teachers','teachers'],['Change Requests','requests'],['Results','results'],['Class Score Sheets','sheets'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Blog & Newsletter','content'],['Announcements','announcements'],['System','system'],['Account Management','accounts'],['My Profile','profile']],
+  commandant:[['Dashboard','dashboard'],['School Overview','overview'],['Class Score Sheets','sheets'],['Top Performers','top'],['Students','students'],['Teachers','teachers'],['Change Requests','requests'],['Departments','departments'],['Curriculum','curriculum'],['Classes & Arms','classes'],['Academic Sessions','sessions'],['Blog & Newsletter','content'],['Announcements','announcements'],['Account Management','accounts'],['My Profile','profile']],
+  editor:[['Dashboard','dashboard'],['Blog & Newsletter','content'],['My Profile','profile']]
 };
 const panelIcons = {
   dashboard:'grid', results:'document', subjects:'book', announcements:'bell', profile:'user',
   sheet:'pencil', manual:'user', scanner:'cpu', sheets:'document', students:'users', teachers:'idbadge', approval:'checksquare',
-  system:'settings', accounts:'userplus', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar', classes:'grid', departments:'shield'
+  system:'settings', accounts:'userplus', requests:'swap', content:'newspaper', person:'user', overview:'barchart', top:'trophy', curriculum:'book', sessions:'calendar', classes:'grid', departments:'shield'
 };
 const ic = (name,size) => (typeof window.Icon==='function') ? window.Icon(name,{size:size||18}) : '';
 
@@ -88,14 +96,14 @@ function buildNav(){
   $('#sidebarNav').innerHTML=(menus[state.user.role]||[]).map(([label,panel])=>`<a href="#${panel}" data-panel="${panel}"><span class="icon">${ic(panelIcons[panel]||'grid',17)}</span>${esc(label)}</a>`).join('');
   $('#sidebarNav').querySelectorAll('a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault(); render(a.dataset.panel);}));
 }
-function activeNav(panel){ $('#sidebarNav').querySelectorAll('a').forEach(a=>a.classList.toggle('active',a.dataset.panel===panel)); $('#sidebar').classList.remove('open'); $('#sidebarOverlay').classList.remove('active'); }
+function activeNav(panel){ if(panel==='person') panel=state.personBack||'dashboard'; $('#sidebarNav').querySelectorAll('a').forEach(a=>a.classList.toggle('active',a.dataset.panel===panel)); $('#sidebar').classList.remove('open'); $('#sidebarOverlay').classList.remove('active'); }
 
 async function init(){
   try {
     state.user=await getCurrentUser();
   } catch { location.href='login.html'; return; }
-  $('#navUserBadge').textContent=`${state.user.name} · ${roleName[state.user.role]}`;
-  $('#sidebarAvatar').textContent=initials(state.user.name); $('#sidebarName').textContent=state.user.name; $('#sidebarRole').textContent=roleName[state.user.role];
+  $('#navUserBadge').textContent=`${state.user.name} · ${roleLabel(state.user)}`;
+  $('#sidebarAvatar').textContent=initials(state.user.name); $('#sidebarName').textContent=state.user.name; $('#sidebarRole').textContent=roleLabel(state.user);
   buildNav();
   $('#logoutTop').onclick=signOut; $('#logoutSide').onclick=signOut; $('#modalClose').onclick=closeModal; $('#globalModal').addEventListener('click',e=>{if(e.target.id==='globalModal')closeModal();});
   $('#mobileToggle').onclick=()=>{$('#sidebar').classList.add('open');$('#sidebarOverlay').classList.add('active');}; $('#sidebarOverlay').onclick=()=>{$('#sidebar').classList.remove('open');$('#sidebarOverlay').classList.remove('active');};
@@ -116,7 +124,7 @@ async function render(panel,{silent=false}={}){
   activeNav(panel);
   if(!silent) $('#appRoot').innerHTML='<div class="portal-loading"><span class="loading"></span><p>Loading secure portal data…</p></div>';
   try {
-    if(panel==='dashboard') await loadCommon();
+    if(panel==='dashboard'){ if(state.user.role!=='editor') await loadCommon(); await Dash.load(); }
     if(state.user.role==='student'){
       if(panel==='results'){ state.results=await getStudentResults(state.user.user_code); state.termStats=await getStudentTermStats(state.user.user_code).then(r=>r.terms||[]).catch(()=>[]); }
       if(panel==='subjects') state.subjects=await getStudentSubjects(state.user.user_code);
@@ -135,21 +143,23 @@ async function render(panel,{silent=false}={}){
     if(state.user.role==='commandant'){
       if(panel==='dashboard' || panel==='overview') await Cmd.loadSummary();
       if(panel==='top'){ await loadMeta(); await Cmd.loadTop(); }
-      if(panel==='students'){ const r=await getAllStudents(state.studentStatusFilter,state.search.students); state.students=r.rows; state.studentsTruncated=r.truncated; }
       if(panel==='results'){ const r=await getAllResults(state.search.results); state.results=r.rows; state.resultsTruncated=r.truncated; }
     }
-    if(['hod','commandant'].includes(state.user.role) && panel==='teachers') { const r=await getAllTeachers(state.search.teachers); state.teachers=r.rows; state.teachersTruncated=r.truncated; }
     if(['admin','commandant'].includes(state.user.role)){
       if(panel==='accounts') { const r=await getAllUsers(state.search.accounts); state.accounts=r.rows; state.accountsTruncated=r.truncated; }
       if(panel==='sessions') state.sessions=await getSessions();
       if(panel==='classes') state.classesArms=await getClassesAndArms();
     }
     if(state.user.role==='admin'){
-      if(panel==='students') { const r=await getAllStudents(state.studentStatusFilter,state.search.students); state.students=r.rows; state.studentsTruncated=r.truncated; }
-      if(panel==='teachers') { const r=await getAllTeachers(state.search.teachers); state.teachers=r.rows; state.teachersTruncated=r.truncated; }
       if(panel==='results') { const r=await getAllResults(state.search.results); state.results=r.rows; state.resultsTruncated=r.truncated; }
     }
     if(['admin','commandant'].includes(state.user.role) && panel==='curriculum'){ state.curriculum=await getSubjects(); state.curriculumHistory=await getCurriculumHistory(); await loadMeta(); }
+    if(['hod','admin','commandant'].includes(state.user.role)){
+      if(panel==='teachers'||panel==='students') await People.loadDirectory(panel);
+      if(panel==='person') await People.loadPerson();
+    }
+    if(panel==='requests'){ if(state.user.role==='student') await Requests.loadStudent(); else await Requests.loadReview(); }
+    if(panel==='content' && ['editor','admin','commandant'].includes(state.user.role)) await Editor.load();
     if(panel==='announcements'){
       state.announcements=await getAnnouncements();
       if(['admin','commandant','hod'].includes(state.user.role)) state.manageAnnouncements=await getManagedAnnouncements(state.search.announcements);
@@ -176,9 +186,12 @@ function renderPanel(panel){
   if(panel==='manual') return Scanner.renderManual();
   if(panel==='scanner') return Scanner.renderScanner();
   if(panel==='sheets') return Sheets.renderSheetBrowser();
-  if(panel==='students') return renderStudents();
+  if(panel==='students') return state.user.role==='teacher' ? renderStudents() : People.renderDirectory('students');
+  if(panel==='person') return People.renderPerson();
+  if(panel==='requests') return state.user.role==='student' ? Requests.renderStudent() : Requests.renderReview();
+  if(panel==='content') return Editor.render();
   if(panel==='approval') return renderApproval();
-  if(panel==='teachers') return renderTeachers();
+  if(panel==='teachers') return People.renderDirectory('teachers');
   if(panel==='system') return renderSystem();
   if(panel==='curriculum') return renderCurriculum();
   if(panel==='sessions') return renderSessions();
@@ -193,10 +206,12 @@ function renderPanel(panel){
 function renderDashboard(){
   const r=state.user.role;
   if(r==='commandant') return Cmd.renderDashboard();
+  if(r==='editor') return Dash.editorDashboard();
   if(r==='student') return `<div class="portal-toolbar"><div><div class="eyebrow">Student workspace</div><h1>Welcome, ${esc(state.user.name.split(' ')[0])}</h1><p>Your academic information at a glance.</p></div></div>
     ${renderRejectionNotice('student')}
     <div class="portal-grid">${stat('Approved subjects',state.studentSummary.subjects||0,'book')}${stat('Current average',state.studentSummary.average?`${state.studentSummary.average}%`:'—','trendingup')}${stat('Passed subjects',state.studentSummary.passes||0,'checkcircle')}${stat('Active notices',state.stats.active_announcements||0,'bell')}</div>
-    ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">Active</strong></div><div class="portal-kpi"><span>Class</span><strong>${esc(state.user.class_name||'—')} ${esc(state.user.arm_name||'')}</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)} `;
+    ${card('Academic status',`<div class="portal-kpi"><span>Portal access</span><strong class="portal-badge ok">Active</strong></div><div class="portal-kpi"><span>Class</span><strong>${esc(state.user.class_name||'—')} ${esc(state.user.arm_name||'')}</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)}
+    ${Dash.studentCard()}`;
   // An HOD sees their own department named explicitly, with figures scoped to
   // that department, rather than school-wide counters they have to interpret.
   if(r==='hod'){
@@ -204,7 +219,7 @@ function renderDashboard(){
     if(!h) return `<div class="portal-toolbar"><div><div class="eyebrow">Head of Department</div><h1>Department control centre</h1></div></div>${card('Department not assigned','<p>No department is currently assigned to your account. Please contact an administrator so your dashboard and approval queue can be scoped correctly.</p>')}`;
     return `<div class="portal-toolbar"><div><div class="eyebrow">Head of Department</div><h1>${esc(h.dept_name)}</h1><p>${esc(h.description||'Review departmental results before publication.')}</p></div><span class="portal-badge ok">${esc(h.dept_name)}</span></div>
       <div class="portal-grid">${stat('Department teachers',h.teachers,'idbadge')}${stat('Department subjects',h.subjects,'book')}${stat('Awaiting approval',h.pending_results,'clock')}${stat('Approved results',h.approved_results,'barchart')}</div>
-      ${card('Approval queue',`<p>There ${h.pending_results===1?'is':'are'} <strong>${h.pending_results}</strong> result${h.pending_results===1?'':'s'} from <strong>${esc(h.dept_name)}</strong> waiting for your review.</p><button class="btn btn-primary" data-go="approval">Open approval queue ${ic('arrowright',15)}</button>`)}
+      ${Dash.hodCard(h)}
       ${card('Department details',`<div class="portal-kpi"><span>Department</span><strong>${esc(h.dept_name)}</strong></div><div class="portal-kpi"><span>Appointed</span><strong>${h.appointed_date?fmtDate(h.appointed_date):'—'}</strong></div><div class="portal-kpi"><span>Account ID</span><strong>${esc(state.user.user_code)}</strong></div>`)}`;
   }
   // A teacher's dashboard reflects their own teaching load, not school-wide
@@ -216,9 +231,10 @@ function renderDashboard(){
     const byClass=new Map();
     (state.assignments||[]).forEach(a=>{ const key=`${a.class_name} ${a.arm_name}`; if(!byClass.has(key)) byClass.set(key,new Set()); byClass.get(key).add(a.subject_name); });
     const teachingRows=[...byClass.entries()].map(([cls,subs])=>`<div class="portal-kpi"><span>${esc(cls)}</span><strong>${[...subs].map(esc).join(', ')}</strong></div>`).join('') || '<p style="color:var(--text-secondary)">No teaching assignments yet.</p>';
-    return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>Teacher workspace</h1><p>Fill in your class score sheets and manage your assigned students.</p></div></div>
+    return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleLabel(state.user))}</div><h1>Teacher workspace</h1><p>Fill in your class score sheets and manage your assigned students.</p></div></div>
     ${renderRejectionNotice('teacher')}
     <div class="portal-grid">${stat('My students',state.stats.students??0,'users')}${stat('My subjects',state.stats.subjects??0,'book')}${stat('Awaiting approval',state.stats.pending_results??0,'clock')}${stat('Approved results',state.stats.results??0,'checkcircle')}</div>
+    ${Dash.teacherCard()}
     ${card('What I teach',teachingRows)}
     ${card('Workflow',`<div class="portal-kpi"><span>1. Choose a class, subject and term</span><strong>${ic('checksquare',16)}</strong></div><div class="portal-kpi"><span>2. Enter marks: full class sheet, one student at a time, Excel import, or scan the paper sheet with the AI Scanner</span><strong>${ic('pencil',16)}</strong></div><div class="portal-kpi"><span>3. Check, then submit — your HOD approves the sheet</span><strong>${ic('checkcircle',16)}</strong></div><div class="portal-actions" style="margin-top:.8rem"><button class="btn btn-primary" data-go="sheet">Score Sheet ${ic('arrowright',15)}</button><button class="btn btn-secondary" data-go="manual">Manual Entry</button><button class="btn btn-secondary" data-go="scanner">${ic('cpu',15)} AI Scanner</button></div>`)}`;
   }
@@ -226,6 +242,7 @@ function renderDashboard(){
   const title={admin:'Administration control centre',commandant:'Commandant overview'}[r];
   const subtitle={admin:'Manage accounts, academic records and school communications.',commandant:'Monitor school-wide academic performance and activity.'}[r];
   return `<div class="portal-toolbar"><div><div class="eyebrow">${esc(roleName[r])}</div><h1>${title}</h1><p>${subtitle}</p></div></div><div class="portal-grid">${stat('Students',state.stats.students,'users')}${stat('Teachers',state.stats.teachers,'idbadge')}${stat('Approved results',state.stats.results,'barchart')}${stat('Pending results',state.stats.pending_results,'clock')}</div>
+    ${Dash.managementCard(r)}
     ${card('System status',`<div class="portal-kpi"><span>Database-backed portal</span><strong class="portal-badge ok">Online</strong></div><div class="portal-kpi"><span>Active announcements</span><strong>${state.stats.active_announcements||0}</strong></div>`)}`;
 }
 
@@ -241,7 +258,6 @@ function renderDepartments(){
 
   const s=d.stats||{};
   const subjectRows=d.subjects.map(x=>`<tr><td><strong>${esc(x.subject_name)}</strong>${x.is_active?'':' <span class="portal-badge danger">Not offered</span>'}</td><td>${esc((x.tracks||[]).join(', ')||'—')}</td><td>${x.ca_max} / ${x.exam_max}</td><td>${x.result_count}</td></tr>`).join('');
-  const teacherRows=d.teachers.map(x=>`<tr><td><strong>${esc(x.full_name)}</strong><br><small>${esc(x.user_code)}</small></td><td>${esc(x.subjects||'—')}</td><td>${x.date_joined?fmtDate(x.date_joined):'—'}</td></tr>`).join('');
   const classRows=d.classes.map(x=>`<tr><td>${esc(x.class_name)} ${esc(x.arm_name)}</td><td>${x.student_count}</td><td>${x.avg_score!=null?`${x.avg_score}%`:'—'}</td></tr>`).join('');
   const totalGraded=d.grade_distribution.reduce((a,g)=>a+g.n,0);
   const gradeBars=totalGraded?d.grade_distribution.map(g=>`<div class="portal-kpi"><span><strong>${esc(g.grade)}</strong></span><span style="flex:1;margin:0 1rem"><span class="portal-progress"><span style="width:${Math.round(g.n/totalGraded*100)}%"></span></span></span><span>${g.n} (${Math.round(g.n/totalGraded*100)}%)</span></div>`).join(''):'<p style="color:var(--text-secondary)">No approved results yet.</p>';
@@ -251,7 +267,7 @@ function renderDepartments(){
     ${canSeeAll?overview:''}
     <div class="portal-grid">${stat('Subjects',d.subjects.filter(x=>x.is_active).length,'book')}${stat('Teachers',d.teachers.length,'idbadge')}${stat('Awaiting approval',s.pending||0,'clock')}${stat('Department average',s.avg_score!=null?`${s.avg_score}%`:'—','trendingup')}</div>
     ${card('Subjects',table(['Subject','Curriculum tracks','CA / Exam','Results recorded'],subjectRows,'No subjects assigned to this department.'))}
-    ${card('Teaching staff',table(['Teacher','Subjects','Joined'],teacherRows,'No teachers assigned to this department.'))}
+    ${card('People in this department',`<div class="portal-actions"><button class="btn btn-secondary" data-go="teachers">${ic('idbadge',15)} Teachers (${d.teachers.length})</button><button class="btn btn-secondary" data-go="students">${ic('users',15)} Students</button></div>`)}
     ${card('Performance by class',table(['Class','Students','Average'],classRows,'No results recorded for this department yet.'))}
     ${card('Grade distribution (approved results)',gradeBars)}`;
 }
@@ -456,7 +472,7 @@ function announcementModal(existing){
     }catch(e){toast(e.message,'error')}
   };
 }
-function renderProfile(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Account</div><h1>My Profile</h1></div></div>${card('Account details',`<div class="portal-form-grid"><div class="info-item"><label>Full name</label><p>${esc(state.user.name)}</p></div><div class="info-item"><label>Role</label><p>${esc(roleName[state.user.role])}</p></div><div class="info-item"><label>User ID</label><p>${esc(state.user.user_code)}</p></div><div class="info-item"><label>Email</label><p>${esc(state.user.email||'Not provided')}</p></div></div>`)}
+function renderProfile(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Account</div><h1>My Profile</h1></div></div>${card('Account details',`<div class="portal-form-grid"><div class="info-item"><label>Full name</label><p>${esc(state.user.name)}</p></div><div class="info-item"><label>Role</label><p>${esc(roleLabel(state.user))}</p></div><div class="info-item"><label>User ID</label><p>${esc(state.user.user_code)}</p></div><div class="info-item"><label>Email</label><p>${esc(state.user.email||'Not provided')}</p></div><div class="info-item"><label>Phone</label><p>${esc(state.user.phone||'Not provided')}</p></div></div><p class="field-help" style="margin-top:.8rem">To change your phone number, ask an administrator or the Commandant.</p>`)}
     ${card('Change password',`<div class="portal-form-grid">${pwdField("pwdCurrent","Current password","current-password")}${pwdField("pwdNew","New password (min. 8 characters)","new-password",'minlength="8"')}${pwdField("pwdConfirm","Confirm new password","new-password",'minlength="8"')}<div class="full"><button class="btn btn-primary" id="changePasswordBtn">Update password</button></div></div>`)}`; }
 function renderStudents(){
   const manageable = ['admin','commandant'].includes(state.user.role);
@@ -469,7 +485,7 @@ function renderStudents(){
   const search = searchBox('students', state.user.role==='teacher'?'Search your students…':'Search by name, code or admission no…');
   return `<div class="portal-toolbar"><div><div class="eyebrow">Student register</div><h1>${state.user.role==='teacher'?'My Students':'Students'}</h1>${manageable?'<p>Status changes preserve every academic record — nothing is deleted.</p>':''}</div><div class="portal-actions">${search}${statusFilter}</div></div>${card('Student register',table(headers,rows,'No students found for this filter.')+truncatedNote(state.studentsTruncated,'student'))}`;
 }
-function renderAccounts(){ const rows=state.accounts.map(a=>`<tr><td><strong>${esc(a.full_name)}</strong><br><small>${esc(a.user_code)}</small></td><td>${esc(roleName[a.role]||a.role)}</td><td>${esc(a.email||'—')}</td><td><span class="portal-badge ok">Active</span></td><td class="portal-actions">${a.user_id===state.user.id?'<span class="portal-badge">Current account</span>':`<button class="btn btn-secondary btn-sm" data-reset-password="${a.user_id}" data-reset-name="${esc(a.full_name)}">Reset password</button><button class="btn btn-danger btn-sm" data-remove-user="${a.user_id}">Remove access</button>`}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Access control</div><h1>Account Management</h1><p>Provision and revoke portal access while preserving academic and audit history.</p></div><div class="portal-actions">${searchBox('accounts','Search accounts by name or ID…')}<button class="btn btn-primary btn-auto" id="newUser">Create account</button></div></div>${card('Active portal accounts',table(['Account','Role','Email','Status','Action'],rows,'No accounts match this search.')+truncatedNote(state.accountsTruncated,'account'))}`; }
+function renderAccounts(){ const rows=state.accounts.map(a=>`<tr><td><strong>${esc(a.full_name)}</strong><br><small>${esc(a.user_code)}</small></td><td>${esc(roleName[a.role]||a.role)}</td><td>${People.phoneLink(a.phone)}</td><td>${People.mailLink(a.email)}</td><td><span class="portal-badge ok">Active</span></td><td class="portal-actions"><button class="btn btn-secondary btn-sm" data-open-person="${a.user_id}">Open profile</button>${a.user_id===state.user.id?'<span class="portal-badge">Current account</span>':`<button class="btn btn-secondary btn-sm" data-reset-password="${a.user_id}" data-reset-name="${esc(a.full_name)}">Reset password</button><button class="btn btn-danger btn-sm" data-remove-user="${a.user_id}">Remove access</button>`}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Access control</div><h1>Account Management</h1><p>Provision and revoke portal access while preserving academic and audit history.</p></div><div class="portal-actions">${searchBox('accounts','Search accounts by name or ID…')}<button class="btn btn-primary btn-auto" id="newUser">Create account</button></div></div>${card('Active portal accounts',table(['Account','Role','Phone','Email','Status','Action'],rows,'No accounts match this search.')+truncatedNote(state.accountsTruncated,'account'))}`; }
 function renderApproval(){
   // Results arrive as whole class sheets, so the queue is grouped the same way:
   // approve a sheet in one click, or work through its rows one by one.
@@ -495,7 +511,6 @@ async function approveWholeSheet(btn){
   try{ const out=await approveSheet({subject_id:Number(btn.dataset.subject),class_level_id:Number(btn.dataset.class),arm_id:Number(btn.dataset.arm),term_id:Number(btn.dataset.term)}); toast(out.message,'success'); render('approval'); }
   catch(e){ toast(e.message,'error'); btn.disabled=false; }
 }
-function renderTeachers(){ const rows=state.teachers.map((t,i)=>`<tr><td>${i+1}</td><td><strong>${esc(t.full_name)}</strong><br><small>${esc(t.user_code)}</small></td><td>${esc(t.department||'—')}</td><td>${esc(t.subjects||'—')}</td><td>${esc(t.email||'—')}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Staff directory</div><h1>Teachers</h1></div>${searchBox('teachers','Search by name, ID or subject…')}</div>${card('Teaching staff',table(['#','Teacher','Department','Subjects','Email'],rows,'No teachers match this search.')+truncatedNote(state.teachersTruncated,'teacher'))}`; }
 function renderSystem(){ return `<div class="portal-toolbar"><div><div class="eyebrow">Configuration</div><h1>System Administration</h1></div></div>${card('Academic configuration',`<p>Academic sessions, terms, departments, subjects and assignments are stored in the database.</p><p style="margin-top:.7rem">Use the account creation workflow to provision controlled portal access. Passwords are hashed server-side and are never returned to the browser.</p>`)}${card('Security posture',`<div class="portal-kpi"><span>Authentication</span><strong>HTTP-only session cookie</strong></div><div class="portal-kpi"><span>Role enforcement</span><strong>Server-side</strong></div><div class="portal-kpi"><span>Result publication</span><strong>HOD approval required</strong></div>`)}`; }
 
 function renderCurriculum(){
@@ -576,16 +591,17 @@ function bindPanel(panel){
   if(panel==='classes' && ['admin','commandant'].includes(state.user.role)) bindClassesArms();
   if(panel==='departments') bindDepartments();
   if(panel==='students'){
-    bindSearch('students', async q => { state.search.students=q; render('students',{silent:true}); });
-    if(['admin','commandant'].includes(state.user.role)){
-      $('#studentStatusFilter')?.addEventListener('change',async e=>{ state.studentStatusFilter=e.target.value; render('students'); });
-      document.querySelectorAll('[data-status-student]').forEach(b=>b.onclick=()=>studentStatusModal(Number(b.dataset.statusStudent),b.dataset.statusCurrent,b.dataset.statusName));
-    }
+    if(state.user.role==='teacher') bindSearch('students', async q => { state.search.students=q; render('students',{silent:true}); });
+    else People.bindDirectory('students');
   }
-  if(panel==='teachers') bindSearch('teachers', q => { state.search.teachers=q; render('teachers',{silent:true}); });
+  if(panel==='teachers') People.bindDirectory('teachers');
+  if(panel==='person') People.bindPerson();
+  if(panel==='requests') { if(state.user.role==='student') Requests.bindStudent(); else Requests.bindReview(); }
+  if(panel==='content') Editor.bind();
+  if(panel==='accounts') People.bindOpenPerson('accounts');
   if(panel==='results' && ['admin','commandant'].includes(state.user.role)) bindSearch('results', q => { state.search.results=q; render('results',{silent:true}); });
   if(panel==='accounts' && ['admin','commandant'].includes(state.user.role)) {
-    $('#newUser')?.addEventListener('click',userModal);
+    $('#newUser')?.addEventListener('click',Accounts.openUserModal);
     bindSearch('accounts', q => { state.search.accounts=q; render('accounts',{silent:true}); });
     document.querySelectorAll('[data-remove-user]').forEach(b=>b.onclick=()=>removeAccount(b.dataset.removeUser));
     document.querySelectorAll('[data-reset-password]').forEach(b=>b.onclick=()=>resetPasswordModal(Number(b.dataset.resetPassword),b.dataset.resetName));
@@ -700,10 +716,9 @@ function rejectOne(id){
 async function removeAccount(id){ if(!confirm('Remove portal access for this account? Academic history will be preserved.')) return; try{ await removeUser(id); toast('Portal access removed.','success'); state.accounts=[]; render('accounts'); }catch(e){ toast(e.message,'error'); } }
 
 async function loadMeta(){ if(!state.meta) state.meta=await getAdminMeta(); return state.meta; }
-async function userModal(){ const m=await loadMeta(); const classOpts=m.classes.map(x=>`<option value="${esc(x.level_name)}">${esc(x.level_name)}</option>`).join(''); const armOpts=m.arms.map(x=>`<option value="${esc(x.arm_name)}">${esc(x.arm_name)}</option>`).join(''); const deptOpts=m.departments.map(x=>`<option value="${x.id}">${esc(x.dept_name)}</option>`).join(''); const subOpts=m.subjects.map(x=>`<option value="${esc(x.subject_name)}">${esc(x.subject_name)}</option>`).join(''); openModal('Create portal account',`<div class="portal-form-grid"><div class="form-group"><label>User ID *</label><input id="uCode" maxlength="20" placeholder="e.g. STU004"></div>${pwdField("uPass","Initial password *","new-password",'minlength="8"')}<div class="form-group full"><label>Full name *</label><input id="uName"></div><div class="form-group"><label>Email</label><input id="uEmail" type="email"></div><div class="form-group"><label>Gender</label><select id="uGender"><option value="">Not specified</option><option value="M">Male</option><option value="F">Female</option></select></div><div class="form-group"><label>Role *</label><select id="uRole"><option value="student">Student</option><option value="teacher">Teacher</option><option value="hod">HOD</option>${state.user.role==='commandant'?'<option value="admin">Administrator</option><option value="commandant">Commandant</option>':''}</select></div><div id="studentFields" class="full"><div class="portal-form-grid"><div class="form-group"><label>Class</label><select id="uClass">${classOpts}</select></div><div class="form-group"><label>Arm</label><select id="uArm">${armOpts}</select></div><div class="form-group"><label>Track</label><select id="uTrack"><option>junior</option><option>science</option><option>technical</option><option>arts</option></select></div><div class="form-group"><label>Admission no.</label><input id="uAdmission"></div></div></div><div id="staffFields" class="full" style="display:none"><div class="portal-form-grid"><div class="form-group"><label>Department</label><select id="uDept">${deptOpts}</select></div><div class="form-group"><label>Subject (teacher)</label><select id="uSubject">${subOpts}</select></div></div></div><div class="full"><button class="btn btn-primary" id="createAccount">Create account</button></div></div>`); const role=$('#uRole'); const sync=()=>{ $('#studentFields').style.display=role.value==='student'?'block':'none'; $('#staffFields').style.display=['teacher','hod'].includes(role.value)?'block':'none'; $('#uSubject').closest('.form-group').style.display=role.value==='teacher'?'block':'none';}; role.onchange=sync;sync(); $('#createAccount').onclick=async()=>{const payload={user_code:$('#uCode').value.trim().toUpperCase(),password:$('#uPass').value,full_name:$('#uName').value.trim(),email:$('#uEmail').value.trim()||null,gender:$('#uGender').value||null,role:role.value};if(role.value==='student')Object.assign(payload,{class_level:$('#uClass').value,arm:$('#uArm').value,track:$('#uTrack').value,admission_no:$('#uAdmission').value.trim()||null});if(['teacher','hod'].includes(role.value))payload.department_id=Number($('#uDept').value);if(role.value==='teacher')payload.subjects=$('#uSubject').value ? [$('#uSubject').value] : [];if(!payload.user_code||!payload.password||!payload.full_name)return toast('Complete the required fields.','error');try{await createUser(payload);closeModal();toast('Account created successfully.','success');state.accounts=[];render('accounts')}catch(e){toast(e.message,'error')}}; }
 
 // Admin can use the same student screen to create accounts. Keep the feature visible but controlled.
 window.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
-const ctx={state,esc,ic,toast,card,table,stat,gradeClass,render,openModal,closeModal};
-Sheets.init(ctx); Scanner.init(ctx); Cmd.init(ctx);
+const ctx={state,esc,ic,toast,card,table,stat,gradeClass,render,openModal,closeModal,fmtDate,searchBox,bindSearch,truncatedNote,initials,studentStatusModal,loadMeta,pwdField,roleName};
+Sheets.init(ctx); Scanner.init(ctx); Cmd.init(ctx); People.init(ctx); Requests.init(ctx); Editor.init(ctx); Accounts.init(ctx); Dash.init(ctx);
 init();
