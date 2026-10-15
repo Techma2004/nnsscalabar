@@ -1,5 +1,5 @@
--- =====================================================
--- NNSS CALABAR — CONSOLIDATED DATABASE SETUP + UPGRADE
+﻿-- =====================================================
+-- NNSS CALABAR â€” CONSOLIDATED DATABASE SETUP + UPGRADE
 -- Safe for fresh installs and existing databases.
 -- This file merges the schema and all migration steps into one script.
 -- =====================================================
@@ -607,7 +607,7 @@ CREATE OR REPLACE VIEW student_result_sheet AS
   JOIN teachers tch ON r.teacher_id = tch.id
   JOIN users tu     ON tch.user_id = tu.id;
 
-CREATE VIEW IF NOT EXISTS class_performance AS
+CREATE OR REPLACE VIEW class_performance AS
   SELECT
     cl.level_name   AS class,
     a.arm_name      AS arm,
@@ -631,7 +631,7 @@ CREATE VIEW IF NOT EXISTS class_performance AS
   WHERE r.is_approved = TRUE
   GROUP BY cl.level_name, a.arm_name, sub.subject_name, t.id, ac.id;
 
-CREATE VIEW IF NOT EXISTS top_performers AS
+CREATE OR REPLACE VIEW top_performers AS
   SELECT
     u.user_code     AS student_id,
     u.full_name     AS student_name,
@@ -653,7 +653,7 @@ CREATE VIEW IF NOT EXISTS top_performers AS
   WHERE r.is_approved = TRUE
   GROUP BY r.student_id, r.term_id;
 
-CREATE VIEW IF NOT EXISTS teacher_upload_progress AS
+CREATE OR REPLACE VIEW teacher_upload_progress AS
   SELECT
     tu.full_name    AS teacher_name,
     tu.user_code    AS teacher_id,
@@ -1037,3 +1037,4 @@ WHERE NOT EXISTS (SELECT 1 FROM posts);
 -- =====================================================
 -- END OF CONSOLIDATED DATABASE SETUP + UPGRADE
 -- =====================================================
+
