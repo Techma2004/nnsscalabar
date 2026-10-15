@@ -35,6 +35,7 @@ A web-based school management platform and public website for Nigerian Navy Seco
 ## Features
 
 - Responsive public website, news/blog pages, newsletter/contact pages, theme switching, and portal sign-in.
+- Blog and Newsletter editor for the school news team (role `editor`): create the account in Account Management and follow [PORTAL_GUIDE.md chapter 7](PORTAL_GUIDE.md#7-news-team-interface-blog-and-newsletter).
 - One Node.js/Express application serves both the API and `frontend/` from the same origin.
 - Five account roles: `commandant`, `admin`, `hod`, `teacher`, and `student`.
 - HTTP-only JWT session cookie, bcrypt password hashing, login throttling, request rate limits, security headers, origin checks, and server-side role/assignment authorization.

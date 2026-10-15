@@ -6,7 +6,8 @@ This guide explains how to access and use the NNSS Calabar School Management Sys
 - **Administrator (Admin):** day-to-day account, student, curriculum, and school configuration management.
 - **Head of Department (HOD):** departmental oversight and result review/approval.
 - **Teacher:** assigned classes, score entry, score-sheet import, and submission for approval.
-- **Student:** personal dashboard and access to approved academic results.
+- **Student:** personal dashboard, change requests, and access to approved academic results.
+- **News team (editor):** writes and publishes the public Blog and Newsletter pages. See [chapter 7](#7-news-team-interface-blog-and-newsletter).
 
 For installation, database configuration, account bootstrap, and server operation, see the main [README.md](README.md). For security rules and vulnerability reporting, see [SECURITY.md](SECURITY.md).
 
@@ -378,20 +379,70 @@ Where the report-card print view is available:
 
 Some report-card statistics, such as averages or position, may be optional and may not appear when there is insufficient approved data. Their absence does not necessarily mean the report card failed to load.
 
-## Blog and newsletter (news team)
+## 7. News team interface (Blog and Newsletter)
 
-The public **Blog** and **Newsletter** pages are edited in one place: the portal's **Blog & Newsletter** screen. **We recommend giving this to the school's article or news team** by creating each member an account with the role *News team (blog & newsletter)*. They see only this screen and their own profile, never results or student records. The Administrator and Commandant can use it too.
+The public **Blog** (`blog.html`) and **Newsletter** (`newsletter.html`) pages are edited from the portal, in one screen, by the school's article or news team. **We recommend giving this job to the article/news team** rather than to an administrator. A news-team account can only edit posts and its own profile; it cannot see students, results, accounts or any other part of the portal.
 
-- *New post*: choose the page (Blog or Newsletter), date, title and text, optionally a picture (pick one of the school photos or upload a PNG, JPEG or WebP up to 2.5 MB), then publish or keep as a draft.
-- Drafts are hidden from the public until published. *Unpublish* hides a post again; *Delete* removes it permanently.
-- Uploaded pictures are saved in `frontend/uploads/` on the server (not in git). Back this folder up with the database.
-- The first time the update is installed, the old fixed articles are copied in as editable posts. Please review them once.
+### A. Set up a news-team account (Commandant or Administrator, once per person)
+
+1. Make sure the database has been updated for this feature: a fresh install already has it; an existing database needs `database/006_news_team_requests_contacts.sql` run once (see the README, "Existing database and roster tools"), then restart the server.
+2. Sign in as the Commandant or an Administrator.
+3. Open **Account Management** and press **Create account**.
+4. Set **Role** to **News team (blog & newsletter)**.
+5. Fill in **User ID** (for example `NEWS01`), **Full name**, **Initial password** (at least 8 characters) and **Phone number** (required). Email is optional.
+6. Press **Create account**.
+7. Give the person their User ID and password privately. Ask them to change the password after the first sign-in.
+
+Create one account per team member so that each post shows who last edited it. Do not share one login.
+
+### B. Sign in (news team)
+
+1. Open the portal sign-in page, usually `http://localhost:5000/login.html` on a local install, or the address the school gives you.
+2. Enter your User ID and password and press **Sign in**.
+3. You land on a short dashboard with three menu items: **Dashboard**, **Blog & Newsletter** and **My Profile**.
+4. To change your password, open **My Profile**, use **Change password**, and sign in again with the new one.
+5. If you forget the password, ask an Administrator or the Commandant to use **Reset password** next to your name in Account Management.
+
+### C. Write a new post
+
+1. Open **Blog & Newsletter** and press **New post**.
+2. **Show on:** choose *Blog page* or *Newsletter page*.
+3. **Date shown:** the date visitors see on the post (today by default).
+4. **Title** and **Text:** type the post. Leave a blank line between paragraphs. Formatting symbols are not needed; the text is shown exactly as written.
+5. **Picture (optional):** pick one of the school photos in the grid, or press **Upload a picture** to add your own (PNG, JPEG or WebP, up to 2.5 MB). Choose *No picture* to leave it out.
+6. **When saved:** *Publish now* puts it on the public page immediately; *Keep as a draft (hidden)* saves it so you can finish later.
+7. Press **Save post**. Open **View blog** or **View newsletter** at the top of the screen to see it as the public sees it.
+
+### D. Edit, hide or delete a post
+
+- **Edit:** press **Edit** on the post's row, change anything, then **Save changes**.
+- **Unpublish / Publish:** hides a post from the public page without losing it, or puts it back.
+- **Delete (bin icon):** removes the post permanently after you confirm. This cannot be undone; use *Unpublish* if you might want it back.
+- Use the **All / Blog / Newsletter** tabs and the search box to find a post. Each row shows when it was last edited and by whom.
+
+### E. Good practice
+
+- Use drafts for anything that needs a second person to read it first.
+- Do not put students' names, photos, results or contact details in public posts without the school's permission.
+- Keep pictures small and relevant; uploads over 2.5 MB are refused.
+- Uploaded pictures are stored in the `frontend/uploads/` folder on the server. It is not part of the git repository, so **include it in server backups** together with the database.
+- The first time the update is installed, the articles that used to be fixed in the web pages are copied in as ordinary posts. Review and tidy them once.
+
+### F. If something does not work
+
+| Problem | What to do |
+|---|---|
+| The role is missing from the Create account form | The database update (migration 006) has not been run, or the server was not restarted. |
+| "Access denied" or a blank menu | The account is not a news-team account, or has been deactivated. Ask an Administrator. |
+| A new post is not on the public page | Check its status is *Published*, then refresh the public page. |
+| Picture upload fails | Use a PNG, JPEG or WebP file under 2.5 MB. |
+| Cannot sign in | Re-check the User ID and password; ask an Administrator to reset the password. |
 
 ## Class Score Sheets (HOD, Administrator, Commandant)
 
 This screen lists one score sheet per class and subject for the chosen term and how far each has got: not started, in progress, waiting for the HOD, or approved. Open a sheet to read exactly what the teacher entered. *Preview & download* shows the sheet in the browser first; the Excel file downloads only if you press *Download Excel* in the preview.
 
-## 7. Understanding result statuses
+## 8. Understanding result statuses
 
 | Status / situation | Meaning | What to do |
 |---|---|---|
@@ -404,7 +455,7 @@ This screen lists one score sheet per class and subject for the chosen term and 
 
 The exact status labels shown on screen can vary with the specific workflow view. The key distinction is that **saved or pending data is not the same as an approved, student-visible result**.
 
-## 8. Support and common questions
+## 9. Support and common questions
 
 ### I forgot my password. What should I do?
 
@@ -426,7 +477,7 @@ Do not submit the result until you have checked it against the original paper. C
 
 Note the page and action, the time, and the non-sensitive error text. Contact the authorized school administrator. Do not send passwords, session cookies, real student records, or full database dumps with a support request.
 
-## 9. Privacy and safe use
+## 10. Privacy and safe use
 
 - Student information and results are confidential school records.
 - Use the portal only for assigned school duties.
