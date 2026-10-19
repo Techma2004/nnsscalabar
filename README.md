@@ -8,6 +8,10 @@ A web-based school management platform and public website for Nigerian Navy Seco
 
 ## Documentation
 
+- **[Windows Setup Guide](WINDOWS_SETUP.md)** — complete beginner-friendly Windows/PowerShell install: Node.js, Git, MySQL, uv and Tesseract, PATH fixes, database, `.env`, running and backups.
+- **[Configuration Reference](CONFIGURATION.md)** — every `backend/.env` setting, built-in limits, and example configurations.
+- **[FAQ](FAQ.md)** — fixes for the most common errors (not recognized, 1045, login loops, scanner, backups).
+- **[Fresh install on a new PC](FRESH_INSTALL.md)** — the short version.
 - **[Portal User Guide](PORTAL_GUIDE.md)** — step-by-step usage instructions for Commandant, Admin, HOD, teachers, and students.
 - **[Security Policy](SECURITY.md)** — security controls, safe deployment requirements, and vulnerability reporting.
 - **[License](LICENSE)** — proprietary-use terms. This repository is **not open source**.
@@ -207,6 +211,8 @@ OCR is optional; do not install these packages unless you need score-sheet scann
 
 ## 3. Install on Windows
 
+> **New to Windows setup?** Follow the full guide: **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)**. It explains installs, PATH, and what to do when PowerShell says a program is not recognized. The summary below is the short version.
+
 Use a supported 64-bit Windows version and open **PowerShell** or **Windows Terminal**.
 
 ### Step 1 — Install the required software
@@ -217,7 +223,7 @@ Install these from their official download pages:
 - [Node.js LTS](https://nodejs.org/) — choose a release that is v20 or newer and includes npm.
 - [MySQL Installer](https://dev.mysql.com/downloads/installer/) — install MySQL Server. MySQL Workbench is useful but optional.
 
-Close and reopen the terminal after installation so updated PATH entries are loaded.
+**Close PowerShell and open a new window after every install** so updated PATH entries are loaded. The MySQL and Tesseract installers do **not** add themselves to PATH; see [WINDOWS_SETUP.md](WINDOWS_SETUP.md).
 
 Verify:
 
@@ -320,10 +326,10 @@ mysql -u nnss_user -p nnss_calabar < database/schema.sql
 **Windows PowerShell:**
 
 ```powershell
-Get-Content .\database\schema.sql -Raw | mysql -u nnss_user -p nnss_calabar
+mysql -u root -p -e "SOURCE database/schema.sql"
 ```
 
-If PowerShell cannot find `mysql`, use the full path to `mysql.exe` in that command. When prompted, enter the database user's password.
+PowerShell has no `<` operator, so use `SOURCE`. Use forward slashes and do not quote the path. The schema creates the `nnss_calabar` database itself and works on MySQL 8 and MariaDB 10.6+. If PowerShell cannot find `mysql`, see [WINDOWS_SETUP.md](WINDOWS_SETUP.md) or use the full path to `mysql.exe`. When prompted, enter the password of the account you named after `-u`.
 
 The consolidated `database/schema.sql` creates the database tables and reference/seed data used by the application. The repository also contains migration scripts for particular existing installations; see [Existing database and roster tools](#existing-database-and-roster-tools) before applying a migration to a database that already contains data.
 
@@ -542,6 +548,8 @@ Before a live deployment:
 Never expose a plain-HTTP installation containing real student or staff information to the public internet.
 
 ## Troubleshooting
+
+More answers are in the **[FAQ](FAQ.md)**; every setting is explained in **[CONFIGURATION.md](CONFIGURATION.md)**.
 
 ### `node` or `npm` is not recognized
 
