@@ -1,5 +1,7 @@
 # Fresh install on a new PC
 
+> **On Windows?** Use the full guide, [WINDOWS_SETUP.md](WINDOWS_SETUP.md). The commands below use Linux/macOS style; Windows differences are called out. Settings: [CONFIGURATION.md](CONFIGURATION.md). Problems: [FAQ.md](FAQ.md).
+
 On a new machine, **`database/schema.sql` is the only SQL file you run.** It is the complete, current database: all tables, the classes, arms, subjects and terms, and every upgrade that was ever made (files `002`–`006`). Do **not** run the other `.sql` files in `database/`. They exist only to upgrade older databases that already hold data.
 
 ## Steps
@@ -14,6 +16,7 @@ On a new machine, **`database/schema.sql` is the only SQL file you run.** It is 
    ```bash
    mysql -u root -p < database/schema.sql
    ```
+   **Windows PowerShell** has no `<`; use `mysql -u root -p -e "SOURCE database/schema.sql"` instead (forward slashes, no quotes around the path). Works on MySQL 8 and MariaDB 10.6+.
 4. Create a database user for the app (change the password):
    ```sql
    CREATE USER 'nnss_user'@'localhost' IDENTIFIED BY 'your-strong-db-password';
@@ -24,6 +27,7 @@ On a new machine, **`database/schema.sql` is the only SQL file you run.** It is 
    ```bash
    cp backend/.env.example backend/.env
    ```
+   On Windows: `Copy-Item backend\.env.example backend\.env`. The file must be named exactly `.env` (not `.env.txt`), and a password containing `#` must be in double quotes.
    Set `DB_PASSWORD` (the password from step 4), `JWT_SECRET` (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`), and `INITIAL_ADMIN_PASSWORD`.
 6. Install and create the first login:
    ```bash

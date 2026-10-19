@@ -406,6 +406,8 @@ The exact status labels shown on screen can vary with the specific workflow view
 
 ## 8. Support and common questions
 
+For installation and server problems see the [FAQ](FAQ.md); for server settings see [CONFIGURATION.md](CONFIGURATION.md).
+
 ### I forgot my password. What should I do?
 
 Contact the school administrator using the school's approved channel. Administrators should follow the authorized account-recovery procedure. Do not send passwords in public messages or post account details in a GitHub issue.
