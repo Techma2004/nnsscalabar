@@ -289,9 +289,11 @@ router.post('/ai-import', ocrRateLimit, async (req, res) => {
     const roster = Object.fromEntries(students.map(s => [s.user_code, s.full_name]));
     // The extension comes from a fixed allow-list and the file lives in a private,
     // freshly created temp directory, so no request data ever reaches the path.
-    const ext = OCR_IMAGE_EXTENSIONS[kind];
+    const ext = Object.hasOwn(OCR_IMAGE_EXTENSIONS, kind) ? OCR_IMAGE_EXTENSIONS[kind] : null;
+    if (!ext) return res.status(400).json({ error: 'Unsupported file type.' });
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'nnss-ocr-'));
-    const tmpPath = path.join(tmpDir, `scan.${ext}`);
+    // Fixed file name inside the freshly created temp dir: no request data is joined into the path.
+    const tmpPath = tmpDir + path.sep + 'scan.' + ext;
     await fs.writeFile(tmpPath, fileBytes, { mode: 0o600 });
 
     const ocrResult = await runOcr(tmpPath, roster);
