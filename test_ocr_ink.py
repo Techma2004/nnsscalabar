@@ -27,5 +27,21 @@ class InkGray(unittest.TestCase):
         self.assertGreater((ocr.ink_gray(img, thicken=True) < 128).sum(), (ocr.ink_gray(img) < 128).sum())
 
 
+class LocateTesseract(unittest.TestCase):
+    def test_explicit_setting_wins(self):
+        self.assertEqual(ocr.locate_tesseract({"TESSERACT_CMD": '"D:\\ocr\\tesseract.exe"'}, which=lambda n: "/usr/bin/tesseract"), "D:\\ocr\\tesseract.exe")
+
+    def test_on_path_keeps_default_lookup(self):
+        self.assertIsNone(ocr.locate_tesseract({}, which=lambda n: "/usr/bin/tesseract"))
+
+    def test_finds_standard_windows_folder_when_not_on_path(self):
+        env = {"ProgramFiles": "C:\\Program Files"}
+        want = __import__("os").path.join("C:\\Program Files", "Tesseract-OCR", "tesseract.exe")
+        self.assertEqual(ocr.locate_tesseract(env, which=lambda n: None, isfile=lambda p: p == want), want)
+
+    def test_nothing_found_returns_none(self):
+        self.assertIsNone(ocr.locate_tesseract({"ProgramFiles": "C:\\Program Files"}, which=lambda n: None, isfile=lambda p: False))
+
+
 if __name__ == "__main__":
     unittest.main()

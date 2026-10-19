@@ -254,7 +254,9 @@ router.get('/ai-status', async (req, res) => {
     child.on('close', exit => { clearTimeout(timer); exit === 0 ? resolve() : reject(new Error('exit ' + exit)); });
   });
   try {
-    await probe('import pytesseract; pytesseract.get_tesseract_version()');
+    // Importing ocr_score_sheet applies TESSERACT_CMD / the standard Windows folders
+    // before the version check, exactly as a real scan does.
+    await probe('import ocr_score_sheet, pytesseract; pytesseract.get_tesseract_version()');
   } catch {
     return res.json({ enabled: true, available: false, pdf: false, model: 'Tesseract OCR' });
   }

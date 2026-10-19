@@ -528,7 +528,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   UNIQUE KEY (student_id, att_date)
 );
 
-CREATE VIEW IF NOT EXISTS attendance_summary AS
+CREATE OR REPLACE VIEW attendance_summary AS
   SELECT
     s.id AS student_id,
     u.full_name,
@@ -580,7 +580,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
 -- =====================================================
 -- 16. USEFUL VIEWS
 -- =====================================================
-CREATE VIEW IF NOT EXISTS student_result_sheet AS
+CREATE OR REPLACE VIEW student_result_sheet AS
   SELECT
     u.user_code     AS student_id,
     u.full_name     AS student_name,
@@ -607,7 +607,7 @@ CREATE VIEW IF NOT EXISTS student_result_sheet AS
   JOIN teachers tch ON r.teacher_id = tch.id
   JOIN users tu     ON tch.user_id = tu.id;
 
-CREATE VIEW IF NOT EXISTS class_performance AS
+CREATE OR REPLACE VIEW class_performance AS
   SELECT
     cl.level_name   AS class,
     a.arm_name      AS arm,
@@ -631,7 +631,7 @@ CREATE VIEW IF NOT EXISTS class_performance AS
   WHERE r.is_approved = TRUE
   GROUP BY cl.level_name, a.arm_name, sub.subject_name, t.id, ac.id;
 
-CREATE VIEW IF NOT EXISTS top_performers AS
+CREATE OR REPLACE VIEW top_performers AS
   SELECT
     u.user_code     AS student_id,
     u.full_name     AS student_name,
@@ -653,7 +653,7 @@ CREATE VIEW IF NOT EXISTS top_performers AS
   WHERE r.is_approved = TRUE
   GROUP BY r.student_id, r.term_id;
 
-CREATE VIEW IF NOT EXISTS teacher_upload_progress AS
+CREATE OR REPLACE VIEW teacher_upload_progress AS
   SELECT
     tu.full_name    AS teacher_name,
     tu.user_code    AS teacher_id,
@@ -706,15 +706,45 @@ AND NOT EXISTS (SELECT 1 FROM terms t WHERE t.session_id = ac.id AND t.term_numb
 -- =====================================================
 -- 18. INDEXES
 -- =====================================================
-CREATE INDEX IF NOT EXISTS idx_results_student ON results(student_id);
-CREATE INDEX IF NOT EXISTS idx_results_term ON results(term_id);
-CREATE INDEX IF NOT EXISTS idx_results_subject ON results(subject_id);
-CREATE INDEX IF NOT EXISTS idx_results_teacher ON results(teacher_id);
-CREATE INDEX IF NOT EXISTS idx_results_approved ON results(is_approved);
-CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance(student_id, att_date);
-CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id, logged_at);
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role, is_active);
-CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
+-- MySQL has no "CREATE INDEX IF NOT EXISTS" (only MariaDB does), so each index is
+-- created only when information_schema says it is missing. Safe to run repeatedly
+-- on MySQL 8 and MariaDB.
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'results' AND index_name = 'idx_results_student');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_results_student ON results(student_id)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'results' AND index_name = 'idx_results_term');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_results_term ON results(term_id)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'results' AND index_name = 'idx_results_subject');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_results_subject ON results(subject_id)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'results' AND index_name = 'idx_results_teacher');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_results_teacher ON results(teacher_id)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'results' AND index_name = 'idx_results_approved');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_results_approved ON results(is_approved)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'attendance' AND index_name = 'idx_attendance_student');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_attendance_student ON attendance(student_id, att_date)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'activity_log' AND index_name = 'idx_activity_user');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_activity_user ON activity_log(user_id, logged_at)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'idx_users_role');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_users_role ON users(role, is_active)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'students' AND index_name = 'idx_students_status');
+SET @sql := IF(@idx_exists = 0, 'CREATE INDEX idx_students_status ON students(status)', 'DO 0');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- =====================================================
 -- 19. MIGRATION UPGRADE BLOCKS
@@ -731,7 +761,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE students ADD COLUMN status ENUM(\'active\',\'pending\',\'withdrawn\',\'graduated\') NOT NULL DEFAULT \'active\' AFTER track',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -744,7 +774,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE students ADD COLUMN status_reason VARCHAR(160) NULL AFTER status',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -757,7 +787,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE students ADD COLUMN status_updated_at TIMESTAMP NULL AFTER status_reason',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -776,7 +806,7 @@ SET @idx_exists := (
 );
 SET @sql := IF(@idx_exists = 0,
   'CREATE INDEX idx_students_status ON students(status)',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -790,7 +820,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE class_levels ADD COLUMN is_junior BOOLEAN NOT NULL DEFAULT FALSE AFTER level_name',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -803,7 +833,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE class_levels ADD COLUMN sort_order INT NOT NULL DEFAULT 0 AFTER is_junior',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -825,7 +855,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE arms ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -838,7 +868,7 @@ SET @idx_exists := (
 );
 SET @sql := IF(@idx_exists = 0,
   'CREATE INDEX idx_arms_active ON arms(is_active)',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -852,7 +882,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 1,
   'ALTER TABLE results MODIFY ca_score DECIMAL(5,2) DEFAULT 0',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -865,7 +895,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 1,
   'ALTER TABLE results MODIFY exam_score DECIMAL(5,2) DEFAULT 0',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -880,7 +910,7 @@ SET @constraint_exists := (
 );
 SET @sql := IF(@constraint_exists = 0,
   'ALTER TABLE results ADD CONSTRAINT chk_results_ca CHECK (ca_score >= 0 AND ca_score <= 100)',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -895,7 +925,7 @@ SET @constraint_exists := (
 );
 SET @sql := IF(@constraint_exists = 0,
   'ALTER TABLE results ADD CONSTRAINT chk_results_exam CHECK (exam_score >= 0 AND exam_score <= 100)',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -907,7 +937,7 @@ SET @col_exists := (
 );
 SET @sql := IF(@col_exists = 0,
   'ALTER TABLE users ADD COLUMN session_version INT NOT NULL DEFAULT 0',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -924,7 +954,7 @@ SET @sql := IF(@col_exists = 0,
      ADD COLUMN test2_score      DECIMAL(5,2) NULL DEFAULT NULL AFTER assignment_score,
      ADD COLUMN project_score    DECIMAL(5,2) NULL DEFAULT NULL AFTER test2_score,
      ADD COLUMN note_score       DECIMAL(5,2) NULL DEFAULT NULL AFTER project_score',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
@@ -938,7 +968,7 @@ SET @sql := IF(@c = 0,
      (test2_score      IS NULL OR (test2_score      >= 0 AND test2_score      <= 5))  AND
      (project_score    IS NULL OR (project_score    >= 0 AND project_score    <= 5))  AND
      (note_score       IS NULL OR (note_score       >= 0 AND note_score       <= 5)))',
-  'SELECT 1'
+  'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
