@@ -38,9 +38,11 @@ Design notes:
   layout data (grouped by block/paragraph/line, ordered left-to-right) rather
   than matched against a rigid line-level regex.
 """
+import os
 import sys
 import json
 import re
+import shutil
 import difflib
 
 try:
@@ -51,6 +53,32 @@ try:
 except ImportError as e:
     print(json.dumps({"error": f"Missing Python dependency: {e}. Run: uv sync"}))
     sys.exit(1)
+
+def locate_tesseract(environ=None, which=shutil.which, isfile=os.path.isfile):
+    """Where is tesseract.exe? The Windows installer does not put Tesseract on
+    PATH, so the scanner would otherwise fail with "not installed" even though
+    it is. Order: the TESSERACT_CMD setting; PATH (return None = pytesseract's
+    default lookup, so Linux/macOS behave exactly as before); then the standard
+    Windows install folders. Returns a path, or None to use the default."""
+    env = os.environ if environ is None else environ
+    explicit = (env.get("TESSERACT_CMD") or "").strip().strip('"')
+    if explicit:
+        return explicit
+    if which("tesseract"):
+        return None
+    folders = [os.path.join(env[k], "Tesseract-OCR") for k in ("ProgramFiles", "ProgramFiles(x86)") if env.get(k)]
+    if env.get("LOCALAPPDATA"):
+        folders.append(os.path.join(env["LOCALAPPDATA"], "Programs", "Tesseract-OCR"))
+    for folder in folders:
+        candidate = os.path.join(folder, "tesseract.exe")
+        if isfile(candidate):
+            return candidate
+    return None
+
+
+_tesseract_path = locate_tesseract()
+if _tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = _tesseract_path
 
 # Common OCR digit/letter confusions, applied only when trying a fallback
 # match for a token that didn't match the roster exactly.
@@ -484,7 +512,7 @@ def main():
             try:
                 lines = extract_words(image, psm=psm)
             except pytesseract.TesseractNotFoundError:
-                print(json.dumps({"error": "Tesseract is not installed on this server. Ask an administrator to install tesseract-ocr."}))
+                print(json.dumps({"error": "Tesseract is not installed on this server (or is not on PATH). Ask an administrator to install tesseract-ocr, or set TESSERACT_CMD in backend/.env to the full path of tesseract.exe."}))
                 sys.exit(1)
             except Exception as e:
                 if not best_rows and psm == 6:
