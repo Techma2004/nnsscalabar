@@ -48,7 +48,7 @@ export function managementCard(role) {
   const actions = [['accounts', 'userplus', 'Create an account'], ['announcements', 'bell', 'Publish a notice'], ['requests', 'swap', 'Change requests'], ['sheets', 'document', 'Class score sheets'], ['students', 'users', 'Students'], ['teachers', 'idbadge', 'Teachers']];
   return C.card('Needs your attention', todo([
     { count: a.pending_requests || 0, title: 'Student change requests waiting', hint: 'Arm and subject changes students have asked for.', go: 'requests', cta: 'Review' },
-    { count: a.staff_missing_phone || 0, title: 'Staff accounts with no phone number', hint: 'Open each profile and add a number so staff can be reached.', go: 'teachers', cta: 'Fix' },
+    { count: a.staff_missing_phone || 0, title: 'Teachers with no phone number', hint: 'Open each profile and add a number so teachers can be reached.', go: 'teachers', cta: 'Fix' },
     { count: a.students_missing_guardian_phone || 0, title: 'Students with no guardian phone number', hint: 'Open each profile and add the parent or guardian number.', go: 'students', cta: 'Fix' }
   ])) + C.card('Quick actions', `<div class="portal-actions">${actions.map(([go, icon, label]) => `<button class="btn btn-secondary" data-go="${go}">${C.ic(icon, 15)} ${label}</button>`).join('')}${role === 'commandant' || role === 'admin' ? `<button class="btn btn-secondary" data-go="content">${C.ic('newspaper', 15)} Blog &amp; newsletter</button>` : ''}</div>`);
 }

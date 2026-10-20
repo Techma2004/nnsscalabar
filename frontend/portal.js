@@ -260,7 +260,7 @@ function renderDepartments(){
   const subjectRows=d.subjects.map(x=>`<tr><td><strong>${esc(x.subject_name)}</strong>${x.is_active?'':' <span class="portal-badge danger">Not offered</span>'}</td><td>${esc((x.tracks||[]).join(', ')||'—')}</td><td>${x.ca_max} / ${x.exam_max}</td><td>${x.result_count}</td></tr>`).join('');
   const classRows=d.classes.map(x=>`<tr><td>${esc(x.class_name)} ${esc(x.arm_name)}</td><td>${x.student_count}</td><td>${x.avg_score!=null?`${x.avg_score}%`:'—'}</td></tr>`).join('');
   const totalGraded=d.grade_distribution.reduce((a,g)=>a+g.n,0);
-  const gradeBars=totalGraded?d.grade_distribution.map(g=>`<div class="portal-kpi"><span><strong>${esc(g.grade)}</strong></span><span style="flex:1;margin:0 1rem"><span class="portal-progress"><span style="width:${Math.round(g.n/totalGraded*100)}%"></span></span></span><span>${g.n} (${Math.round(g.n/totalGraded*100)}%)</span></div>`).join(''):'<p style="color:var(--text-secondary)">No approved results yet.</p>';
+  const gradeBars=totalGraded?d.grade_distribution.map(g=>`<div class="portal-kpi"><span><strong>${esc(g.grade)}</strong>${g.is_junior?' <small>JSS</small>':''}</span><span style="flex:1;margin:0 1rem"><span class="portal-progress"><span style="width:${Math.round(g.n/totalGraded*100)}%"></span></span></span><span>${g.n} (${Math.round(g.n/totalGraded*100)}%)</span></div>`).join(''):'<p style="color:var(--text-secondary)">No approved results yet.</p>';
   const backBtn=canSeeAll?`<button class="btn btn-secondary btn-auto" id="deptBack">All departments</button>`:'';
 
   return `<div class="portal-toolbar"><div><div class="eyebrow">${canSeeAll?'Department':'My department'}</div><h1>${esc(d.department.dept_name)}</h1><p>${esc(d.department.description||'Subjects, staff and performance for this department.')}</p></div>${backBtn}</div>
@@ -295,7 +295,7 @@ function renderClassesArms(){
   const ARM_TYPES=['junior','science','technical','arts'];
   const classRows=state.classesArms.classes.map(c=>`<tr><td><strong>${esc(c.level_name)}</strong></td><td>${c.is_junior?'<span class="portal-badge">Junior</span>':'<span class="portal-badge">Senior</span>'}</td><td>${c.student_count}</td><td class="portal-actions"><button class="btn btn-secondary btn-sm" data-edit-class="${c.id}">Rename</button><button class="btn btn-danger btn-sm" data-delete-class="${c.id}" data-name="${esc(c.level_name)}" data-count="${c.student_count}">Delete</button></td></tr>`).join('');
   const armRows=state.classesArms.arms.map(a=>`<tr><td><strong>${esc(a.arm_name)}</strong>${a.is_active?'':' <span class="portal-badge danger">Inactive</span>'}<br><small>${esc(a.category||'—')}</small></td><td>${esc(a.arm_type)}</td><td>${a.student_count}</td><td class="portal-actions"><button class="btn btn-secondary btn-sm" data-edit-arm="${a.id}">Edit</button><button class="btn btn-sm ${a.is_active?'btn-secondary':'btn-primary'}" data-toggle-arm="${a.id}" data-active="${a.is_active?'1':'0'}">${a.is_active?'Deactivate':'Reactivate'}</button><button class="btn btn-danger btn-sm" data-delete-arm="${a.id}" data-name="${esc(a.arm_name)}" data-count="${a.student_count}">Delete</button></td></tr>`).join('');
-  const addClass=`<div class="portal-form-grid"><div class="form-group"><label>Class name</label><input id="newClassName" maxlength="20" placeholder="e.g. SS4"></div><div class="form-group" style="align-self:end"><label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-weight:500"><input type="checkbox" id="newClassJunior" style="width:auto"> Junior class (uses the junior curriculum)</label></div><div class="full"><button class="btn btn-primary" id="addClassBtn">Add class</button></div></div>`;
+  const addClass=`<div class="portal-form-grid"><div class="form-group"><label>Class name</label><input id="newClassName" maxlength="20" placeholder="e.g. JSS3"></div><div class="form-group" style="align-self:end"><label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-weight:500"><input type="checkbox" id="newClassJunior" style="width:auto"> Junior class (uses the junior curriculum)</label></div><div class="full"><button class="btn btn-primary" id="addClassBtn">Add class</button></div></div>`;
   const addArm=`<div class="portal-form-grid"><div class="form-group"><label>Arm name</label><input id="newArmName" maxlength="30" placeholder="e.g. OBUDU"></div><div class="form-group"><label>Track</label><select id="newArmType">${ARM_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div><div class="form-group full"><label>Category (optional)</label><input id="newArmCategory" maxlength="50" placeholder="e.g. Senior Science"></div><div class="full"><button class="btn btn-primary" id="addArmBtn">Add arm</button></div></div>`;
   return `<div class="portal-toolbar"><div><div class="eyebrow">School structure</div><h1>Classes & Arms</h1><p>Add, rename or retire classes and arms as the school reorganises. Arms in use are deactivated rather than deleted so existing records stay intact.</p></div></div>
     ${card('Add a class',addClass)}
@@ -361,7 +361,8 @@ function renderResults(){
   const rows=state.results.map((r,i)=>{
     return `<tr><td>${i+1}</td><td><strong>${esc(r.student_name)}</strong><br><small>${esc(r.student_code)}</small></td><td>${esc(r.subject_name)}</td><td>${esc(r.term_name)}<br><small>${esc(r.session_name)}</small></td><td>${r.ca_score}</td><td>${r.exam_score}</td><td><strong>${r.total_score}</strong></td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${r.is_approved?'<span class="portal-badge ok">Approved</span>':'<span class="portal-badge pending">Pending</span>'}</td></tr>`;
   }).join('');
-  const headers = ['#','Student','Subject','Term','CA /40','Exam /60','Total','Grade','Status'];
+  // Maxima mirror backend/scheme.js: CA 30% + Exam 70%.
+  const headers = ['#','Student','Subject','Term','CA /30','Exam /70','Total','Grade','Status'];
   return `<div class="portal-toolbar"><div><div class="eyebrow">Academic oversight</div><h1>Results</h1><p>Every submitted result across the school, most recent first.</p></div>${searchBox('results','Search by student, code or subject…')}</div>${card('All results',table(headers,rows,'No results match this search.')+truncatedNote(state.resultsTruncated,'results'))}`;
 }
 // A student's own results used to be one flat admin-style table with a
@@ -405,7 +406,8 @@ function renderReportCards(){
       ['Position in arm',st?.position?`${ordinal(st.position)} of ${st.arm_size}`:null,opts.position],
       ['Subjects passed',`${passes}/${count}`,opts.passes]
     ].filter(([,v,on])=>on && v!==null && v!==undefined).map(([l,v])=>`<span>${esc(l)}<strong>${esc(v)}</strong></span>`).join('');
-    const headers=['Subject','1st Test /15','Quiz /5','Assign. /5','CA1 /25','2nd Test /5','Project /5','Note /5','CA2 /15','Exam /60','Total /100',...(showSub?['Arm avg']:[]),'Grade','Remark'];
+    // Maxima mirror backend/scheme.js: CA 30 (15 + 15) + Exam 70 = 100.
+    const headers=['Subject','1st Test /10','Quiz /2','Assign. /3','CA1 /15','2nd Test /10','Project /3','Note /2','CA2 /15','Exam /70','Total /100',...(showSub?['Arm avg']:[]),'Grade','Remark'];
     return `<section class="report-card">
       <div class="report-card-head"><h2>Nigerian Navy Secondary School Akpabuyo Calabar</h2><p>Termly Report Card</p></div>
       <div class="report-card-bio">

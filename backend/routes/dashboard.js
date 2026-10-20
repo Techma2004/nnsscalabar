@@ -86,7 +86,12 @@ router.get('/attention', async (req, res) => {
       }
       const reqScope = deptId ? "AND (cr.request_type='arm' OR sub.dept_id=?)" : '';
       const [[reqs]] = await db.query(`SELECT COUNT(*) n FROM change_requests cr LEFT JOIN subjects sub ON sub.id=cr.subject_id WHERE cr.status='pending' ${reqScope}`, deptId ? [deptId] : []);
-      const [[staffNoPhone]] = await db.query(`SELECT COUNT(*) n FROM users u ${deptId ? 'JOIN teachers t ON t.user_id=u.id AND t.dept_id=?' : ''} WHERE u.is_active=1 AND (u.phone IS NULL OR u.phone='') AND u.role IN ('teacher','hod','admin','commandant','editor')`, deptId ? [deptId] : []);
+      // Count exactly the people the Teachers page lists (rows in `teachers`), so the
+      // number on the dashboard always matches what "See teachers" shows. Admin,
+      // commandant and editor accounts are not in that directory, and the seeded
+      // administrator has no phone, so counting them produced a phantom "1" that
+      // nobody could find or fix.
+      const [[staffNoPhone]] = await db.query(`SELECT COUNT(*) n FROM users u JOIN teachers t ON t.user_id=u.id ${deptId ? 'AND t.dept_id=?' : ''} WHERE u.is_active=1 AND (u.phone IS NULL OR TRIM(u.phone)='')`, deptId ? [deptId] : []);
       let studentsNoPhone = null;
       if (!deptId) {
         const [[r]] = await db.query(`SELECT COUNT(*) n FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1 AND s.status IN ('active','repeating') AND (s.parent_phone IS NULL OR s.parent_phone='')`);
@@ -165,7 +170,7 @@ router.get('/commandant-summary', async (req, res) => {
         FROM results WHERE term_id=?`, [tid]),
       db.query(`SELECT COUNT(*) total, ROUND(AVG(total_score),1) average, ROUND(SUM(total_score>=50)/NULLIF(COUNT(*),0)*100,1) pass_rate
         FROM results WHERE term_id=? AND is_approved=1`, [tid]),
-      db.query('SELECT grade, COUNT(*) n FROM results WHERE term_id=? AND is_approved=1 GROUP BY grade', [tid]),
+      db.query('SELECT is_junior, grade, COUNT(*) n FROM results WHERE term_id=? AND is_approved=1 GROUP BY is_junior, grade', [tid]),
       db.query(`SELECT cl.id AS class_level_id, cl.level_name AS class_name, a.arm_name, COUNT(DISTINCT s.id) students_scored, COUNT(r.id) results,
           ROUND(AVG(r.total_score),1) avg_score, ROUND(SUM(r.total_score>=50)/COUNT(*)*100,1) pass_rate
         FROM results r JOIN students s ON s.id=r.student_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
@@ -194,7 +199,7 @@ router.get('/commandant-summary', async (req, res) => {
       headcount: { students: heads.total, teachers: tch.total, hods: hods.total, departments: depts.total },
       pipeline: { total: num(pipe.total), approved: num(pipe.approved), pending: num(pipe.pending), rejected: num(pipe.rejected) },
       performance: { results: num(perf.total), average: num(perf.average), pass_rate: num(perf.pass_rate) },
-      grades: gradeRows.map(g => ({ grade: g.grade, n: num(g.n) })),
+      grades: gradeRows.map(g => ({ grade: g.grade, is_junior: !!g.is_junior, n: num(g.n) })),
       classes: classRows.map(c => ({ ...c, students_scored: num(c.students_scored), results: num(c.results), avg_score: num(c.avg_score), pass_rate: num(c.pass_rate) })),
       departments: deptRows.map(d => ({ ...d, results: num(d.results), approved: num(d.approved), pending: num(d.pending), avg_score: num(d.avg_score), pass_rate: num(d.pass_rate) })),
       sheets: { counts: sheetCounts, behind },

@@ -19,7 +19,12 @@ export async function loadScheme() { if (!scheme) scheme = await getScheme(); re
 const $ = s => document.querySelector(s);
 const FIELDS = () => [...scheme.components.map(c => c.key), 'exam'];
 const maxOf = key => (key === 'exam' ? scheme.exam_max : scheme.components.find(c => c.key === key).max);
-const gradeOf = total => (scheme.grade_scale.find(g => total >= g.min) || scheme.grade_scale[scheme.grade_scale.length - 1]);
+// The scale follows the class this sheet is for: Junior Secondary uses A/C/P/F,
+// Senior Secondary uses the WAEC A1-F9 scale.
+const gradeOf = total => {
+  const scale = view.sheet?.header?.is_junior ? scheme.grade_scales.jss : scheme.grade_scales.sss;
+  return scale.find(g => total >= g.min) || scale[scale.length - 1];
+};
 const r2 = n => Math.round(n * 100) / 100;
 const fmt = v => (v === null || v === undefined || v === '' ? '' : String(v));
 const STATE_LABEL = { none: 'Not entered', pending: 'Awaiting HOD', approved: 'Approved', rejected: 'Sent back' };
