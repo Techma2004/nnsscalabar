@@ -74,6 +74,8 @@ function readPost(body) {
   if (text.length > 8000) return { error: 'The post text is too long (8,000 characters at most).' };
   if (image && !IMAGE_FILE_RE.test(image)) return { error: 'Choose a picture from the list, or upload one.' };
   if (date === undefined) return { error: 'Enter a valid date.' };
+  // Pictures belong to the blog only; a newsletter post never carries one.
+  if (kind !== 'blog') image = null;
   return { value: { kind, title, body: text, image_url: image, event_date: (date || new Date().toISOString().slice(0, 10)).slice(0, 10), status } };
 }
 

@@ -11,9 +11,12 @@
  * so the importer can match students without relying on spelling):
  *
  *   A S/NO | B STUDENT ID | C STUDENTS NAME |
- *   D 1ST TEST (15%) | E QUIZ (5%) | F ASSIGNMENT (5%) | G TOTAL |
- *   H 2ND TEST (5%) | I PROJECT (5%) | J NOTE (5%) | K TOTAL |
- *   L EXAM (60%) | M TERM'S TOTAL | N GRADE
+ *   D 1ST TEST | E QUIZ | F ASSIGNMENT | G TOTAL |
+ *   H 2ND TEST | I PROJECT | J NOTE | K TOTAL |
+ *   L EXAM (70) | M TERM'S TOTAL | N GRADE
+ *
+ * (The marks each column is out of come from scheme.js: CA 30 + Exam 70.)
+ * The GRADE column follows the LEVEL cell: JSS uses A/C/P/F, SSS uses A1-F9.
  */
 const ExcelJS = require('exceljs');
 const scheme = require('./scheme');
@@ -42,14 +45,24 @@ const FILL_INPUT = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8
 const FILL_CALC = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDEFF3' } };
 const FILL_HEAD = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0A1628' } };
 
+// Where the JSS / SSS choice lives on the sheet (absolute, so every row can use it).
+const LEVEL_CELL = '$M$3';
+const LEVELS = ['SSS', 'JSS'];
+
+// Builds a nested IF from a scheme scale, e.g. IF(x>=75,"A1",IF(x>=70,"B2",...,"F9")).
+function nestedIf(cell, scale) {
+  const tiers = scale.slice(0, -1);
+  const last = scale[scale.length - 1].grade;
+  return tiers.reduceRight((inner, g) => `IF(${cell}>=${g.min},"${g.grade}",${inner})`, `"${last}"`);
+}
 function gradeFormula(cell) {
-  // Mirrors scheme.GRADE_SCALE / the database's generated `grade` column.
-  return `IF(${cell}="","",IF(${cell}>=75,"A1",IF(${cell}>=70,"B2",IF(${cell}>=65,"B3",IF(${cell}>=60,"C4",IF(${cell}>=55,"C5",IF(${cell}>=50,"C6",IF(${cell}>=45,"D7",IF(${cell}>=40,"E8","F9")))))))))`;
+  // Mirrors scheme.SSS_SCALE / scheme.JSS_SCALE and the database's generated `grade` column.
+  return `IF(${cell}="","",IF(${LEVEL_CELL}="JSS",${nestedIf(cell, scheme.JSS_SCALE)},${nestedIf(cell, scheme.SSS_SCALE)}))`;
 }
 
 /**
  * @param {object} opts
- * @param {object} [opts.header]   { class_name, arm_name, term_name, session_name, subject_name, form_teacher }
+ * @param {object} [opts.header]   { class_name, arm_name, term_name, session_name, subject_name, form_teacher, is_junior }
  * @param {Array}  [opts.rows]     [{ user_code, full_name, scores:{test1..exam} }]
  * @param {number} [opts.blankRows] rows to provide when no roster is given (template)
  */
@@ -90,13 +103,15 @@ async function buildWorkbook({ header = {}, rows = [], blankRows = DEFAULT_BLANK
   };
   info('A3', 'B3:C3', 'CLASS:', classLabel);
   info('D3', 'E3:G3', 'TERM:', header.term_name || '');
-  info('H3', 'I3:N3', 'FORM TEACHER:', header.form_teacher || '');
+  info('H3', 'I3:K3', 'FORM TEACHER:', header.form_teacher || '');
+  info('L3', 'M3:N3', 'LEVEL:', header.is_junior ? 'JSS' : 'SSS');
+  ws.getCell('M3').dataValidation = { type: 'list', allowBlank: false, formulae: [`"${LEVELS.join(',')}"`], showErrorMessage: true, errorTitle: 'Level', error: 'Choose JSS or SSS.' };
   info('A4', 'B4:C4', 'NO IN CLASS:', rows.length ? rows.length : '');
   info('D4', 'E4:G4', 'SESSION:', header.session_name || '');
   info('H4', 'I4:N4', 'SUBJECT:', header.subject_name || '');
 
   ws.mergeCells(`A5:${lastCol}5`);
-  ws.getCell('A5').value = 'Fill the yellow cells only (leave a row blank for a student who sat nothing). Student ID is optional - if it is left blank the importer matches by name. Totals and grade calculate themselves.';
+  ws.getCell('A5').value = 'Fill the yellow cells only (leave a row blank for a student who sat nothing). Student ID is optional - if it is left blank the importer matches by name. Totals and grade calculate themselves (choose JSS or SSS in the LEVEL box so the right grading scale is used).';
   ws.getCell('A5').font = { italic: true, size: 9, color: { argb: 'FF5B6577' } };
   ws.getCell('A5').alignment = { wrapText: true, vertical: 'middle' };
   ws.getRow(5).height = 26;
@@ -104,9 +119,9 @@ async function buildWorkbook({ header = {}, rows = [], blankRows = DEFAULT_BLANK
   // ---- column titles (same wording as the paper sheet) ----
   const titles = {
     sn: 'S/NO', id: 'STUDENT ID (optional)', name: 'STUDENTS NAME',
-    test1: '1ST TEST (15%)', quiz: 'QUIZ (5%)', assignment: 'ASSIGNMENT (5%)', ca1: 'TOTAL',
-    test2: '2ND TEST (5%)', project: 'PROJECT (5%)', note: 'NOTE (5%)', ca2: 'TOTAL',
-    exam: 'EXAM (60%)', total: "TERM'S TOTAL", grade: 'GRADE'
+    test1: `1ST TEST (${MAX_BY_KEY.test1})`, quiz: `QUIZ (${MAX_BY_KEY.quiz})`, assignment: `ASSIGNMENT (${MAX_BY_KEY.assignment})`, ca1: `TOTAL (${scheme.GROUPS.ca1.max})`,
+    test2: `2ND TEST (${MAX_BY_KEY.test2})`, project: `PROJECT (${MAX_BY_KEY.project})`, note: `NOTE (${MAX_BY_KEY.note})`, ca2: `TOTAL (${scheme.GROUPS.ca2.max})`,
+    exam: `EXAM (${scheme.EXAM_MAX})`, total: `TERM'S TOTAL (${scheme.TOTAL_MAX})`, grade: 'GRADE'
   };
   const headerRow = ws.getRow(HEADER_ROW);
   headerRow.height = 48;

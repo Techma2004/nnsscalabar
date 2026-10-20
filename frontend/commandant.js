@@ -8,7 +8,9 @@ let C = null;
 export function init(ctx) { C = ctx; }
 
 const v = (n, suffix = '') => (n === null || n === undefined ? '—' : `${n}${suffix}`);
-const GRADE_ORDER = ['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'];
+// Two scales: Senior Secondary uses WAEC A1-F9, Junior Secondary uses A / C / P / F.
+const SSS_GRADES = ['A1', 'B2', 'B3', 'C4', 'C5', 'C6', 'D7', 'E8', 'F9'];
+const JSS_GRADES = ['A', 'C', 'P', 'F'];
 const SHEET_LABEL = { not_started: 'Not started', in_progress: 'In progress', submitted: 'Awaiting HOD', approved: 'Approved' };
 
 export async function loadSummary(termId) {
@@ -38,8 +40,11 @@ export function renderDashboard() {
   const s = C.state.cmdSummary;
   if (!s || !s.term) return emptyState();
   const p = s.pipeline, perf = s.performance, h = s.headcount, sh = s.sheets.counts;
-  const gradeMap = Object.fromEntries(s.grades.map(g => [g.grade, g.n]));
-  const gradeMax = Math.max(1, ...GRADE_ORDER.map(g => gradeMap[g] || 0));
+  const gradeDist = (title, order, junior) => {
+    const m = Object.fromEntries(s.grades.filter(g => g.is_junior === junior).map(g => [g.grade, g.n]));
+    if (!order.some(g => m[g])) return '';
+    return `<h4 style="margin:.2rem 0 .4rem">${title}</h4>${bars(order.map(g => [g, m[g] || 0]), Math.max(1, ...order.map(g => m[g] || 0)))}`;
+  };
   const pctSheets = sh.total ? Math.round(sh.approved / sh.total * 100) : 0;
   const pipeTotal = Math.max(1, p.total);
   const behind = s.sheets.behind.map(b => `<div class="ai-note-row"><div><strong>${C.esc(b.class_name)} ${C.esc(b.arm_name)} · ${C.esc(b.subject_name)}</strong><br><small>${C.esc(b.teacher_name)} · ${b.entered}/${b.roster_count} entered · ${SHEET_LABEL[b.status]}</small></div></div>`).join('') || '<p style="color:var(--text-secondary)">Every sheet is under way or finished.</p>';
@@ -55,7 +60,7 @@ export function renderDashboard() {
       ${C.card('Class sheet progress', `<div class="portal-kpi"><span>Sheets fully approved</span><strong>${sh.approved} of ${sh.total}</strong></div><div class="portal-progress"><span style="width:${pctSheets}%"></span></div>
         <div class="sheet-statusline" style="margin-top:.8rem"><span class="portal-badge ok">${sh.approved} approved</span><span class="portal-badge pending">${sh.submitted} awaiting HOD</span><span class="portal-badge pending">${sh.in_progress} in progress</span><span class="portal-badge danger">${sh.not_started} not started</span></div>
         <h4 style="margin:1rem 0 .3rem">Furthest behind</h4>${behind}`, `<button class="btn btn-secondary btn-sm" data-go="sheets">All sheets</button>`)}
-      ${C.card('Grade distribution (approved)', s.grades.length ? bars(GRADE_ORDER.map(g => [g, gradeMap[g] || 0]), gradeMax) : '<div class="portal-empty">No approved results yet for this term.</div>')}
+      ${C.card('Grade distribution (approved)', s.grades.length ? gradeDist('Senior Secondary (SSS)', SSS_GRADES, false) + gradeDist('Junior Secondary (JSS)', JSS_GRADES, true) : '<div class="portal-empty">No approved results yet for this term.</div>')}
     </div>
     ${C.card('Top 5 students', C.table(['Rank', 'Student', 'Class', 'Average'], top, 'No approved results yet for this term.'), `<button class="btn btn-secondary btn-sm" data-go="top">Full ranking</button>`)}`;
 }

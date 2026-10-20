@@ -71,6 +71,10 @@ function editor(post) {
 
   const preview = () => { document.getElementById('pPreview').innerHTML = image && !SITE_IMAGES.includes(image) ? `<img class="post-preview" src="${C.esc(image)}" alt="Chosen picture">` : ''; document.querySelectorAll('[data-pick-image]').forEach(b => b.classList.toggle('selected', b.dataset.pickImage === image)); };
   preview();
+  // Only the blog uses a picture. A newsletter post never asks for one.
+  const syncImageGroup = () => { document.getElementById('pImageGroup').hidden = document.getElementById('pKind').value !== 'blog'; };
+  document.getElementById('pKind').addEventListener('change', syncImageGroup);
+  syncImageGroup();
   document.getElementById('pThumbs').onclick = e => { const b = e.target.closest('[data-pick-image]'); if (!b) return; image = b.dataset.pickImage; preview(); };
   document.getElementById('pUpload').onchange = async e => {
     const file = e.target.files?.[0]; e.target.value = '';
@@ -82,7 +86,8 @@ function editor(post) {
     try { const out = await uploadPostImage(await readAsDataUrl(file)); image = out.image_url; note.textContent = 'Picture added.'; preview(); } catch (err) { note.textContent = err.message; }
   };
   document.getElementById('savePost').onclick = async () => {
-    const body = { kind: document.getElementById('pKind').value, title: document.getElementById('pTitle').value.trim(), body: document.getElementById('pBody').value.trim(), image_url: image || null, event_date: document.getElementById('pDate').value || today(), status: document.getElementById('pStatus').value };
+    const kind = document.getElementById('pKind').value;
+    const body = { kind, title: document.getElementById('pTitle').value.trim(), body: document.getElementById('pBody').value.trim(), image_url: kind === 'blog' ? (image || null) : null, event_date: document.getElementById('pDate').value || today(), status: document.getElementById('pStatus').value };
     if (body.title.length < 3) return C.toast('Give the post a title.', 'error');
     if (body.body.length < 10) return C.toast('Write the post text.', 'error');
     const btn = document.getElementById('savePost'); btn.disabled = true;
