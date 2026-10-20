@@ -15,7 +15,7 @@ import { getScheme, getSheet, saveSheet, getAiStatus, aiImportScores } from './a
 let C = null;
 let scheme = null;
 const manual = { params: null, sheet: null };
-const scan = { params: null, roster: [], rows: [], file: null, aiAvailable: null, pdf: false, busy: false };
+const scan = { params: null, roster: [], rows: [], isJunior: false, file: null, aiAvailable: null, pdf: false, busy: false };
 
 export function init(ctx) { C = ctx; }
 export async function loadScheme() { if (!scheme) scheme = await getScheme(); return scheme; }
@@ -25,7 +25,11 @@ const FIELDS = () => [...scheme.components.map(c => c.key), 'exam'];
 const maxOf = key => (key === 'exam' ? scheme.exam_max : scheme.components.find(c => c.key === key).max);
 const labelOf = key => (key === 'exam' ? 'Exam' : scheme.components.find(c => c.key === key).label);
 const r2 = n => Math.round(n * 100) / 100;
-const gradeOf = total => scheme.grade_scale.find(g => total >= g.min) || scheme.grade_scale[scheme.grade_scale.length - 1];
+// Junior Secondary classes grade A/C/P/F; Senior Secondary uses the WAEC A1-F9 scale.
+const gradeOf = total => {
+  const scale = scan.isJunior ? scheme.grade_scales.jss : scheme.grade_scales.sss;
+  return scale.find(g => total >= g.min) || scale[scale.length - 1];
+};
 const fmt = v => (v === null || v === undefined || v === '' ? '' : String(v));
 const STATE_LABEL = { none: 'not entered', pending: 'awaiting HOD', approved: 'approved', rejected: 'sent back' };
 
@@ -98,7 +102,7 @@ export function bindManual() {
     area.innerHTML = '<div class="portal-loading"><span class="loading"></span><p>Opening the class list…</p></div>';
     try {
       await loadScheme();
-      manual.params = params; manual.sheet = await getSheet(params);
+      manual.params = params; manual.sheet = await getSheet(params); scan.isJunior = !!manual.sheet.header?.is_junior;
       drawManual(null);
     } catch (e) { area.innerHTML = `<div class="portal-card"><div class="portal-empty"><h3>Could not open this class</h3><p>${C.esc(e.message)}</p></div></div>`; }
   });
@@ -239,7 +243,7 @@ async function runScan() {
     const [sheet, image] = await Promise.all([getSheet(params), prepareUpload(scan.file)]);
     if (!sheet.can_edit) throw new Error(sheet.locked ? 'This term is locked, so scores cannot be changed.' : 'You cannot edit this sheet.');
     const res = await aiImportScores({ ...params, image });
-    scan.params = params; scan.roster = sheet.students; scan.rosterCount = sheet.students.length;
+    scan.params = params; scan.roster = sheet.students; scan.rosterCount = sheet.students.length; scan.isJunior = !!sheet.header?.is_junior;
     scan.rows = res.rows.map(r => ({ user_code: r.user_code, confidence: r.confidence, note: r.note || '', scanned: true, out_of_range: r.out_of_range || [], values: Object.fromEntries(FIELDS().map(k => [k, fmt(r.scores?.[k])])) }));
     scan.submitted = null;
     drawReview();

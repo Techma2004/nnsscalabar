@@ -49,7 +49,7 @@ async function resolveSheetContext(user, q) {
   }
 
   const [[subject]] = await db.query('SELECT id, subject_name, dept_id, is_active FROM subjects WHERE id=? LIMIT 1', [subjectId]);
-  const [[classLevel]] = await db.query('SELECT id, level_name FROM class_levels WHERE id=? LIMIT 1', [classLevelId]);
+  const [[classLevel]] = await db.query('SELECT id, level_name, is_junior FROM class_levels WHERE id=? LIMIT 1', [classLevelId]);
   const [[arm]] = await db.query('SELECT id, arm_name FROM arms WHERE id=? LIMIT 1', [armId]);
   const [[term]] = await db.query(`SELECT t.id, t.term_name, t.session_id, t.result_locked, ac.session_name
     FROM terms t JOIN academic_sessions ac ON ac.id=t.session_id WHERE t.id=? LIMIT 1`, [termId]);
@@ -135,7 +135,7 @@ async function loadSheet(ctx) {
   return {
     header: {
       school_name: scheme.SCHOOL_NAME,
-      class_level_id: ctx.classLevel.id, class_name: ctx.classLevel.level_name,
+      class_level_id: ctx.classLevel.id, class_name: ctx.classLevel.level_name, is_junior: !!ctx.classLevel.is_junior,
       arm_id: ctx.arm.id, arm_name: ctx.arm.arm_name,
       subject_id: ctx.subject.id, subject_name: ctx.subject.subject_name,
       term_id: ctx.term.id, term_name: ctx.term.term_name,
@@ -202,16 +202,16 @@ async function saveSheetRows(ctx, user, submitted) {
     for (const { student, values } of toSave) {
       const ca = scheme.caTotal(values);
       await conn.query(`INSERT INTO results
-          (student_id, subject_id, term_id, teacher_id, test1_score, quiz_score, assignment_score, test2_score, project_score, note_score, ca_score, exam_score, is_approved)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)
+          (student_id, subject_id, term_id, teacher_id, test1_score, quiz_score, assignment_score, test2_score, project_score, note_score, ca_score, exam_score, is_junior, is_approved)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)
         ON DUPLICATE KEY UPDATE
           test1_score=VALUES(test1_score), quiz_score=VALUES(quiz_score), assignment_score=VALUES(assignment_score),
           test2_score=VALUES(test2_score), project_score=VALUES(project_score), note_score=VALUES(note_score),
-          ca_score=VALUES(ca_score), exam_score=VALUES(exam_score), teacher_id=VALUES(teacher_id),
+          ca_score=VALUES(ca_score), exam_score=VALUES(exam_score), teacher_id=VALUES(teacher_id), is_junior=VALUES(is_junior),
           is_approved=0, approved_by=NULL, approved_at=NULL, rejected_at=NULL, rejected_by=NULL, rejection_note=NULL,
           updated_at=CURRENT_TIMESTAMP`,
         [student.student_id, ctx.subject.id, ctx.term.id, ctx.teacher.id,
-          values.test1, values.quiz, values.assignment, values.test2, values.project, values.note, ca, values.exam]);
+          values.test1, values.quiz, values.assignment, values.test2, values.project, values.note, ca, values.exam, ctx.classLevel.is_junior ? 1 : 0]);
       await conn.query(`INSERT INTO result_approval_log (result_id, action, actor_id, note)
         SELECT r.id, 'revised', ?, ? FROM results r WHERE r.student_id=? AND r.subject_id=? AND r.term_id=?`,
         [user.id, 'Score sheet submitted/revised by teacher', student.student_id, ctx.subject.id, ctx.term.id]);
