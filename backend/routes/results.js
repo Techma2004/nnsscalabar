@@ -201,7 +201,7 @@ router.get('/sheet/export', async (req, res) => {
     const sheet = await sheets.loadSheet(ctx);
     const h = sheet.header;
     const wb = await sheetExcel.buildWorkbook({
-      header: { class_name: h.class_name, arm_name: h.arm_name, term_name: h.term_name, session_name: h.session_name, subject_name: h.subject_name },
+      header: { class_name: h.class_name, arm_name: h.arm_name, term_name: h.term_name, session_name: h.session_name, subject_name: h.subject_name, is_junior: h.is_junior },
       rows: sheet.students.map(s => ({ user_code: s.user_code, full_name: s.full_name, scores: s.scores }))
     });
     const name = [h.class_name, h.arm_name, h.subject_name, h.term_name, h.session_name].map(safeFile).filter(Boolean).join('-');

@@ -416,7 +416,7 @@ router.post('/subjects', requireManagement, async (req, res) => {
   const subject_name = String(req.body?.subject_name || '').trim();
   const dept_id = Number(req.body?.dept_id) || null;
   // Every subject is scored on the school's Continuous Assessment Sheet
-  // (CA 40 = 15+5+5+5+5+5, Exam 60), so the split is fixed rather than editable.
+  // (CA 30 = 10+2+3 and 10+3+2, Exam 70), so the split is fixed rather than editable.
   const ca_max = scheme.CA_MAX;
   const exam_max = scheme.EXAM_MAX;
   if (!subject_name || subject_name.length < 2 || subject_name.length > 100) return res.status(400).json({ error: 'Subject name must be 2-100 characters.' });
@@ -587,8 +587,8 @@ router.get('/departments/:deptId', requireStaffReference, async (req, res) => {
       db.query(`SELECT COUNT(*) total, COUNT(CASE WHEN r.is_approved=1 THEN 1 END) approved,
         COUNT(CASE WHEN r.is_approved=0 THEN 1 END) pending, ROUND(AVG(CASE WHEN r.is_approved=1 THEN r.total_score END),1) avg_score
         FROM results r JOIN subjects s ON s.id=r.subject_id WHERE s.dept_id=?`, [deptId]),
-      db.query(`SELECT r.grade, COUNT(*) AS n FROM results r JOIN subjects s ON s.id=r.subject_id
-        WHERE s.dept_id=? AND r.is_approved=1 GROUP BY r.grade ORDER BY r.grade`, [deptId]).then(r => r[0]),
+      db.query(`SELECT r.grade, r.is_junior, COUNT(*) AS n FROM results r JOIN subjects s ON s.id=r.subject_id
+        WHERE s.dept_id=? AND r.is_approved=1 GROUP BY r.is_junior, r.grade ORDER BY r.is_junior, r.grade`, [deptId]).then(r => r[0]),
       db.query(`SELECT cl.level_name AS class_name, a.arm_name, COUNT(DISTINCT st.id) AS student_count,
         ROUND(AVG(CASE WHEN r.is_approved=1 THEN r.total_score END),1) AS avg_score
         FROM results r JOIN subjects s ON s.id=r.subject_id JOIN students st ON st.id=r.student_id
@@ -885,6 +885,15 @@ router.patch('/classes/:classId', requireManagement, async (req, res) => {
   try {
     const [result] = await db.query(`UPDATE class_levels SET ${fields.join(', ')} WHERE id=?`, params);
     if (!result.affectedRows) return res.status(404).json({ error: 'Class not found.' });
+    // A result is graded on the scale (JSS or SSS) of the class it was entered for.
+    // If this class was switched between Junior and Senior, bring this session's
+    // results for its current students onto the right scale. Earlier sessions are
+    // history and keep the scale they were earned under.
+    if (req.body?.is_junior != null) {
+      await db.query(`UPDATE results r JOIN students s ON s.id=r.student_id JOIN terms t ON t.id=r.term_id
+        JOIN academic_sessions ac ON ac.id=t.session_id SET r.is_junior=? WHERE s.class_level_id=? AND ac.is_current=1`,
+        [req.body.is_junior ? 1 : 0, classId]);
+    }
     res.json({ message: 'Class updated.' });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A class with this name already exists.' });
