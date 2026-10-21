@@ -4,7 +4,7 @@ A web-based school management platform and public website for Nigerian Navy Seco
 
 > **Before real school use:** replace sample/demo records with verified school data, review account permissions and school workflows, configure HTTPS, and establish database backups. Do not use real student information over plain HTTP.
 
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
 ## Documentation
 
@@ -72,7 +72,7 @@ The application is served from one origin. For local development, the default ad
 
 ### Optional: score-sheet OCR
 
-- Python 3.10+.
+- Python 3.11+.
 - [uv](https://docs.astral.sh/uv/).
 - Tesseract OCR and its English language data.
 - PDF scanning additionally uses the Python dependencies declared by this repository.
