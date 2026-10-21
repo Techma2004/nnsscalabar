@@ -6,8 +6,8 @@ Invoked by backend/routes/results.js as a subprocess:
     uv run ocr_score_sheet.py <image_path>
 with the real class roster (and the score limits) piped to stdin as JSON:
     {"roster": {"STU2024001": "Jane Doe", ...},
-     "limits": {"test1": 10, "quiz": 2, "assignment": 3, "test2": 10,
-                "project": 3, "note": 2, "exam": 70}}
+     "limits": {"test1": 5, "quiz": 5, "assignment": 5, "test2": 5,
+                "project": 5, "note": 5, "exam": 70}}
 (A bare {"STU2024001": "Jane Doe", ...} roster is still accepted.)
 
 It reads the school's Continuous Assessment Sheet, whose columns are
@@ -17,7 +17,7 @@ Prints a single JSON object to stdout:
     {
       "rows": [
         {"user_code": "...", "full_name": "...",
-         "scores": {"test1": 12, "quiz": 4, "assignment": 5, "test2": 4,
+         "scores": {"test1": 4, "quiz": 4, "assignment": 5, "test2": 4,
                     "project": 5, "note": 3, "exam": 48},
          "confidence": 0.93, "note": ""}
       ],
@@ -91,7 +91,7 @@ _CONFUSIONS = [
 NUMERIC_RE = re.compile(r"^\d{1,3}(?:[.,]\d{1,2})?$")
 
 SCORE_KEYS = ["test1", "quiz", "assignment", "test2", "project", "note", "exam"]
-DEFAULT_LIMITS = {"test1": 10, "quiz": 2, "assignment": 3, "test2": 10, "project": 3, "note": 2, "exam": 70}
+DEFAULT_LIMITS = {"test1": 5, "quiz": 5, "assignment": 5, "test2": 5, "project": 5, "note": 5, "exam": 70}
 NAME_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z.'-]*$")
 
 

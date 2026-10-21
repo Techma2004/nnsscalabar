@@ -56,7 +56,7 @@ router.get('/', async (req, res) => {
   let searchClause = '';
   if (q) { searchClause = 'AND (u.full_name LIKE ? OR u.user_code LIKE ? OR s.admission_no LIKE ?)'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
-    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,u.is_active,s.id AS student_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
+    const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,u.is_active,s.id AS student_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,
       cl.level_name AS class,a.arm_name AS arm,s.track,s.status,s.status_reason,s.status_updated_at
       FROM students s JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
       WHERE 1=1 ${statusClause} ${searchClause} ORDER BY cl.id,a.arm_name,u.full_name LIMIT 500`, params);
@@ -93,7 +93,7 @@ router.get('/:studentCode', async (req, res) => {
   if (!/^[A-Z0-9_-]{3,20}$/.test(code)) return res.status(400).json({ error: 'Invalid student code format. Must be 3-20 characters using letters, numbers, _ or -.' });
   if (req.user.role === 'student' && req.user.user_code !== code) return res.status(403).json({ error: 'Forbidden.' });
   try {
-    const [[student]] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,s.id AS student_id,s.class_level_id,s.arm_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,s.is_boarder,
+    const [[student]] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.gender,u.email,s.id AS student_id,s.class_level_id,s.arm_id,s.admission_no,s.date_of_birth,s.parent_name,s.parent_phone,
       cl.level_name AS class,a.arm_name AS arm,s.track FROM students s JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id WHERE u.user_code=? AND u.is_active=1 LIMIT 1`, [code]);
     if (!student) return res.status(404).json({ error: 'Student not found.' });
     if (!await canAccessStudent(req.user, student)) return res.status(403).json({ error: 'You are not assigned to this student.' });
