@@ -482,10 +482,10 @@ uv --version
 
 ### 9.3 Alternative: plain Python instead of uv
 
-Only if uv genuinely cannot be installed. Install Python 3.10+ from <https://www.python.org/downloads/> (tick **"Add python.exe to PATH"**), then:
+Only if uv genuinely cannot be installed. Install Python 3.11+ from <https://www.python.org/downloads/> (tick **"Add python.exe to PATH"**), then:
 
 ```powershell
-python -m pip install pytesseract Pillow opencv-python-headless numpy pypdfium2
+python -m pip install pytesseract "Pillow>=13.0.0" opencv-python-headless numpy pypdfium2
 ```
 
 and set in `backend\.env`:

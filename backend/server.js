@@ -6,6 +6,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const db = require('./db');
+const { syncResultScales } = require('./gradeScale');
 const { routeLimiter, parseCookies, originGuard, securityHeaders } = require('./middleware/security');
 
 const app = express();
@@ -166,7 +167,7 @@ app.use((err,_req,res,next)=>{
   res.status(status).json({error:message});
 });
 function getLanAddresses(){const nets=os.networkInterfaces();const addresses=[];for(const name of Object.keys(nets))for(const net of nets[name]||[])if(net.family==='IPv4'&&!net.internal)addresses.push(net.address);return addresses;}
-const server=app.listen(PORT,HOST,async()=>{try{await db.query('SELECT 1');console.log('Database connection: OK');}catch(err){console.error('Database connection failed:',err.message);}console.log(`NNSS Calabar server listening on http://localhost:${PORT}`);if(HOST==='0.0.0.0'||HOST==='::'){const lan=getLanAddresses();if(lan.length){console.log('Also reachable on this network at:');lan.forEach(ip=>console.log(`  http://${ip}:${PORT}`));console.log('Share one of the addresses above with devices on the same wifi/LAN to let them use the portal.');}else console.log('No LAN network interface detected yet — connect this machine to the school network to enable local-network access.');}});
+const server=app.listen(PORT,HOST,async()=>{try{await db.query('SELECT 1');console.log('Database connection: OK');try{const moved=await syncResultScales();if(moved)console.log(`Grading: ${moved} result(s) moved to the grading scale of their student's current class.`);}catch(err){console.warn('Grading scale check skipped. Has database/007_grading_30_70.sql been run? ('+err.message+')');}}catch(err){console.error('Database connection failed:',err.message);}console.log(`NNSS Calabar server listening on http://localhost:${PORT}`);if(HOST==='0.0.0.0'||HOST==='::'){const lan=getLanAddresses();if(lan.length){console.log('Also reachable on this network at:');lan.forEach(ip=>console.log(`  http://${ip}:${PORT}`));console.log('Share one of the addresses above with devices on the same wifi/LAN to let them use the portal.');}else console.log('No LAN network interface detected yet — connect this machine to the school network to enable local-network access.');}});
 async function shutdown(signal){console.log(`${signal} received; shutting down...`);const force=setTimeout(()=>process.exit(1),10000);force.unref();server.close(async()=>{try{await db.end();}finally{process.exit(0);}});}
 process.on('SIGTERM',()=>shutdown('SIGTERM'));process.on('SIGINT',()=>shutdown('SIGINT'));
 app.server=server;

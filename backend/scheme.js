@@ -8,9 +8,9 @@
  * Nigerian secondary-school scheme: Continuous Assessment (CA) is 30% and the
  * end-of-term examination is 70%, combined out of 100.
  *
- *   1ST TEST (10) | QUIZ (2)    | ASSIGNMENT (3) | TOTAL (15)
- *   2ND TEST (10) | PROJECT (3) | NOTE (2)       | TOTAL (15)
- *   EXAM (70)     | TERM'S TOTAL (100)           | GRADE
+ *   1ST TEST (5) | QUIZ (5)    | ASSIGNMENT (5) | TOTAL (15)
+ *   2ND TEST (5) | PROJECT (5) | NOTE (5)       | TOTAL (15)
+ *   EXAM (70)    | TERM'S TOTAL (100)            | GRADE
  *
  * To change how the 30 CA marks are shared between the six columns, edit the
  * `max` values in COMPONENTS below (they must still add up to CA_MAX = 30).
@@ -19,19 +19,19 @@
  *
  * Grading is two-tier, chosen by the class the result belongs to:
  *   - Senior Secondary (SSS 1-3): WAEC / NECO 9-point scale, A1 .. F9.
- *   - Junior Secondary (JSS 1-3): A / C / P / F (Distinction, Credit, Pass, Fail).
+ *   - Junior Secondary (JSS 1-3): A / C / P / F (Excellent, Credit, Pass, Fail).
  */
 
 const SCHOOL_NAME = 'NIGERIAN NAVY SECONDARY SCHOOL AKPABUYO CALABAR';
 
 // `key` is the JSON field name used by the API; `column` is the DB column.
 const COMPONENTS = [
-  { key: 'test1',      column: 'test1_score',      label: '1st Test',   max: 10, group: 'ca1' },
-  { key: 'quiz',       column: 'quiz_score',       label: 'Quiz',       max: 2,  group: 'ca1' },
-  { key: 'assignment', column: 'assignment_score', label: 'Assignment', max: 3,  group: 'ca1' },
-  { key: 'test2',      column: 'test2_score',      label: '2nd Test',   max: 10, group: 'ca2' },
-  { key: 'project',    column: 'project_score',    label: 'Project',    max: 3,  group: 'ca2' },
-  { key: 'note',       column: 'note_score',       label: 'Note',       max: 2,  group: 'ca2' }
+  { key: 'test1',      column: 'test1_score',      label: '1st Test',   max: 5, group: 'ca1' },
+  { key: 'quiz',       column: 'quiz_score',       label: 'Quiz',       max: 5, group: 'ca1' },
+  { key: 'assignment', column: 'assignment_score', label: 'Assignment', max: 5, group: 'ca1' },
+  { key: 'test2',      column: 'test2_score',      label: '2nd Test',   max: 5, group: 'ca2' },
+  { key: 'project',    column: 'project_score',    label: 'Project',    max: 5, group: 'ca2' },
+  { key: 'note',       column: 'note_score',       label: 'Note',       max: 5, group: 'ca2' }
 ];
 const groupMax = g => COMPONENTS.filter(c => c.group === g).reduce((sum, c) => sum + c.max, 0);
 const GROUPS = {
@@ -57,7 +57,7 @@ const SSS_SCALE = [
 ];
 // Junior Secondary (JSS 1-3): Alpha / Credit / Pass / Fail.
 const JSS_SCALE = [
-  { min: 80, grade: 'A', remark: 'Distinction' },
+  { min: 80, grade: 'A', remark: 'Excellent' },
   { min: 60, grade: 'C', remark: 'Credit' },
   { min: 50, grade: 'P', remark: 'Pass' },
   { min: 0,  grade: 'F', remark: 'Fail' }

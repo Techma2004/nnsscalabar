@@ -362,7 +362,6 @@ CREATE TABLE IF NOT EXISTS students (
   parent_name     VARCHAR(120),
   parent_phone    VARCHAR(20),
   date_admitted   DATE,
-  is_boarder      BOOLEAN DEFAULT FALSE,
   track           ENUM('junior','science','technical','arts') NOT NULL,
   status          ENUM('active','pending','withdrawn','graduated','repeating') NOT NULL DEFAULT 'active',
   status_reason   VARCHAR(160) NULL,
@@ -449,16 +448,17 @@ CREATE TABLE IF NOT EXISTS results (
   teacher_id      INT NOT NULL,
   -- Continuous Assessment Sheet components (NULL = not recorded).
   -- ca_score is the stored CA total: the sum of these six (max 30 = 30%).
-  test1_score      DECIMAL(5,2) NULL DEFAULT NULL,  -- 1st Test   (10)
-  quiz_score       DECIMAL(5,2) NULL DEFAULT NULL,  -- Quiz       (2)
-  assignment_score DECIMAL(5,2) NULL DEFAULT NULL,  -- Assignment (3)
-  test2_score      DECIMAL(5,2) NULL DEFAULT NULL,  -- 2nd Test   (10)
-  project_score    DECIMAL(5,2) NULL DEFAULT NULL,  -- Project    (3)
-  note_score       DECIMAL(5,2) NULL DEFAULT NULL,  -- Note       (2)
+  test1_score      DECIMAL(5,2) NULL DEFAULT NULL,  -- 1st Test   (5)
+  quiz_score       DECIMAL(5,2) NULL DEFAULT NULL,  -- Quiz       (5)
+  assignment_score DECIMAL(5,2) NULL DEFAULT NULL,  -- Assignment (5)
+  test2_score      DECIMAL(5,2) NULL DEFAULT NULL,  -- 2nd Test   (5)
+  project_score    DECIMAL(5,2) NULL DEFAULT NULL,  -- Project    (5)
+  note_score       DECIMAL(5,2) NULL DEFAULT NULL,  -- Note       (5)
   ca_score        DECIMAL(5,2) DEFAULT 0,           -- CA total   (30 = 30%)
   exam_score      DECIMAL(5,2) DEFAULT 0,           -- Exam       (70 = 70%)
-  -- Grading scale this result belongs to, fixed from the class it was entered
-  -- for: 1 = Junior Secondary (A/C/P/F), 0 = Senior Secondary (WAEC A1-F9).
+  -- Grading scale this result is graded on. It follows the student's CURRENT
+  -- class (kept in step by the application on promotion / class changes):
+  -- 1 = Junior Secondary (A/C/P/F), 0 = Senior Secondary (WAEC A1-F9).
   is_junior       BOOLEAN NOT NULL DEFAULT FALSE,
   total_score     DECIMAL(5,2) GENERATED ALWAYS AS (ca_score + exam_score) STORED,
   grade           VARCHAR(5) GENERATED ALWAYS AS (
@@ -488,7 +488,7 @@ CREATE TABLE IF NOT EXISTS results (
     CASE
       WHEN is_junior = 1 THEN
         CASE
-          WHEN (ca_score + exam_score) >= 80 THEN 'Distinction'
+          WHEN (ca_score + exam_score) >= 80 THEN 'Excellent'
           WHEN (ca_score + exam_score) >= 60 THEN 'Credit'
           WHEN (ca_score + exam_score) >= 50 THEN 'Pass'
           ELSE 'Fail'
@@ -983,24 +983,23 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Migration 007: CA 30 + Exam 70 and two-tier (JSS / SSS) grading (see database/007_grading_30_70.sql)
 -- ---- 1. Mark guards -----------------------------------------------------
--- Drop the old CA-40 component guard. The new guards are only added when no
--- existing row would break them (older results may carry CA marks above 30);
--- the application validates every entry against the same maxima either way.
+-- The old CA guards are dropped. The new ones are only added when no existing
+-- row would break them (older results may carry CA marks above 30); the
+-- application validates every entry against the same maxima either way.
 ALTER TABLE results DROP CONSTRAINT IF EXISTS chk_results_components;
+ALTER TABLE results DROP CONSTRAINT IF EXISTS chk_results_components_v2;
 
 SET @bad := (SELECT COUNT(*) FROM results
-             WHERE test1_score > 10 OR quiz_score > 2 OR assignment_score > 3
-                OR test2_score > 10 OR project_score > 3 OR note_score > 2);
-SET @c := (SELECT COUNT(*) FROM information_schema.table_constraints
-           WHERE table_schema = DATABASE() AND table_name = 'results' AND constraint_name = 'chk_results_components_v2');
-SET @sql := IF(@c = 0 AND @bad = 0,
+             WHERE test1_score > 5 OR quiz_score > 5 OR assignment_score > 5
+                OR test2_score > 5 OR project_score > 5 OR note_score > 5);
+SET @sql := IF(@bad = 0,
   'ALTER TABLE results ADD CONSTRAINT chk_results_components_v2 CHECK (
-     (test1_score      IS NULL OR (test1_score      >= 0 AND test1_score      <= 10)) AND
-     (quiz_score       IS NULL OR (quiz_score       >= 0 AND quiz_score       <= 2))  AND
-     (assignment_score IS NULL OR (assignment_score >= 0 AND assignment_score <= 3))  AND
-     (test2_score      IS NULL OR (test2_score      >= 0 AND test2_score      <= 10)) AND
-     (project_score    IS NULL OR (project_score    >= 0 AND project_score    <= 3))  AND
-     (note_score       IS NULL OR (note_score       >= 0 AND note_score       <= 2)))',
+     (test1_score      IS NULL OR (test1_score      >= 0 AND test1_score      <= 5)) AND
+     (quiz_score       IS NULL OR (quiz_score       >= 0 AND quiz_score       <= 5)) AND
+     (assignment_score IS NULL OR (assignment_score >= 0 AND assignment_score <= 5)) AND
+     (test2_score      IS NULL OR (test2_score      >= 0 AND test2_score      <= 5)) AND
+     (project_score    IS NULL OR (project_score    >= 0 AND project_score    <= 5)) AND
+     (note_score       IS NULL OR (note_score       >= 0 AND note_score       <= 5)))',
   'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
@@ -1019,29 +1018,34 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 ALTER TABLE subjects MODIFY ca_max TINYINT DEFAULT 30, MODIFY exam_max TINYINT DEFAULT 70;
 UPDATE subjects SET ca_max = 30, exam_max = 70 WHERE NOT (ca_max <=> 30 AND exam_max <=> 70);
 
--- ---- 3. Two-tier grading --------------------------------------------------
--- Only runs when results.is_junior does not exist yet, so re-running this file
--- never overwrites the per-result scale that was recorded when a sheet was saved.
-SET @needs := (SELECT COUNT(*) = 0 FROM information_schema.columns
-               WHERE table_schema = DATABASE() AND table_name = 'results' AND column_name = 'is_junior');
-
-SET @sql := IF(@needs,
+-- ---- 3. Which scale each result is graded on ------------------------------
+SET @has_col := (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = 'results' AND column_name = 'is_junior');
+SET @sql := IF(@has_col = 0,
   'ALTER TABLE results ADD COLUMN is_junior BOOLEAN NOT NULL DEFAULT FALSE AFTER exam_score',
   'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Existing results take the scale of the class their student is in now. (A
--- result from before a promotion is graded on the student's current class;
--- everything entered from now on records the class it was entered for.)
-SET @sql := IF(@needs,
-  'UPDATE results r JOIN students s ON s.id = r.student_id JOIN class_levels cl ON cl.id = s.class_level_id SET r.is_junior = cl.is_junior',
-  'DO 0');
+-- Every result takes the scale of the class its student is in now. Running this
+-- again is harmless: it only touches rows that are on the wrong scale.
+UPDATE results r
+JOIN students s ON s.id = r.student_id
+JOIN class_levels cl ON cl.id = s.class_level_id
+SET r.is_junior = cl.is_junior, r.updated_at = r.updated_at
+WHERE r.is_junior <> cl.is_junior;
+
+-- ---- 4. grade / remark follow the scale -------------------------------------
+-- Rebuilt when is_junior was just added, or when an earlier draft left the old
+-- wording ("Distinction") behind.
+SET @regen := IF(@has_col = 0, 1,
+  (SELECT COUNT(*) FROM information_schema.columns
+   WHERE table_schema = DATABASE() AND table_name = 'results' AND column_name = 'remark'
+     AND generation_expression LIKE '%Distinction%'));
+
+SET @sql := IF(@regen > 0, 'ALTER TABLE results DROP COLUMN grade, DROP COLUMN remark', 'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-SET @sql := IF(@needs, 'ALTER TABLE results DROP COLUMN grade, DROP COLUMN remark', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
-SET @sql := IF(@needs,
+SET @sql := IF(@regen > 0,
   'ALTER TABLE results ADD COLUMN grade VARCHAR(5) GENERATED ALWAYS AS (
      CASE
        WHEN is_junior = 1 THEN
@@ -1068,12 +1072,12 @@ SET @sql := IF(@needs,
   'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-SET @sql := IF(@needs,
+SET @sql := IF(@regen > 0,
   'ALTER TABLE results ADD COLUMN remark VARCHAR(20) GENERATED ALWAYS AS (
      CASE
        WHEN is_junior = 1 THEN
          CASE
-           WHEN (ca_score + exam_score) >= 80 THEN ''Distinction''
+           WHEN (ca_score + exam_score) >= 80 THEN ''Excellent''
            WHEN (ca_score + exam_score) >= 60 THEN ''Credit''
            WHEN (ca_score + exam_score) >= 50 THEN ''Pass''
            ELSE ''Fail''

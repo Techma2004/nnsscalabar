@@ -102,7 +102,7 @@ router.get('/:userId', async (req, res) => {
     const out = { user: { ...user, last_login: user.last_login, created_at: user.created_at }, can_edit_contact: MANAGEMENT.includes(role) && (user.role !== 'admin' && user.role !== 'commandant' || role === 'commandant' || user.id === req.user.id) };
 
     if (user.role === 'student') {
-      const [[st]] = await db.query(`SELECT s.id AS student_id, s.admission_no, s.parent_name, s.parent_phone, s.status, s.status_reason, s.is_boarder, s.date_of_birth, s.track,
+      const [[st]] = await db.query(`SELECT s.id AS student_id, s.admission_no, s.parent_name, s.parent_phone, s.status, s.status_reason, s.date_of_birth, s.track,
           cl.level_name AS class, a.arm_name AS arm FROM students s JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id WHERE s.user_id=? LIMIT 1`, [userId]);
       out.student = st || null;
       if (st) {

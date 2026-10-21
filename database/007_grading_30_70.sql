@@ -1,51 +1,52 @@
--- Run this once against an existing database:
---   mysql -u <user> -p nnss_calabar < database/007_grading_30_70.sql
+-- Run this once against an existing database (take a backup first):
+--   mariadb-dump -u root -p nnss_calabar > nnss_backup.sql
+--   mariadb -u root -p nnss_calabar < database/007_grading_30_70.sql
 --
 -- Rebuilds the grading system the way Nigerian secondary schools run it:
 --
 --   * Continuous Assessment (CA) is 30% and the end-of-term Exam is 70%,
---     added together out of 100.
---       1ST TEST (10) | QUIZ (2)    | ASSIGNMENT (3) | TOTAL (15)
---       2ND TEST (10) | PROJECT (3) | NOTE (2)       | TOTAL (15)
---       EXAM (70)     | TERM'S TOTAL (100)           | GRADE
---   * Two grading scales, chosen by the class the result was entered for:
---       Senior Secondary (SSS 1-3)  WAEC / NECO 9-point scale
+--     added together out of 100. Every CA column is out of 5:
+--       1ST TEST (5) | QUIZ (5)    | ASSIGNMENT (5) | TOTAL (15)
+--       2ND TEST (5) | PROJECT (5) | NOTE (5)       | TOTAL (15)
+--       EXAM (70)    | TERM'S TOTAL (100)            | GRADE
+--   * Two grading scales, chosen by the class the student is in:
+--       Senior Secondary (SS1-SS3)  WAEC / NECO 9-point scale
 --         A1 75-100 Excellent | B2 70-74 Very Good | B3 65-69 Good
 --         C4 60-64, C5 55-59, C6 50-54 Credit | D7 45-49, E8 40-44 Pass | F9 0-39 Fail
---       Junior Secondary (JSS 1-3)
---         A 80-100 Distinction | C 60-79 Credit | P 50-59 Pass | F 0-49 Fail
+--       Junior Secondary (JSS1-JSS3)
+--         A 80-100 Excellent | C 60-79 Credit | P 50-59 Pass | F 0-49 Fail
 --
--- results.is_junior records which scale a result belongs to, so a student who
--- is promoted from JSS3 to SS1 keeps the grades they earned in JSS3. The
--- generated `grade` / `remark` columns read it, so every existing query,
--- view and report keeps working.
+-- results.is_junior says which scale a result is graded on. The generated
+-- `grade` / `remark` columns read it, so every existing query, view and report
+-- keeps working. It always follows the student's CURRENT class: when a student
+-- is promoted from JSS3 to SS1 their results are regraded on the senior scale
+-- (the application re-syncs it on promotion, on a class change and at start-up).
 --
--- Safe to run more than once. It never rewrites marks that are already
--- recorded: results saved under the old 40/60 sheet keep their scores (their
--- grade is simply recalculated on the new scales). If you want old terms
--- re-entered on the new 30/70 sheet, do that from the Score Sheet screen.
+-- Safe to run more than once, and safe to run on a database that already ran an
+-- earlier draft of this file. It never rewrites recorded marks: results saved
+-- under the old 40/60 sheet keep their scores and are simply regraded on the new
+-- scales. To re-enter an old term on the new 30/70 sheet, use the Score Sheet screen.
 --
 -- schema.sql already contains this for fresh installs.
 
 -- ---- 1. Mark guards -----------------------------------------------------
--- Drop the old CA-40 component guard. The new guards are only added when no
--- existing row would break them (older results may carry CA marks above 30);
--- the application validates every entry against the same maxima either way.
+-- The old CA guards are dropped. The new ones are only added when no existing
+-- row would break them (older results may carry CA marks above 30); the
+-- application validates every entry against the same maxima either way.
 ALTER TABLE results DROP CONSTRAINT IF EXISTS chk_results_components;
+ALTER TABLE results DROP CONSTRAINT IF EXISTS chk_results_components_v2;
 
 SET @bad := (SELECT COUNT(*) FROM results
-             WHERE test1_score > 10 OR quiz_score > 2 OR assignment_score > 3
-                OR test2_score > 10 OR project_score > 3 OR note_score > 2);
-SET @c := (SELECT COUNT(*) FROM information_schema.table_constraints
-           WHERE table_schema = DATABASE() AND table_name = 'results' AND constraint_name = 'chk_results_components_v2');
-SET @sql := IF(@c = 0 AND @bad = 0,
+             WHERE test1_score > 5 OR quiz_score > 5 OR assignment_score > 5
+                OR test2_score > 5 OR project_score > 5 OR note_score > 5);
+SET @sql := IF(@bad = 0,
   'ALTER TABLE results ADD CONSTRAINT chk_results_components_v2 CHECK (
-     (test1_score      IS NULL OR (test1_score      >= 0 AND test1_score      <= 10)) AND
-     (quiz_score       IS NULL OR (quiz_score       >= 0 AND quiz_score       <= 2))  AND
-     (assignment_score IS NULL OR (assignment_score >= 0 AND assignment_score <= 3))  AND
-     (test2_score      IS NULL OR (test2_score      >= 0 AND test2_score      <= 10)) AND
-     (project_score    IS NULL OR (project_score    >= 0 AND project_score    <= 3))  AND
-     (note_score       IS NULL OR (note_score       >= 0 AND note_score       <= 2)))',
+     (test1_score      IS NULL OR (test1_score      >= 0 AND test1_score      <= 5)) AND
+     (quiz_score       IS NULL OR (quiz_score       >= 0 AND quiz_score       <= 5)) AND
+     (assignment_score IS NULL OR (assignment_score >= 0 AND assignment_score <= 5)) AND
+     (test2_score      IS NULL OR (test2_score      >= 0 AND test2_score      <= 5)) AND
+     (project_score    IS NULL OR (project_score    >= 0 AND project_score    <= 5)) AND
+     (note_score       IS NULL OR (note_score       >= 0 AND note_score       <= 5)))',
   'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
@@ -64,29 +65,34 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 ALTER TABLE subjects MODIFY ca_max TINYINT DEFAULT 30, MODIFY exam_max TINYINT DEFAULT 70;
 UPDATE subjects SET ca_max = 30, exam_max = 70 WHERE NOT (ca_max <=> 30 AND exam_max <=> 70);
 
--- ---- 3. Two-tier grading --------------------------------------------------
--- Only runs when results.is_junior does not exist yet, so re-running this file
--- never overwrites the per-result scale that was recorded when a sheet was saved.
-SET @needs := (SELECT COUNT(*) = 0 FROM information_schema.columns
-               WHERE table_schema = DATABASE() AND table_name = 'results' AND column_name = 'is_junior');
-
-SET @sql := IF(@needs,
+-- ---- 3. Which scale each result is graded on ------------------------------
+SET @has_col := (SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = 'results' AND column_name = 'is_junior');
+SET @sql := IF(@has_col = 0,
   'ALTER TABLE results ADD COLUMN is_junior BOOLEAN NOT NULL DEFAULT FALSE AFTER exam_score',
   'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Existing results take the scale of the class their student is in now. (A
--- result from before a promotion is graded on the student's current class;
--- everything entered from now on records the class it was entered for.)
-SET @sql := IF(@needs,
-  'UPDATE results r JOIN students s ON s.id = r.student_id JOIN class_levels cl ON cl.id = s.class_level_id SET r.is_junior = cl.is_junior',
-  'DO 0');
+-- Every result takes the scale of the class its student is in now. Running this
+-- again is harmless: it only touches rows that are on the wrong scale.
+UPDATE results r
+JOIN students s ON s.id = r.student_id
+JOIN class_levels cl ON cl.id = s.class_level_id
+SET r.is_junior = cl.is_junior, r.updated_at = r.updated_at
+WHERE r.is_junior <> cl.is_junior;
+
+-- ---- 4. grade / remark follow the scale -------------------------------------
+-- Rebuilt when is_junior was just added, or when an earlier draft left the old
+-- wording ("Distinction") behind.
+SET @regen := IF(@has_col = 0, 1,
+  (SELECT COUNT(*) FROM information_schema.columns
+   WHERE table_schema = DATABASE() AND table_name = 'results' AND column_name = 'remark'
+     AND generation_expression LIKE '%Distinction%'));
+
+SET @sql := IF(@regen > 0, 'ALTER TABLE results DROP COLUMN grade, DROP COLUMN remark', 'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-SET @sql := IF(@needs, 'ALTER TABLE results DROP COLUMN grade, DROP COLUMN remark', 'DO 0');
-PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
-SET @sql := IF(@needs,
+SET @sql := IF(@regen > 0,
   'ALTER TABLE results ADD COLUMN grade VARCHAR(5) GENERATED ALWAYS AS (
      CASE
        WHEN is_junior = 1 THEN
@@ -113,12 +119,12 @@ SET @sql := IF(@needs,
   'DO 0');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-SET @sql := IF(@needs,
+SET @sql := IF(@regen > 0,
   'ALTER TABLE results ADD COLUMN remark VARCHAR(20) GENERATED ALWAYS AS (
      CASE
        WHEN is_junior = 1 THEN
          CASE
-           WHEN (ca_score + exam_score) >= 80 THEN ''Distinction''
+           WHEN (ca_score + exam_score) >= 80 THEN ''Excellent''
            WHEN (ca_score + exam_score) >= 60 THEN ''Credit''
            WHEN (ca_score + exam_score) >= 50 THEN ''Pass''
            ELSE ''Fail''

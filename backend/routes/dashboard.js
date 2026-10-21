@@ -86,15 +86,16 @@ router.get('/attention', async (req, res) => {
       }
       const reqScope = deptId ? "AND (cr.request_type='arm' OR sub.dept_id=?)" : '';
       const [[reqs]] = await db.query(`SELECT COUNT(*) n FROM change_requests cr LEFT JOIN subjects sub ON sub.id=cr.subject_id WHERE cr.status='pending' ${reqScope}`, deptId ? [deptId] : []);
-      // Count exactly the people the Teachers page lists (rows in `teachers`), so the
-      // number on the dashboard always matches what "See teachers" shows. Admin,
-      // commandant and editor accounts are not in that directory, and the seeded
-      // administrator has no phone, so counting them produced a phantom "1" that
-      // nobody could find or fix.
-      const [[staffNoPhone]] = await db.query(`SELECT COUNT(*) n FROM users u JOIN teachers t ON t.user_id=u.id ${deptId ? 'AND t.dept_id=?' : ''} WHERE u.is_active=1 AND (u.phone IS NULL OR TRIM(u.phone)='')`, deptId ? [deptId] : []);
+      // Management: every active staff account that has no phone number, i.e. exactly the
+      // staff rows Account Management shows as "Missing" (teachers, heads of department,
+      // administrators, the Commandant and the news team). An HOD only sees the teachers of
+      // their own department, matching their Teachers page.
+      const [[staffNoPhone]] = deptId
+        ? await db.query(`SELECT COUNT(*) n FROM users u JOIN teachers t ON t.user_id=u.id AND t.dept_id=? WHERE u.is_active=1 AND (u.phone IS NULL OR TRIM(u.phone)='')`, [deptId])
+        : await db.query(`SELECT COUNT(*) n FROM users u WHERE u.is_active=1 AND (u.phone IS NULL OR TRIM(u.phone)='') AND u.role IN ('teacher','hod','admin','commandant','editor')`);
       let studentsNoPhone = null;
       if (!deptId) {
-        const [[r]] = await db.query(`SELECT COUNT(*) n FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1 AND s.status IN ('active','repeating') AND (s.parent_phone IS NULL OR s.parent_phone='')`);
+        const [[r]] = await db.query(`SELECT COUNT(*) n FROM students s JOIN users u ON u.id=s.user_id WHERE u.is_active=1 AND s.status IN ('active','repeating') AND (s.parent_phone IS NULL OR TRIM(s.parent_phone)='')`);
         studentsNoPhone = Number(r.n);
       }
       return res.json({ pending_requests: Number(reqs.n), staff_missing_phone: Number(staffNoPhone.n), students_missing_guardian_phone: studentsNoPhone });

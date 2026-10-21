@@ -4,7 +4,7 @@ A web-based school management platform and public website for Nigerian Navy Seco
 
 > **Before real school use:** replace sample/demo records with verified school data, review account permissions and school workflows, configure HTTPS, and establish database backups. Do not use real student information over plain HTTP.
 
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/) [![MySQL](https://img.shields.io/badge/MySQL-8%2B-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/) [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
 ## Documentation
 
@@ -72,7 +72,7 @@ The application is served from one origin. For local development, the default ad
 
 ### Optional: score-sheet OCR
 
-- Python 3.10+.
+- Python 3.11+.
 - [uv](https://docs.astral.sh/uv/).
 - Tesseract OCR and its English language data.
 - PDF scanning additionally uses the Python dependencies declared by this repository.
@@ -513,7 +513,7 @@ The fallback `OCR_RUNNER=python` mode requires `OCR_PYTHON_BIN` to point to a Py
 
 **Back up an existing database before running any schema, migration, import, or upgrade command.** Do not re-import the initial schema over a live school database without reviewing its SQL.
 
-Migration files are version-specific. The repository includes `database/002_result_rejection.sql`, `database/003_promotion_and_departments.sql`, `database/004_ca_sheet_scheme.sql`, `database/005_session_version.sql` and `database/006_news_team_requests_contacts.sql` (adds the news-team role, blog/newsletter posts and student change requests) and `database/007_grading_30_70.sql` (Continuous Assessment 30 + Exam 70, with WAEC A1-F9 grading for senior classes and A/C/P/F for junior classes; existing marks are kept and regraded, run `mariadb-dump` first). All of them are already included in `database/schema.sql`, so a new installation needs none of them (see [FRESH_INSTALL.md](FRESH_INSTALL.md)). Apply only the migration(s) required by your current schema, in the order intended for that installation. If you are unsure which version is installed, stop and inspect the schema rather than running every SQL file blindly.
+Migration files are version-specific. The repository includes `database/002_result_rejection.sql`, `database/003_promotion_and_departments.sql`, `database/004_ca_sheet_scheme.sql`, `database/005_session_version.sql` and `database/006_news_team_requests_contacts.sql` (adds the news-team role, blog/newsletter posts and student change requests) and `database/007_grading_30_70.sql` (Continuous Assessment 30 + Exam 70, every CA column out of 5; WAEC A1-F9 grading for senior classes and A/C/P/F for junior classes, following the student's current class so a promoted student is regraded on the new class's scale; existing marks are kept and regraded, run `mariadb-dump` first). All of them are already included in `database/schema.sql`, so a new installation needs none of them (see [FRESH_INSTALL.md](FRESH_INSTALL.md)). Apply only the migration(s) required by your current schema, in the order intended for that installation. If you are unsure which version is installed, stop and inspect the schema rather than running every SQL file blindly.
 
 ### Importing the included scanned-sheet rosters
 

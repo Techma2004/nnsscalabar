@@ -701,6 +701,7 @@ button, .btn { max-width: 100%; overflow-wrap: anywhere; }
 .dept-card-title small { margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dept-card .stat-icon { position:static; flex-shrink:0; }
 .dept-card .dept-delete { flex-shrink:0; padding:5px 11px; font-size:.75rem; min-height:0; }
+.dept-card-unit { color:var(--text-secondary); font-size:.8rem; margin-top:-.1rem; }
 .dept-card-meta { color:var(--text-secondary); font-size:.78rem; margin-top:.35rem; }
 .dept-card-hod { color:var(--text-light); font-size:.75rem; margin-top:.2rem; }
 
