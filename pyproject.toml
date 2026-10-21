@@ -2,10 +2,10 @@
 name = "nnss-calabar-ocr"
 version = "1.0.0"
 description = "Score-sheet OCR extraction for the NNSS Calabar school portal"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pytesseract>=0.3.10",
-    "Pillow>=10.0.0",
+    "Pillow>=13.0.0",
     "opencv-python-headless>=4.8.0",
     "numpy>=1.24.0",
     "pypdfium2>=4.30.0",

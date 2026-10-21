@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const scheme = require('../scheme');
+const { syncResultScales } = require('../gradeScale');
 const v = require('../validate');
 const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
@@ -121,8 +122,8 @@ router.post('/users', requireManagement, async (req, res) => {
         conn.query('SELECT id FROM arms WHERE arm_name = ? LIMIT 1', [arm])
       ]);
       if (!classRow.length || !armRow.length) throw new Error('Invalid class or arm.');
-      const [studentInsert] = await conn.query(`INSERT INTO students (user_id, admission_no, class_level_id, arm_id, track, is_boarder, parent_name, parent_phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, admission_no, classRow[0].id, armRow[0].id, track, body.is_boarder ? 1 : 0, parent_name, parent_phone]);
+      const [studentInsert] = await conn.query(`INSERT INTO students (user_id, admission_no, class_level_id, arm_id, track, parent_name, parent_phone) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [userId, admission_no, classRow[0].id, armRow[0].id, track, parent_name, parent_phone]);
       const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
       if (currentSession) {
         await conn.query(`INSERT INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by)
@@ -201,9 +202,14 @@ router.get('/users', requireManagement, async (req, res) => {
   let searchClause = '';
   if (q) { searchClause = 'AND (full_name LIKE ? OR user_code LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   try {
-    const [rows] = await db.query(`SELECT id AS user_id, user_code, full_name, email, phone, role, is_active, last_login
-      FROM users WHERE is_active=1 ${searchClause}
-      ORDER BY CASE role WHEN 'admin' THEN 1 WHEN 'commandant' THEN 2 WHEN 'hod' THEN 3 WHEN 'teacher' THEN 4 WHEN 'student' THEN 5 WHEN 'editor' THEN 6 ELSE 7 END, full_name
+    // A student's contact number is their parent's or guardian's (students.parent_phone),
+    // not users.phone, so that is the number shown for students.
+    const [rows] = await db.query(`SELECT u.id AS user_id, u.user_code, u.full_name, u.email, u.role, u.is_active, u.last_login,
+        CASE WHEN u.role='student' THEN st.parent_phone ELSE u.phone END AS phone,
+        (u.role='student') AS phone_is_guardian
+      FROM users u LEFT JOIN students st ON st.user_id=u.id
+      WHERE u.is_active=1 ${searchClause.replace(/full_name/g, 'u.full_name').replace(/user_code/g, 'u.user_code')}
+      ORDER BY CASE u.role WHEN 'admin' THEN 1 WHEN 'commandant' THEN 2 WHEN 'hod' THEN 3 WHEN 'teacher' THEN 4 WHEN 'student' THEN 5 WHEN 'editor' THEN 6 ELSE 7 END, u.full_name
       LIMIT 300`, params);
     res.json({ rows, truncated: rows.length === 300 });
   } catch (err) { console.error('[admin/users]', err); res.status(500).json({ error: 'Unable to load accounts.' }); }
@@ -823,6 +829,13 @@ router.post('/sessions/:sessionId/promote', requireManagement, async (req, res) 
             s.status_updated_at = NOW()
         WHERE s.status = 'active'`);
       await conn.query(`UPDATE students SET status='active', status_reason='Repeated the same class', status_updated_at=NOW() WHERE status='repeating'`);
+      // A promoted student's track follows their new class, derived the same way as when an account
+      // is created or an arm change is approved: Junior classes are 'junior', otherwise the arm's type.
+      await conn.query(`UPDATE students s JOIN class_levels cl ON cl.id = s.class_level_id JOIN arms a ON a.id = s.arm_id
+        SET s.track = IF(cl.is_junior = 1, 'junior', a.arm_type)
+        WHERE s.status = 'active' AND s.track <> IF(cl.is_junior = 1, 'junior', a.arm_type)`);
+      // Promoted students are graded on the scale of their new class (e.g. JSS3 -> SS1).
+      await syncResultScales(conn);
       await conn.query('UPDATE academic_sessions SET promoted_at=NOW() WHERE id=?', [sessionId]);
       await conn.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
         [req.user.id, 'PROMOTE_STUDENTS', 'academic_session', sessionId, JSON.stringify({ session_name: session.session_name, ...summary })]);
@@ -885,15 +898,9 @@ router.patch('/classes/:classId', requireManagement, async (req, res) => {
   try {
     const [result] = await db.query(`UPDATE class_levels SET ${fields.join(', ')} WHERE id=?`, params);
     if (!result.affectedRows) return res.status(404).json({ error: 'Class not found.' });
-    // A result is graded on the scale (JSS or SSS) of the class it was entered for.
-    // If this class was switched between Junior and Senior, bring this session's
-    // results for its current students onto the right scale. Earlier sessions are
-    // history and keep the scale they were earned under.
-    if (req.body?.is_junior != null) {
-      await db.query(`UPDATE results r JOIN students s ON s.id=r.student_id JOIN terms t ON t.id=r.term_id
-        JOIN academic_sessions ac ON ac.id=t.session_id SET r.is_junior=? WHERE s.class_level_id=? AND ac.is_current=1`,
-        [req.body.is_junior ? 1 : 0, classId]);
-    }
+    // Results are graded on the scale of the student's current class, so switching a
+    // class between Junior and Senior regrades every result of the students in it.
+    if (req.body?.is_junior != null) await syncResultScales(db, { classId });
     res.json({ message: 'Class updated.' });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'A class with this name already exists.' });

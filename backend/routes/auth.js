@@ -91,7 +91,7 @@ router.get('/me', auth, async (req, res) => {
     let placement = {};
     if (user.role === 'student') {
       const [[p]] = await db.query(
-        `SELECT cl.level_name AS class_name, a.arm_name FROM students s
+        `SELECT cl.level_name AS class_name, a.arm_name, s.parent_name, s.parent_phone FROM students s
          JOIN class_levels cl ON cl.id = s.class_level_id JOIN arms a ON a.id = s.arm_id
          WHERE s.user_id = ? LIMIT 1`, [user.id]
       );

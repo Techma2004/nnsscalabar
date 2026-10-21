@@ -239,7 +239,7 @@ Set `false` to switch the scanner off completely. Teachers then use Score Sheet,
 | Default | `uv` |
 | Values | `uv` or `python` |
 
-How the scanner's Python program is started. `uv` (recommended) installs the scanner's libraries and a suitable Python automatically the first time. Use `python` only when `uv` cannot be installed; the Python you name in `OCR_PYTHON_BIN` must already have the libraries installed (`pip install pytesseract Pillow opencv-python-headless numpy pypdfium2`).
+How the scanner's Python program is started. `uv` (recommended) installs the scanner's libraries and a suitable Python automatically the first time. Use `python` only when `uv` cannot be installed; the Python you name in `OCR_PYTHON_BIN` must already have the libraries installed (`pip install pytesseract "Pillow>=13.0.0" opencv-python-headless numpy pypdfium2`).
 
 ### `OCR_PYTHON_BIN`
 
