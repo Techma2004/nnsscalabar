@@ -189,7 +189,7 @@ async function main() {
       const [s] = await db.query(
         "INSERT INTO students " +
         "(user_id, admission_no, class_level_id, arm_id, date_of_birth, parent_name, parent_phone, " +
-        "date_admitted, is_boarder, track, status) VALUES (?, ?, ?, ?, ?, ?, ?, '2026-09-01', ?, ?, 'active')",
+        "date_admitted, track, status) VALUES (?, ?, ?, ?, ?, ?, ?, '2026-09-01', ?, 'active')",
         [
           u.insertId,
           'ADM' + String(i).padStart(4, '0'),
@@ -198,7 +198,6 @@ async function main() {
           dob(i),
           parentName,
           parentPhone,
-          i % 3 !== 0,
           p.track
         ]
       );

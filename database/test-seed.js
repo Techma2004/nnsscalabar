@@ -140,10 +140,10 @@ async function main() {
       );
       const userId = userResult.insertId;
       const [studentResult] = await connection.query(
-        `INSERT INTO students (user_id, admission_no, class_level_id, arm_id, date_of_birth, parent_name, parent_phone, date_admitted, is_boarder, track, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, '2026-09-01', ?, ?, 'active')
+        `INSERT INTO students (user_id, admission_no, class_level_id, arm_id, date_of_birth, parent_name, parent_phone, date_admitted, track, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, '2026-09-01', ?, 'active')
          ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), class_level_id=VALUES(class_level_id), arm_id=VALUES(arm_id), track=VALUES(track), status='active'`,
-        [userId, `ADM${String(i).padStart(4, '0')}`, placement.classId, placement.armId, dateForStudent(i), parentName, parentPhone, i % 3 !== 0, track]
+        [userId, `ADM${String(i).padStart(4, '0')}`, placement.classId, placement.armId, dateForStudent(i), parentName, parentPhone, track]
       );
       const studentId = studentResult.insertId;
       studentRows.push({ code, fullName, className: placement.className, armName: placement.armName, track });
