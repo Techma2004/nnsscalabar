@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { renewIfNeeded } = require('../sessionCookie');
 
 module.exports = async (req, res, next) => {
   const bearer = req.get('Authorization');
@@ -28,6 +29,8 @@ module.exports = async (req, res, next) => {
     }
 
     req.user = payload;
+    // Only cookie sessions slide; a Bearer token keeps the lifetime it was issued with.
+    if (!bearer) renewIfNeeded(res, payload);
     next();
   } catch (err) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {

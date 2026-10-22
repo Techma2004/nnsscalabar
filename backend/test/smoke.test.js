@@ -111,6 +111,29 @@ test('login works, cookie is HttpOnly, and /me returns the user', async () => {
   assert.equal((await me.json()).role, 'admin');
 });
 
+test('an active session is renewed; a fresh or Bearer one is left alone', async () => {
+  const jwt = require('jsonwebtoken');
+  const make = secondsLeft => jwt.sign({ id: 1, user_code: 'ADM001', role: 'admin', name: 'Test Admin', sv: 0, exp: Math.floor(Date.now() / 1000) + secondsLeft }, process.env.JWT_SECRET, { algorithm: 'HS256' });
+  // Less than half of the 8 hours left: /me hands back a fresh cookie with a full lifetime.
+  const old = await request('/api/auth/me', { headers: { Cookie: `nnss_token=${make(3600)}` } });
+  assert.equal(old.status, 200);
+  const renewed = old.headers.get('set-cookie');
+  assert.match(renewed, /nnss_token=/);
+  assert.match(renewed, /HttpOnly/i);
+  const fresh = jwt.decode(renewed.split(';')[0].split('=')[1]);
+  assert.ok(fresh.exp - Math.floor(Date.now() / 1000) > 7.9 * 3600, 'renewed token should last about 8 hours');
+  assert.equal(fresh.sv, 0); assert.equal(fresh.role, 'admin');
+  // Plenty of time left: nothing is re-issued.
+  const young = await request('/api/auth/me', { headers: { Cookie: `nnss_token=${make(7 * 3600)}` } });
+  assert.equal(young.status, 200); assert.equal(young.headers.get('set-cookie'), null);
+  // A Bearer token is never converted into a cookie.
+  const bearer = await request('/api/auth/me', { headers: { Authorization: `Bearer ${make(3600)}` } });
+  assert.equal(bearer.status, 200); assert.equal(bearer.headers.get('set-cookie'), null);
+  // An expired token is still refused, and is not renewed.
+  const dead = await request('/api/auth/me', { headers: { Cookie: `nnss_token=${make(-10)}` } });
+  assert.equal(dead.status, 401); assert.equal(dead.headers.get('set-cookie'), null);
+});
+
 test('over-long passwords are rejected before any hashing', async () => {
   const res = await json('POST', '/api/auth/login', { user_code: 'ADM001', password: 'x'.repeat(5000) });
   assert.equal(res.status, 401);
