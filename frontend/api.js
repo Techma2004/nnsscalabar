@@ -11,6 +11,14 @@ async function apiFetch(endpoint, options = {}) {
   if (response.status === 401) {
     currentUser = null;
     sessionStorage.removeItem('nnss_user');
+    // The sign-in ran out while the portal was open. Loading a screen sends the person
+    // to the login page and brings them back to the same screen afterwards. A save or
+    // other change is never interrupted: it shows the error instead, so nothing typed is lost.
+    const reading = !options.method || options.method === 'GET';
+    if (reading && endpoint !== '/auth/me' && /portal\.html$/.test(location.pathname)) {
+      const here = location.hash.replace(/^#/, '');
+      location.href = `login.html?expired=1${here ? `&next=${encodeURIComponent(here)}` : ''}`;
+    }
   }
   if (!response.ok) {
     const err = new Error(data.error || `Request failed (${response.status}).`);

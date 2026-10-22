@@ -49,7 +49,7 @@
   <button class="hamburger" data-action="nav"><span></span><span></span><span></span></button>
   <div class="nav-right"><ul class="nav-links" id="navLinks"><li><a href="index.html">Home</a></li><li><a href="about.html">About</a></li><li><a href="blog.html">Blog</a></li><li><a href="newsletter.html">Newsletter</a></li><li><a href="login.html" class="login-btn active">Portal Login</a></li></ul><button class="theme-toggle" data-action="theme" aria-label="Toggle theme"></button></div>
 </nav>
-<section class="login-page">
+<section class="login-page session-check">
   <div class="login-shell">
     <aside class="login-brand">
       <div class="login-brand-mark"><img src="command-logo.png" alt="NNSS Calabar crest"><span>NNSS CALABAR</span></div>
@@ -61,6 +61,7 @@
     <main class="login-form-panel">
       <h1>Welcome back</h1>
       <p class="subtitle">Use the school-issued account credentials provided to you.</p>
+      <p class="login-note" id="sessionNote" role="status" hidden></p>
       <form id="portalLoginForm">
         <div class="form-group"><label for="loginUsername">User ID</label><input type="text" id="loginUsername" placeholder="Enter your school ID" required autocomplete="username" maxlength="20" autocapitalize="characters"></div>
         <div class="form-group"><label for="loginPassword">Password</label><div class="password-wrap"><input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password"><button class="password-toggle" type="button" id="pwdToggleBtn" aria-label="Show password"></button></div></div>

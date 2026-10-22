@@ -105,14 +105,24 @@ async function init(){
   $('#navUserBadge').textContent=`${state.user.name} · ${roleLabel(state.user)}`;
   $('#sidebarAvatar').textContent=initials(state.user.name); $('#sidebarName').textContent=state.user.name; $('#sidebarRole').textContent=roleLabel(state.user);
   buildNav();
+  // Come back to the screen you were on. The address (#sheet, #results, ...) is kept
+  // up to date as you move around, so a refresh, an accidental tab close, or the
+  // browser Back button no longer drops you on the dashboard in the middle of a task.
+  const start=panelFromHash();
+  history.replaceState(null,'','#'+start);
+  window.addEventListener('popstate',()=>{ if(state.user) render(panelFromHash(),{fromHistory:true}); });
   $('#logoutTop').onclick=signOut; $('#logoutSide').onclick=signOut; $('#modalClose').onclick=closeModal; $('#globalModal').addEventListener('click',e=>{if(e.target.id==='globalModal')closeModal();});
   $('#mobileToggle').onclick=()=>{$('#sidebar').classList.add('open');$('#sidebarOverlay').classList.add('active');}; $('#sidebarOverlay').onclick=()=>{$('#sidebar').classList.remove('open');$('#sidebarOverlay').classList.remove('active');};
-  render('dashboard');
+  render(start,{fromHistory:true});
 }
+// Screens that sit in the person's own menu. Anything else in the address (a typo,
+// or a screen their role cannot open) falls back to the dashboard.
+const menuPanels=()=>(menus[state.user.role]||[]).map(m=>m[1]);
+function panelFromHash(){ let h=location.hash.replace(/^#/,''); try{ h=decodeURIComponent(h); }catch{ return 'dashboard'; } return menuPanels().includes(h)?h:'dashboard'; }
 async function signOut(){ try{await logout();}finally{location.href='login.html';} }
 
 async function loadCommon(){ state.stats=await getStats(); }
-async function render(panel,{silent=false}={}){
+async function render(panel,{silent=false,fromHistory=false}={}){
   // A search keystroke used to call render() the normal way: the whole panel
   // (loading spinner included) got wiped and rebuilt, which threw focus off
   // the search box and felt like the page had reloaded. "silent" skips the
@@ -122,6 +132,7 @@ async function render(panel,{silent=false}={}){
   const focusedId=focused && focused.id && focused.id.startsWith('search-') ? focused.id : null;
   const selStart=focusedId?focused.selectionStart:null, selEnd=focusedId?focused.selectionEnd:null;
   activeNav(panel);
+  if(!silent && !fromHistory && menuPanels().includes(panel) && location.hash!=='#'+panel) history.pushState(null,'','#'+panel);
   if(!silent) $('#appRoot').innerHTML='<div class="portal-loading"><span class="loading"></span><p>Loading secure portal data…</p></div>';
   try {
     if(panel==='dashboard'){ if(state.user.role!=='editor') await loadCommon(); await Dash.load(); }

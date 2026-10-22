@@ -838,3 +838,7 @@ h2[data-icon] .nnss-icon { vertical-align: -3px; margin-right: .5rem; color: var
 .portal-toolbar select, .portal-actions select { appearance:none; -webkit-appearance:none; padding:.55rem 2.2rem .55rem .85rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%235c6470' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right .8rem center; color:var(--text); font:inherit; font-size:.9rem; cursor:pointer; }
 .portal-toolbar select:focus-visible, .portal-actions select:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .modal:has(.sheet-preview-body) { width:min(1100px,96vw); max-width:96vw; }
+
+/* Login page: dim the form while the page checks whether the person is already signed in. */
+.login-page.session-check .login-form-panel form { opacity: .35; pointer-events: none; transition: opacity .15s; }
+.login-note { margin: -.6rem 0 1rem; padding: .6rem .8rem; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary); font-size: .88rem; }
