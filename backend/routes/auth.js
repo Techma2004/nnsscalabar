@@ -1,10 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const { routeLimiter } = require('../middleware/security');
 const { passwordTooLong } = require('../validate');
+const { cookieOptions, clearOptions, signToken } = require('../sessionCookie');
 
 const router = express.Router();
 router.use(routeLimiter(120, 'Too many authentication requests. Please try again later.'));
@@ -12,24 +12,6 @@ router.use(routeLimiter(120, 'Too many authentication requests. Please try again
 // cost as a real one at login (see the SECURITY FIX comment below) — not a
 // real credential, never checked against an actual account.
 const DUMMY_HASH = '$2a$10$2Y2qiYGDHmB7myYdIrRX.Oc6e4SEVwukNrSIVIF7aGY.9jXxnO55.';
-const isProduction = process.env.NODE_ENV === 'production';
-// Secure cookies require HTTPS. A school running this on its own LAN typically has
-// no TLS certificate, so forcing `secure` on whenever NODE_ENV=production would
-// silently break login for every device on the network (the browser drops the
-// Set-Cookie header entirely over plain HTTP). COOKIE_SECURE lets an operator
-// state explicitly whether this deployment is served over HTTPS; it defaults to
-// the old production-only behaviour when not set, for cloud/HTTPS deployments.
-const cookieSecure = process.env.COOKIE_SECURE != null
-  ? String(process.env.COOKIE_SECURE).toLowerCase() === 'true'
-  : isProduction;
-const cookieOptions = {
-  httpOnly: true,
-  secure: cookieSecure,
-  sameSite: cookieSecure ? 'strict' : 'lax',
-  maxAge: 8 * 60 * 60 * 1000,
-  path: '/'
-};
-
 function safeUser(row) {
   return { id: row.id, user_code: row.user_code, name: row.full_name, email: row.email, role: row.role };
 }
@@ -57,11 +39,7 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
     if (!user || !valid || !user.is_active) return res.status(401).json({ error: 'Invalid user ID or password.' });
 
-    const token = jwt.sign(
-      { id: user.id, user_code: user.user_code, role: user.role, name: user.full_name, sv: user.session_version },
-      process.env.JWT_SECRET,
-      { expiresIn: '8h', algorithm: 'HS256' }
-    );
+    const token = signToken({ id: user.id, user_code: user.user_code, role: user.role, name: user.full_name, sv: user.session_version });
 
     await db.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
     res.cookie('nnss_token', token, cookieOptions);
@@ -73,7 +51,7 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
-  res.clearCookie('nnss_token', { httpOnly: true, secure: cookieSecure, sameSite: cookieSecure ? 'strict' : 'lax', path: '/' });
+  res.clearCookie('nnss_token', clearOptions);
   res.json({ message: 'Signed out successfully.' });
 });
 
