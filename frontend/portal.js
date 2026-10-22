@@ -137,7 +137,7 @@ async function render(panel,{silent=false,fromHistory=false}={}){
   try {
     if(panel==='dashboard'){ if(state.user.role!=='editor') await loadCommon(); await Dash.load(); }
     if(state.user.role==='student'){
-      if(panel==='results'){ state.results=await getStudentResults(state.user.user_code); state.termStats=await getStudentTermStats(state.user.user_code).then(r=>r.terms||[]).catch(()=>[]); }
+      if(panel==='results'){ state.results=await getStudentResults(state.user.user_code); const ts=await getStudentTermStats(state.user.user_code).catch(()=>({})); state.termStats=ts.terms||[]; state.reportMeta={student:ts.student,grade_scale:ts.grade_scale}; }
       if(panel==='subjects') state.subjects=await getStudentSubjects(state.user.user_code);
       if(panel==='dashboard') { state.studentSummary=await getStudentSummary(); state.rejections=await getRejections(); }
     }
@@ -383,61 +383,85 @@ function renderResults(){
 // term/session and lays each term out as its own printable report-card
 // sheet: school header, student bio, subject breakdown, summary and a
 // grading key, with a page break between terms.
-// Every comparison figure on a report card is optional. Each one is shown only
-// when (a) the school's data can actually produce it and (b) the person printing
-// the card has it ticked - the choice is remembered on this device.
-const REPORT_OPTIONS=[['resultAvg','Result average'],['armAvg','Arm average'],['classAvg','Class average'],['position','Position in arm'],['subjectAvg','Subject arm averages'],['passes','Subjects passed']];
-function reportOpts(){ let saved={}; try{ saved=JSON.parse(localStorage.getItem('nnss_report_opts')||'{}'); }catch{ /* storage unavailable */ } return Object.fromEntries(REPORT_OPTIONS.map(([k])=>[k,saved[k]!==false])); }
-function ordinal(n){ const v=n%100; return `${n}${(v>=11&&v<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')}`; }
-function reportStatsFor(session,term){ return (state.termStats||[]).find(t=>t.session_name===session && t.term_name===term)?.stats||null; }
+// The report card follows the school's printed template: crest and school header,
+// a DETAILS block, the COGNITIVE DOMAIN table (CA summaries, exam, total, grade and
+// the student's standing among classmates in every subject), the grading key, the
+// affective / psychomotor rating boxes and the Commandant's comment. Senior and junior
+// cards share the layout; the title, grade key and grades follow the student's class.
+// Every figure that cannot be worked out honestly (no classmates yet, no term end date)
+// is shown as a dash or left blank - nothing is invented.
+const RATING_KEY=[[5,'Maintains an Excellent Degree'],[4,'Maintains High Level'],[3,'Acceptance Level'],[2,'Shows Minimal Regard'],[1,'Has No Regard']];
+const PERSONALITY=['Punctuality','Respect','Responsibility','Neatness','Friendliness','Attentiveness'];
+const PSYCHOMOTOR=['Fluency','Sports'];
+function ordinalSup(n){ const v=n%100; const suf=(v>=11&&v<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th'); return `${n}<sup>${suf}</sup>`; }
+function gradeKeyText(scale){
+  // scale is sorted high to low: each grade runs from its own minimum up to the next band's minimum - 1.
+  return (scale||[]).map((b,i)=>({grade:b.grade,from:b.min,to:i===0?100:scale[i-1].min-1}));
+}
+function termOrdinal(g){ const n=Number(g.rows[0]?.term_number); const o={1:'1ST',2:'2ND',3:'3RD'}[n]; return o||String(g.term_name).replace(/\s*term\s*$/i,'').toUpperCase(); }
+function fmtDmy(v){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(v||''); return m?`${m[3]}-${m[2]}-${m[1]}`:''; }
+const num1=n=>Number(Number(n).toFixed(1));
 function renderReportCards(){
-  const u=state.user, opts=reportOpts();
+  const u=state.user, meta=state.reportMeta||{}, stu=meta.student||{};
+  const isJunior=stu.is_junior!==undefined?!!stu.is_junior:/^JSS/i.test(u.class_name||'');
+  const level=isJunior?'JUNIOR':'SENIOR';
+  const keyRows=gradeKeyText(meta.grade_scale);
+  const gradeKey=keyRows.length?`<div class="rc-gradekey"><strong>Grade:</strong>${keyRows.map(k=>`<span class="${k.from===0?'rc-fail':''}">${esc(k.grade)}: ${k.from} - ${k.to}</span>`).join('')}</div>`:'';
   const groups=new Map();
   state.results.forEach(r=>{
     const key=`${r.session_name}|${r.term_name}`;
     if(!groups.has(key)) groups.set(key,{session_name:r.session_name,term_name:r.term_name,rows:[]});
     groups.get(key).rows.push(r);
   });
-  const printedOn=fmtDate(new Date());
-  const legend='Grading key: A1/B2/B3 Excellent–Very Good · C4/C5/C6 Credit · D7/E8 Pass · F9 Fail';
   const cards=[...groups.values()].map(g=>{
-    const st=reportStatsFor(g.session_name,g.term_name);
-    const dash=v=>v===null||v===undefined?'—':Number(v);
-    const ca1=r=>r.test1_score===null||r.test1_score===undefined?'—':Number(r.test1_score)+Number(r.quiz_score||0)+Number(r.assignment_score||0);
-    const ca2=r=>r.test2_score===null||r.test2_score===undefined?'—':Number(r.test2_score)+Number(r.project_score||0)+Number(r.note_score||0);
-    const showSub=opts.subjectAvg && st && g.rows.some(r=>st.subjects?.[r.subject_name]?.arm_average!=null);
-    const subjectRows=g.rows.map(r=>`<tr><td>${esc(r.subject_name)}</td><td>${dash(r.test1_score)}</td><td>${dash(r.quiz_score)}</td><td>${dash(r.assignment_score)}</td><td>${ca1(r)}</td><td>${dash(r.test2_score)}</td><td>${dash(r.project_score)}</td><td>${dash(r.note_score)}</td><td>${ca2(r)}</td><td>${Number(r.exam_score)}</td><td><strong>${Number(r.total_score)}</strong></td>${showSub?`<td>${dash(st.subjects[r.subject_name]?.arm_average)}</td>`:''}<td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${esc(r.remark||'—')}</td></tr>`).join('');
+    const info=(state.termStats||[]).find(t=>t.session_name===g.session_name && t.term_name===g.term_name)||{};
+    const st=info.stats||null;
+    const dash=v=>v===null||v===undefined?'—':esc(String(v));
+    const caSum=(a,b,c)=>[a,b,c].every(x=>x===null||x===undefined)?'—':Number(a||0)+Number(b||0)+Number(c||0);
+    const rows=g.rows.map(r=>{
+      const sub=st?.subjects?.[r.subject_name]||{};
+      return `<tr><td class="rc-subject">${esc(r.subject_name)}</td><td>${caSum(r.test1_score,r.quiz_score,r.assignment_score)}</td><td>${caSum(r.test2_score,r.project_score,r.note_score)}</td><td>${Number(r.exam_score)}</td><td>${Number(r.total_score)}</td><td class="${gradeClass(r.grade)}">${esc(r.grade)}</td><td>${sub.position_in_arm?ordinalSup(sub.position_in_arm):'—'}</td><td>${sub.arm_average!=null?Math.round(sub.arm_average):'—'}</td><td>${sub.highest_in_arm!=null?Number(sub.highest_in_arm):'—'}</td><td>${sub.lowest_in_arm!=null?Number(sub.lowest_in_arm):'—'}</td><td class="rc-remark">${esc(r.remark||'—')}</td></tr>`;
+    }).join('');
     const count=g.rows.length;
-    const average=count?(g.rows.reduce((a,r)=>a+Number(r.total_score),0)/count).toFixed(1):'0.0';
-    const passes=g.rows.filter(r=>Number(r.total_score)>=50).length;
-    const summary=[
-      ['Subjects offered',count,true],
-      ['Result average',`${average}%`,opts.resultAvg],
-      ['Arm average',st?.arm_average!=null?`${st.arm_average}%`:null,opts.armAvg],
-      ['Class average',st?.class_average!=null?`${st.class_average}%`:null,opts.classAvg],
-      ['Position in arm',st?.position?`${ordinal(st.position)} of ${st.arm_size}`:null,opts.position],
-      ['Subjects passed',`${passes}/${count}`,opts.passes]
-    ].filter(([,v,on])=>on && v!==null && v!==undefined).map(([l,v])=>`<span>${esc(l)}<strong>${esc(v)}</strong></span>`).join('');
-    // Maxima mirror backend/scheme.js: CA 30 (15 + 15) + Exam 70 = 100.
-    const headers=['Subject','1st Test /5','Quiz /5','Assign. /5','CA1 /15','2nd Test /5','Project /5','Note /5','CA2 /15','Exam /70','Total /100',...(showSub?['Arm avg']:[]),'Grade','Remark'];
-    return `<section class="report-card">
-      <div class="report-card-head"><h2>Nigerian Navy Secondary School Akpabuyo Calabar</h2><p>Termly Report Card</p></div>
-      <div class="report-card-bio">
-        <span>Student<strong>${esc(u.name)}</strong></span>
-        <span>Student ID<strong>${esc(u.user_code)}</strong></span>
-        <span>Class<strong>${esc(u.class_name||'—')} ${esc(u.arm_name||'')}</strong></span>
-        <span>Term<strong>${esc(g.term_name)}</strong></span>
-        <span>Session<strong>${esc(g.session_name)}</strong></span>
-        <span>Printed<strong>${esc(printedOn)}</strong></span>
+    const average=count?num1(g.rows.reduce((a,r)=>a+Number(r.total_score),0)/count):0;
+    const blank='<span class="rc-blank"></span>';
+    const ratingRows=(names)=>names.map(n=>`<span>${esc(n)}:</span><span class="rc-box">${blank}</span>`).join('');
+    const comment=info.comment?`<div class="rc-comment"><strong>Commandant's Comment:</strong> <span>${esc(info.comment)}</span></div>`:'';
+    return `<section class="report-card rc">
+      <header class="rc-head">
+        <div class="rc-crest"><img src="command-logo.png" alt="Nigerian Navy Secondary School crest" width="96"><small>(Est Oct 12)</small></div>
+        <div class="rc-title">
+          <h2>NIGERIAN NAVY SECONDARY SCHOOL</h2>
+          <p class="rc-address">PMB 1066, IKOT OFFIONG AMBAI AKPABUYO, CALABAR.</p>
+          <p class="rc-report">${level} SECONDARY SCHOOL TERMINAL REPORT FOR <u>${esc(termOrdinal(g))}</u> TERM REPORT</p>
+          <p class="rc-ends">TERM ENDS <u>${esc(fmtDmy(info.term_ends)||'        ')}</u> <u>${esc(g.session_name)}</u> SESSION</p>
+        </div>
+      </header>
+      <div class="rc-bar">DETAILS:</div>
+      <div class="rc-details">
+        <div><span>Name:</span><strong>${esc(String(stu.name||u.name).toUpperCase())}</strong></div>
+        <div><span>Adm. No.:</span><strong>${esc(stu.admission_no||u.user_code)}</strong></div>
+        <div><span>Class:</span><strong>${esc(stu.class_name||u.class_name||'—')}</strong></div>
+        <div><span>Arm:</span><strong>${esc(stu.arm_name||u.arm_name||'—')}</strong></div>
+        <div><span>Average Scores:</span><strong class="rc-avg">${average}%</strong></div>
+        <div><span>Gender:</span><strong>${stu.gender==='F'?'Female':stu.gender==='M'?'Male':'—'}</strong></div>
       </div>
-      ${table(headers,subjectRows,'No approved results for this term.')}
-      <div class="report-card-summary">${summary}</div>
-      <p class="report-card-legend">${esc(legend)}</p>
-      <div class="report-card-signatures"><div>Class Teacher</div><div>Principal / Commandant</div></div>
+      <div class="rc-bar">COGNITIVE DOMAIN</div>
+      <table class="rc-table">
+        <thead><tr><th class="rc-subject-h">Subjects</th><th><span>1<sup>st</sup> Summary</span></th><th><span>2<sup>nd</sup> Summary</span></th><th><span>Exam</span></th><th><span>Total</span></th><th><span>Grade</span></th><th><span>Subject Position</span></th><th><span>Class Average</span></th><th><span>Class Highest Score</span></th><th><span>Class Lowest Score</span></th><th class="rc-remark-h">Remarks</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="11">No approved results for this term.</td></tr>'}</tbody>
+      </table>
+      ${gradeKey}
+      <div class="rc-ratingkey"><strong>Key to Ratings:</strong>${RATING_KEY.map(([n,t])=>`<span>${n} - ${esc(t)}</span>`).join('')}</div>
+      <div class="rc-domains">
+        <div class="rc-domain"><div class="rc-bar rc-bar-sm">AFFECTIVE DOMAIN</div><div class="rc-sub">Personality</div><div class="rc-grid">${ratingRows(PERSONALITY)}</div></div>
+        <div class="rc-domain"><div class="rc-bar rc-bar-sm">PSYCHOMOTOR DOMAIN</div><div class="rc-sub">Psychomotor Skills</div><div class="rc-grid">${ratingRows(PSYCHOMOTOR)}</div></div>
+      </div>
+      ${comment}
+      <div class="report-card-signatures"><div>Class Teacher</div><div>Commandant</div></div>
     </section>`;
   }).join('') || card('Published results','<div class="portal-empty">No approved results have been published yet.</div>');
-  const optionBar=groups.size?`<div class="report-options no-print"><strong>Show on report card:</strong>${REPORT_OPTIONS.map(([k,l])=>`<label><input type="checkbox" data-report-opt="${k}" ${opts[k]?'checked':''}> ${esc(l)}</label>`).join('')}<small>Figures the school cannot work out yet (for example, no other results approved in your class) are left off automatically.</small></div>`:'';
-  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${optionBar}${cards}`;
+  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${cards}`;
 }
 function renderSubjects(){ const rows=state.subjects.map((s,i)=>`<tr><td>${i+1}</td><td><strong>${esc(s.subject_name)}</strong></td><td>${s.ca_max}</td><td>${s.exam_max}</td><td>${s.ca_max+s.exam_max}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic programme</div><h1>My Subjects</h1></div></div>${card('Enrolled subjects',table(['#','Subject','CA max','Exam max','Total'],rows,'No subjects have been enrolled for this session.'))}`; }
 function renderAnnouncements(){
@@ -590,7 +614,6 @@ function studentStatusModal(id,currentStatus,name){
 
 function bindPanel(panel){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>render(b.dataset.go));
-  if(panel==='results') document.querySelectorAll('[data-report-opt]').forEach(c=>c.onchange=()=>{ const o=reportOpts(); document.querySelectorAll('[data-report-opt]').forEach(x=>{o[x.dataset.reportOpt]=x.checked;}); try{ localStorage.setItem('nnss_report_opts',JSON.stringify(o)); }catch{ /* storage unavailable */ } $('#appRoot').innerHTML=renderPanel('results'); bindPanel('results'); });
   if(panel==='sheet') Sheets.bindTeacherSheet();
   if(panel==='manual') Scanner.bindManual();
   if(panel==='scanner') Scanner.bindScanner();
