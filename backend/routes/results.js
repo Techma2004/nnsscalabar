@@ -9,6 +9,7 @@ const scheme = require('../scheme');
 const sheets = require('../sheets');
 const sheetExcel = require('../sheetExcel');
 const { loadTermStats } = require('../termStats');
+const { commandantComment } = require('../reportComment');
 const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
 router.use(routeLimiter(300, 'Too many result requests. Please try again later.'));
@@ -496,19 +497,20 @@ router.get('/student/:studentCode/term-stats', async (req, res) => {
   if (role === 'student' && req.user.user_code !== studentCode) return res.status(403).json({ error: 'You can only view your own results.' });
   if (!['student', 'teacher', 'admin', 'commandant'].includes(role)) return res.status(403).json({ error: 'Report-card statistics are not available for your role.' });
   try {
-    const [[stu]] = await db.query(`SELECT s.id, s.class_level_id, s.arm_id FROM students s JOIN users u ON u.id=s.user_id WHERE u.user_code=? LIMIT 1`, [studentCode]);
+    const [[stu]] = await db.query(`SELECT s.id, s.class_level_id, s.arm_id, s.admission_no, u.gender, u.full_name, cl.level_name AS class_name, cl.is_junior, a.arm_name
+      FROM students s JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id WHERE u.user_code=? LIMIT 1`, [studentCode]);
     if (!stu) return res.status(404).json({ error: 'Student not found.' });
     if (role === 'teacher') {
       const [[assigned]] = await db.query(`SELECT 1 AS ok FROM teacher_class_assignments tca JOIN teachers tc ON tc.id=tca.teacher_id JOIN academic_sessions asx ON asx.id=tca.session_id
         WHERE tc.user_id=? AND tca.class_level_id=? AND tca.arm_id=? AND asx.is_current=1 LIMIT 1`, [req.user.id, stu.class_level_id, stu.arm_id]);
       if (!assigned) return res.status(403).json({ error: 'You are not assigned to this student\'s class.' });
     }
-    const [mine] = await db.query(`SELECT r.term_id, r.subject_id, sub.subject_name, r.total_score, t.term_name, t.term_number, ac.session_name
+    const [mine] = await db.query(`SELECT r.term_id, r.subject_id, sub.subject_name, r.total_score, t.term_name, t.term_number, DATE_FORMAT(t.end_date,'%Y-%m-%d') AS end_date, ac.session_name
       FROM results r JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
       WHERE r.student_id=? AND r.is_approved=1 ORDER BY ac.start_date DESC, t.term_number DESC`, [stu.id]);
     const byTerm = new Map();
     for (const r of mine) {
-      if (!byTerm.has(r.term_id)) byTerm.set(r.term_id, { term_id: r.term_id, term_name: r.term_name, session_name: r.session_name, rows: [] });
+      if (!byTerm.has(r.term_id)) byTerm.set(r.term_id, { term_id: r.term_id, term_name: r.term_name, session_name: r.session_name, end_date: r.end_date, rows: [] });
       byTerm.get(r.term_id).rows.push({ subject_id: r.subject_id, subject_name: r.subject_name, total: Number(r.total_score) });
     }
     const terms = [];
@@ -517,9 +519,16 @@ router.get('/student/:studentCode/term-stats', async (req, res) => {
       if (!stats) continue;
       const subjects = {};
       for (const row of t.rows) subjects[row.subject_name] = stats.subjects[row.subject_id];
-      terms.push({ term_id: t.term_id, term_name: t.term_name, session_name: t.session_name, stats: { ...stats, subjects } });
+      const isJunior = !!stu.is_junior;
+      const comment = commandantComment({ average: stats.result_average, isJunior, subjects: t.rows.map(x => ({ name: x.subject_name, total: x.total })), position: stats.position, armSize: stats.arm_size });
+      const end = t.end_date || null; // already a plain YYYY-MM-DD string, so no time-zone shift
+      terms.push({ term_id: t.term_id, term_name: t.term_name, session_name: t.session_name, term_ends: end, comment, stats: { ...stats, subjects } });
     }
-    res.json({ terms });
+    res.json({
+      student: { name: stu.full_name, admission_no: stu.admission_no, gender: stu.gender || null, class_name: stu.class_name, arm_name: stu.arm_name, is_junior: !!stu.is_junior },
+      grade_scale: scheme.scaleFor(!!stu.is_junior),
+      terms
+    });
   } catch (err) { console.error('[results/term-stats]', err); res.status(500).json({ error: 'Unable to load report-card statistics.' }); }
 });
 

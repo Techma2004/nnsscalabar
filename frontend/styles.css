@@ -842,3 +842,85 @@ h2[data-icon] .nnss-icon { vertical-align: -3px; margin-right: .5rem; color: var
 /* Login page: dim the form while the page checks whether the person is already signed in. */
 .login-page.session-check .login-form-panel form { opacity: .35; pointer-events: none; transition: opacity .15s; }
 .login-note { margin: -.6rem 0 1rem; padding: .6rem .8rem; border-radius: var(--radius-sm); background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary); font-size: .88rem; }
+
+/* ===== REPORT CARD (school template) =====
+   The card is paper: it keeps white / black / navy in dark mode too, and every colour
+   is forced on when printing so the crest, header bars and shading are not dropped. */
+.report-card.rc { --rc-navy: #2b2f72; background: #fff; color: #000; border: 2px solid var(--rc-navy); border-radius: 4px; padding: 10px 12px; max-width: 980px; margin-left: auto; margin-right: auto; font-family: "Times New Roman", Times, serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; page: reportcard; }
+.rc-head { display: flex; align-items: center; gap: 14px; padding-bottom: 6px; }
+.rc-crest { flex: 0 0 auto; text-align: center; width: 100px; }
+.rc-crest img { display: block; width: 90px; height: auto; margin: 0 auto; }
+.rc-crest small { font: 700 9px Arial, sans-serif; }
+.rc-title { flex: 1; text-align: center; font-family: Arial, Helvetica, sans-serif; margin-right: 100px; }
+.rc-title h2 { margin: 0; font-size: 1.7rem; letter-spacing: .01em; color: var(--rc-navy); font-weight: 800; }
+.rc-title p { margin: 2px 0 0; font-size: .8rem; font-weight: 700; }
+.rc-title .rc-report { color: var(--rc-navy); }
+.rc-title u { text-underline-offset: 2px; font-weight: 700; padding: 0 3px; }
+.rc-bar { background: var(--rc-navy); color: #fff; text-align: center; font: 700 .8rem Arial, sans-serif; padding: 3px 6px; letter-spacing: .02em; margin-top: 6px; }
+.rc-bar-sm { margin-top: 0; }
+.rc-details { display: grid; grid-template-columns: 1.5fr 1.1fr .8fr; border: 1.5px solid var(--rc-navy); border-top: 0; font: .78rem Arial, sans-serif; }
+.rc-details > div { padding: 6px 8px; border-right: 1px solid var(--rc-navy); border-top: 1px solid var(--rc-navy); display: flex; gap: 8px; align-items: baseline; }
+.rc-details > div:nth-child(-n+3) { border-top: 0; }
+.rc-details > div:nth-child(3n) { border-right: 0; }
+.rc-details span { font-weight: 700; white-space: nowrap; }
+.rc-details strong { flex: 1; font-weight: 700; border-bottom: 1px solid #000; padding: 0 4px; }
+.rc-details .rc-avg { font: 400 1.15rem "Times New Roman", serif; flex: 0 1 auto; min-width: 3.2rem; }
+.rc-table { width: 100%; border-collapse: separate; border-spacing: 2px; margin-top: 3px; font-size: 1.02rem; background: #fff; }
+.rc-table th, .rc-table td { border: 1.5px solid #333; padding: 3px 5px; text-align: left; background: #fff; color: #000; }
+.rc-table thead th { font: 700 .8rem Arial, sans-serif; vertical-align: bottom; text-align: center; }
+.rc-table th span { display: inline-block; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; padding: 2px 0; }
+.rc-table .rc-subject-h, .rc-table .rc-remark-h { vertical-align: bottom; text-align: center; padding-top: 70px; }
+.rc-table .rc-remark-h { min-width: 4.6em; }
+.rc-table td { text-align: left; }
+.rc-table .rc-subject { width: 25%; }
+.rc-table .rc-remark { width: 12%; }
+.rc-table td sup { font-size: .6em; }
+.rc-table .grade-F { color: #b00020; }
+.rc-gradekey, .rc-ratingkey { border: 1.5px solid var(--rc-navy); color: var(--rc-navy); font: 700 .72rem Arial, sans-serif; padding: 4px 6px; margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; }
+.rc-gradekey .rc-fail { color: #c00000; }
+.rc-ratingkey { font-weight: 400; padding: 3px 6px; }
+.rc-ratingkey strong { font-weight: 700; }
+.rc-ratingkey span { margin-right: 4px; }
+.rc-domains { display: grid; grid-template-columns: 1.6fr 1fr; gap: 4px; margin-top: 6px; font: .72rem Arial, sans-serif; }
+.rc-domain { border: 1.5px solid #333; }
+.rc-sub { text-align: center; font-weight: 700; border-bottom: 1px solid #333; padding: 2px; }
+.rc-grid { display: grid; grid-template-columns: 1fr 34px 1fr 34px 1fr 34px; align-items: stretch; }
+.rc-domain:last-child .rc-grid { grid-template-columns: 1fr 34px; }
+.rc-grid > span { padding: 3px 5px; border-top: 1px solid #333; border-right: 1px solid #333; font-weight: 700; }
+.rc-grid > .rc-box { text-align: center; }
+.rc-blank { display: inline-block; min-width: 1em; min-height: 1em; }
+.rc-comment { margin-top: 8px; border: 1.5px solid #333; padding: 6px 8px; font: .82rem Arial, sans-serif; line-height: 1.45; }
+.rc-comment strong { color: var(--rc-navy); }
+.report-card.rc .report-card-signatures { margin-top: 1.6rem; gap: 3rem; }
+.report-card.rc .report-card-signatures div { color: #000; border-top: 1px solid #000; font: .78rem Arial, sans-serif; }
+@page reportcard { size: A4 portrait; margin: 8mm; }
+@media print {
+  /* One A4 portrait page per term: tighter type and spacing, no screen padding. */
+  .main-content { padding: 0 !important; min-height: 0 !important; }
+  .portal-shell { min-height: 0 !important; }
+  .report-card.rc { border: 2px solid #2b2f72; max-width: none; margin: 0; padding: 4px 6px; page-break-inside: avoid; font-size: 9pt; }
+  .rc-head { gap: 8px; padding-bottom: 3px; }
+  .rc-crest { width: 24mm; } .rc-crest img { width: 22mm; }
+  .rc-title { margin-right: 24mm; }
+  .rc-title h2 { font-size: 14pt; white-space: nowrap; }
+  .rc-title p { font-size: 7.5pt; margin-top: 1px; }
+  .rc-bar { background: #2b2f72 !important; color: #fff !important; font-size: 8pt; padding: 2px 4px; margin-top: 3px; }
+  .rc-details { font-size: 8pt; } .rc-details > div { padding: 3px 5px; }
+  .rc-table { font-size: 9pt; border-spacing: 1px; }
+  .rc-table th, .rc-table td { padding: 1px 4px; }
+  .rc-table thead th { font-size: 7pt; }
+  .rc-table .rc-subject-h, .rc-table .rc-remark-h { padding-top: 38px; }
+  .rc-table .rc-remark { width: 13%; }
+  .rc-gradekey, .rc-ratingkey { font-size: 6.5pt; padding: 2px 4px; gap: 2px 10px; margin-top: 3px; }
+  .rc-domains { font-size: 7pt; margin-top: 3px; }
+  .rc-grid > span { padding: 2px 4px; }
+  .rc-comment { font-size: 8pt; padding: 4px 6px; margin-top: 4px; }
+  .report-card.rc .report-card-signatures { margin-top: 1rem; }
+}
+@media (max-width: 760px) {
+  .rc-head { flex-direction: column; text-align: center; } .rc-title { margin-right: 0; }
+  .rc-title h2 { font-size: 1.15rem; }
+  .rc-details { grid-template-columns: 1fr; } .rc-details > div { border-right: 0; border-top: 1px solid var(--rc-navy) !important; }
+  .rc-domains { grid-template-columns: 1fr; }
+  .report-card.rc { overflow-x: auto; }
+}

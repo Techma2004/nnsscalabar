@@ -31,7 +31,7 @@ test('ties share a position and the next rank is skipped', () => {
 
 test('per-subject arm average, class average and highest', () => {
   const s = computeTermStats({ studentId: 1, armId: 10, students, subjectArms, studentSubjects: [{ subject_id: 7, total: 80 }] });
-  assert.deepEqual(s.subjects[7], { arm_average: 70, class_average: 60, highest_in_arm: 90, students_in_arm: 3 });
+  assert.deepEqual(s.subjects[7], { arm_average: 70, class_average: 60, highest_in_arm: 90, students_in_arm: 3, lowest_in_arm: null, position_in_arm: null });
 });
 
 test('subject with no peers yields nulls, and an unknown student yields null', () => {
@@ -39,4 +39,15 @@ test('subject with no peers yields nulls, and an unknown student yields null', (
   assert.equal(s.subjects[99].arm_average, null);
   assert.equal(s.subjects[99].highest_in_arm, null);
   assert.equal(computeTermStats({ studentId: 42, armId: 10, students, subjectArms, studentSubjects: [] }), null);
+});
+
+test('subject position and lowest score come from the arm\'s own totals; ties share a position', () => {
+  const armTotals = [{ subject_id: 7, total: 90 }, { subject_id: 7, total: 60 }, { subject_id: 7, total: 60 }, { subject_id: 7, total: 30 }];
+  const mid = computeTermStats({ studentId: 2, armId: 10, students, subjectArms, studentSubjects: [{ subject_id: 7, total: 60 }], armTotals });
+  assert.equal(mid.subjects[7].position_in_arm, 2);
+  assert.equal(mid.subjects[7].lowest_in_arm, 30);
+  const top = computeTermStats({ studentId: 1, armId: 10, students, subjectArms, studentSubjects: [{ subject_id: 7, total: 90 }], armTotals });
+  assert.equal(top.subjects[7].position_in_arm, 1);
+  const last = computeTermStats({ studentId: 2, armId: 10, students, subjectArms, studentSubjects: [{ subject_id: 7, total: 30 }], armTotals });
+  assert.equal(last.subjects[7].position_in_arm, 4);
 });
