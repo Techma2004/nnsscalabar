@@ -7,6 +7,11 @@
  * Run from the repository root:
  *   node database/test-seed.js
  *
+ * The MySQL user in backend/.env must be allowed to CREATE DATABASE. If it is not,
+ * run it once with an admin user: DB_USER=root DB_PASSWORD=... node database/test-seed.js
+ * Re-running is safe (accounts are updated, never duplicated). Remove everything with:
+ *   DROP DATABASE nnss_calabar_test;
+ *
  * The script reads backend/.env for the MySQL server credentials, but always
  * connects to the server without selecting the application's database first.
  */
@@ -17,7 +22,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const mysql = require('../backend/node_modules/mysql2/promise');
 const bcrypt = require('../backend/node_modules/bcryptjs');
-require('dotenv').config({ path: path.join(__dirname, '..', 'backend', '.env') });
+require('../backend/node_modules/dotenv').config({ path: path.join(__dirname, '..', 'backend', '.env') });
 
 
 // Demo/test accounts must never ship with a published password. Use DEMO_PASSWORD
@@ -36,9 +41,15 @@ function saveDemoPassword(password, generated) {
 }
 
 const DB_NAME = 'nnss_calabar_test';
+if (process.env.DB_NAME && process.env.DB_NAME === DB_NAME) {
+  // Harmless, but make it obvious: the portal itself must never point at this database by accident.
+  console.warn(`Note: backend/.env DB_NAME is already ${DB_NAME}.`);
+}
 const { password: PASSWORD, generated: PASSWORD_GENERATED } = resolveDemoPassword();
-const STUDENT_COUNT = 600;
-const TEACHER_COUNT = 48;
+// 900 students (> 893) and 78 teachers (> 72): 13 per department across the six
+// departments, plus one HOD per department (HOD001-HOD006, separate accounts).
+const STUDENT_COUNT = 900;
+const TEACHER_COUNT = 78;
 const HOD_DEPARTMENTS = [
   'Sciences', 'Languages', 'Arts & Commercial',
   'Technical', 'Social Studies', 'Administration'
@@ -133,10 +144,10 @@ async function main() {
       const parentName = nameFrom(lastNames, firstNames, i + 7);
       const parentPhone = `080${String(10000000 + i).slice(-8)}`;
       const [userResult] = await connection.query(
-        `INSERT INTO users (user_code, full_name, email, phone, password_hash, role, gender, is_active)
-         VALUES (?, ?, ?, ?, ?, 'student', ?, TRUE)
+        `INSERT INTO users (user_code, full_name, email, password_hash, role, gender, is_active)
+         VALUES (?, ?, ?, ?, 'student', ?, TRUE)
          ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), full_name=VALUES(full_name), password_hash=VALUES(password_hash), is_active=TRUE`,
-        [code, fullName, email, parentPhone, passwordHash, gender]
+        [code, fullName, email, passwordHash, gender]
       );
       const userId = userResult.insertId;
       const [studentResult] = await connection.query(
@@ -158,10 +169,10 @@ async function main() {
       const dept = departments[(i - 1) % departments.length];
       const email = `${code.toLowerCase()}@test.nnsscalabar.local`;
       const [userResult] = await connection.query(
-        `INSERT INTO users (user_code, full_name, email, password_hash, role, gender, is_active)
-         VALUES (?, ?, ?, ?, 'teacher', ?, TRUE)
-         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), full_name=VALUES(full_name), password_hash=VALUES(password_hash), is_active=TRUE`,
-        [code, fullName, email, passwordHash, i % 2 ? 'F' : 'M']
+        `INSERT INTO users (user_code, full_name, email, phone, password_hash, role, gender, is_active)
+         VALUES (?, ?, ?, ?, ?, 'teacher', ?, TRUE)
+         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), full_name=VALUES(full_name), phone=VALUES(phone), password_hash=VALUES(password_hash), is_active=TRUE`,
+        [code, fullName, email, `0701${String(1000000 + i).slice(-7)}`, passwordHash, i % 2 ? 'F' : 'M']
       );
       const userId = userResult.insertId;
       const [teacherResult] = await connection.query(
@@ -185,7 +196,7 @@ async function main() {
       }
     }
 
-    // Separate HOD accounts: HOD001-HOD006 are not counted among TCH001-TCH048.
+    // Separate HOD accounts: HOD001-HOD006 are not counted among the TCH accounts.
     for (let i = 0; i < HOD_DEPARTMENTS.length; i += 1) {
       const dept = deptByName.get(HOD_DEPARTMENTS[i]);
       assert(dept, `Department not found: ${HOD_DEPARTMENTS[i]}`);
@@ -193,10 +204,10 @@ async function main() {
       const fullName = `Head ${dept.dept_name}`;
       const email = `${code.toLowerCase()}@test.nnsscalabar.local`;
       const [userResult] = await connection.query(
-        `INSERT INTO users (user_code, full_name, email, password_hash, role, gender, is_active)
-         VALUES (?, ?, ?, ?, 'hod', ?, TRUE)
-         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), full_name=VALUES(full_name), password_hash=VALUES(password_hash), is_active=TRUE`,
-        [code, fullName, email, passwordHash, i % 2 ? 'F' : 'M']
+        `INSERT INTO users (user_code, full_name, email, phone, password_hash, role, gender, is_active)
+         VALUES (?, ?, ?, ?, ?, 'hod', ?, TRUE)
+         ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id), full_name=VALUES(full_name), phone=VALUES(phone), password_hash=VALUES(password_hash), is_active=TRUE`,
+        [code, fullName, email, `0702${String(1000000 + i + 1).slice(-7)}`, passwordHash, i % 2 ? 'F' : 'M']
       );
       await connection.query(
         `INSERT INTO hods (user_id, dept_id, appointed_date) VALUES (?, ?, '2020-09-01')
@@ -221,8 +232,11 @@ async function main() {
     console.log(`Created test database: ${DB_NAME}`);
     console.log(`Students: ${counts.students}; teachers: ${counts.teachers}; HODs: ${counts.hods}; enrollments: ${counts.enrollments}; results: ${counts.results}`);
     console.log(saveDemoPassword(PASSWORD, PASSWORD_GENERATED));
-    console.log('Student login range: STU0001–STU0600');
-    console.log('Teacher login range: TCH001–TCH048');
+    console.log(`Student login range: STU0001–STU${String(STUDENT_COUNT).padStart(4, '0')}`);
+    console.log(`Teacher login range: TCH001–TCH${String(TEACHER_COUNT).padStart(3, '0')}`);
+    const [perDept] = await connection.query("SELECT d.dept_name, COUNT(t.id) teachers FROM departments d LEFT JOIN teachers t ON t.dept_id=d.id GROUP BY d.id ORDER BY d.id");
+    console.log('Teachers per department: ' + perDept.map(d => `${d.dept_name} ${d.teachers}`).join(', '));
+    console.log(`Open it in the portal by setting DB_NAME=${DB_NAME} in a COPY of backend/.env; your real database is not touched.`);
     console.log('HOD login range: HOD001–HOD006');
   } catch (error) {
     try { await connection.rollback(); } catch {}
