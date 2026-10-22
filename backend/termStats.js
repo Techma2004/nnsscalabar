@@ -10,7 +10,8 @@
  *   arm average     - mean of the result averages of every student in the same class + arm
  *   class average   - the same, across every arm of the class level
  *   position        - rank in the arm by result average (ties share a rank: 1, 2, 2, 4)
- *   per subject     - arm average, class average and highest score for each subject
+ *   per subject     - arm average, class average, highest and lowest score, and the
+ *                     student's position among the arm for each subject
  *
  * `computeTermStats` is pure (rows in, numbers out) so it is unit-tested without a database.
  */
@@ -27,8 +28,9 @@ const mean = list => (list.length ? list.reduce((a, b) => a + b, 0) / list.lengt
  * @param {{subject_id:number, arm_id:number, n:number, sum_total:number, max_total:number}[]} input.subjectArms
  *        approved-result aggregates per subject and arm for the class level
  * @param {{subject_id:number, total:number}[]} input.studentSubjects  the student's own approved results
+ * @param {{subject_id:number, total:number}[]} [input.armTotals]      every approved total in the student's arm (for lowest score and subject position)
  */
-function computeTermStats({ studentId, armId, students, subjectArms, studentSubjects }) {
+function computeTermStats({ studentId, armId, students, subjectArms, studentSubjects, armTotals = null }) {
   const me = students.find(s => s.student_id === studentId);
   if (!me) return null;
 
@@ -46,11 +48,15 @@ function computeTermStats({ studentId, armId, students, subjectArms, studentSubj
     const inClass = subjectArms.filter(x => x.subject_id === sub.subject_id);
     const armN = inArm.reduce((a, x) => a + Number(x.n), 0);
     const classN = inClass.reduce((a, x) => a + Number(x.n), 0);
+    const totals = armTotals ? armTotals.filter(x => x.subject_id === sub.subject_id).map(x => Number(x.total)) : [];
     subjects[sub.subject_id] = {
       arm_average: armN ? round1(inArm.reduce((a, x) => a + Number(x.sum_total), 0) / armN) : null,
       class_average: classN ? round1(inClass.reduce((a, x) => a + Number(x.sum_total), 0) / classN) : null,
       highest_in_arm: armN ? Math.max(...inArm.map(x => Number(x.max_total))) : null,
-      students_in_arm: armN || null
+      students_in_arm: armN || null,
+      lowest_in_arm: totals.length ? Math.min(...totals) : null,
+      // Competition ranking again: equal totals share a position.
+      position_in_arm: totals.length ? 1 + totals.filter(t => round1(t) > round1(Number(sub.total))).length : null
     };
   }
 
@@ -80,8 +86,14 @@ async function loadTermStats(db, { studentId, classLevelId, armId, termId, stude
        FROM results r JOIN students s ON s.id = r.student_id JOIN users u ON u.id = s.user_id
       WHERE r.term_id = ? AND r.is_approved = 1 AND s.class_level_id = ? AND u.is_active = 1 AND s.status <> 'withdrawn'
       GROUP BY r.subject_id, s.arm_id`, [termId, classLevelId]);
+  const [armTotals] = await db.query(
+    `SELECT r.subject_id, r.total_score AS total
+       FROM results r JOIN students s ON s.id = r.student_id JOIN users u ON u.id = s.user_id
+      WHERE r.term_id = ? AND r.is_approved = 1 AND s.class_level_id = ? AND s.arm_id = ? AND u.is_active = 1 AND s.status <> 'withdrawn'`,
+    [termId, classLevelId, armId]);
   return computeTermStats({
     studentId, armId,
+    armTotals: armTotals.map(r => ({ subject_id: r.subject_id, total: Number(r.total) })),
     students: students.map(r => ({ student_id: r.student_id, arm_id: r.arm_id, avg_total: Number(r.avg_total), subjects: Number(r.subjects) })),
     subjectArms: subjectArms.map(r => ({ subject_id: r.subject_id, arm_id: r.arm_id, n: Number(r.n), sum_total: Number(r.sum_total), max_total: Number(r.max_total) })),
     studentSubjects
