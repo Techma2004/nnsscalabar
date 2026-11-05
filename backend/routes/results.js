@@ -10,6 +10,7 @@ const sheets = require('../sheets');
 const sheetExcel = require('../sheetExcel');
 const { loadTermStats } = require('../termStats');
 const { commandantComment } = require('../reportComment');
+const { loadPeriods } = require('../studentPeriods');
 const { routeLimiter } = require('../middleware/security');
 const router = express.Router();
 router.use(routeLimiter(300, 'Too many result requests. Please try again later.'));
@@ -491,6 +492,20 @@ router.get('/student/:studentCode', async (req, res) => {
 // position, per-subject averages) for every term in which the student has
 // approved results. Only approved results are used, so nothing unpublished can
 // leak into an average, and any figure that cannot be worked out is simply null.
+// Sessions and terms offered in the "My Results" pickers, each marked with whether this
+// student has approved results in it (see studentPeriods.js). Students only ever see their own.
+router.get('/student/:studentCode/periods', async (req, res) => {
+  const studentCode = String(req.params.studentCode || '').trim().toUpperCase();
+  const role = req.user.role;
+  if (role === 'student' && req.user.user_code !== studentCode) return res.status(403).json({ error: 'You can only view your own results.' });
+  if (!['student', 'admin', 'commandant'].includes(role)) return res.status(403).json({ error: 'Not available for your role.' });
+  try {
+    const [[stu]] = await db.query('SELECT s.id FROM students s JOIN users u ON u.id=s.user_id WHERE u.user_code=? LIMIT 1', [studentCode]);
+    if (!stu) return res.status(404).json({ error: 'Student not found.' });
+    res.json(await loadPeriods(db, stu.id));
+  } catch (err) { console.error('[results/periods]', err); res.status(500).json({ error: 'Unable to load sessions and terms.' }); }
+});
+
 router.get('/student/:studentCode/term-stats', async (req, res) => {
   const studentCode = String(req.params.studentCode || '').trim().toUpperCase();
   const role = req.user.role;
