@@ -1,5 +1,5 @@
 import {
-  getCurrentUser, logout, getStats, getStudentSummary, getStudentResults, getStudentTermStats, getStudentSubjects,
+  getCurrentUser, logout, getStats, getStudentSummary, getStudentResults, getStudentTermStats, getStudentPeriods, getStudentSubjects,
   getAllUsers, getAllResults, getAdminMeta, createUser, updateUserStatus,
   getTeacherStudents, getAssignments, getPendingResults, approveResult, rejectResult, approveSheet, getRejections,
   getAnnouncements, createAnnouncement, removeUser,
@@ -137,7 +137,7 @@ async function render(panel,{silent=false,fromHistory=false}={}){
   try {
     if(panel==='dashboard'){ if(state.user.role!=='editor') await loadCommon(); await Dash.load(); }
     if(state.user.role==='student'){
-      if(panel==='results'){ state.results=await getStudentResults(state.user.user_code); const ts=await getStudentTermStats(state.user.user_code).catch(()=>({})); state.termStats=ts.terms||[]; state.reportMeta={student:ts.student,grade_scale:ts.grade_scale}; }
+      if(panel==='results'){ state.results=await getStudentResults(state.user.user_code); state.periods=await getStudentPeriods(state.user.user_code).catch(()=>null); const ts=await getStudentTermStats(state.user.user_code).catch(()=>({})); state.termStats=ts.terms||[]; state.reportMeta={student:ts.student,grade_scale:ts.grade_scale}; }
       if(panel==='subjects') state.subjects=await getStudentSubjects(state.user.user_code);
       if(panel==='dashboard') { state.studentSummary=await getStudentSummary(); state.rejections=await getRejections(); }
     }
@@ -401,6 +401,53 @@ function gradeKeyText(scale){
 function termOrdinal(g){ const n=Number(g.rows[0]?.term_number); const o={1:'1ST',2:'2ND',3:'3RD'}[n]; return o||String(g.term_name).replace(/\s*term\s*$/i,'').toUpperCase(); }
 function fmtDmy(v){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(v||''); return m?`${m[3]}-${m[2]}-${m[1]}`:''; }
 const num1=n=>Number(Number(n).toFixed(1));
+// ---- session / term pickers for "My Results" ----
+// The school's own sessions and terms come from the server (each marked with whether this
+// student has approved results in it). If that list could not be loaded, the choices are
+// built from the results the student does have, so the pickers still work.
+function resultPeriods(groups){
+  if(state.periods && state.periods.sessions?.length) return state.periods;
+  const sessions=[];
+  for(const g of groups.values()){
+    let s=sessions.find(x=>x.session_name===g.session_name);
+    if(!s){ s={session_name:g.session_name,is_current:false,terms:[]}; sessions.push(s); }
+    if(!s.terms.some(t=>t.term_name===g.term_name)) s.terms.push({term_name:g.term_name,term_number:Number(g.rows[0]?.term_number)||0,is_current:false,has_results:true});
+  }
+  sessions.forEach(s=>s.terms.sort((a,b)=>a.term_number-b.term_number));
+  const first=sessions[0]; const t=first&&[...first.terms].reverse()[0];
+  return {sessions,default:first&&t?{session_name:first.session_name,term_name:t.term_name}:null};
+}
+const validPick=(periods,p)=>!!p && periods.sessions.some(s=>s.session_name===p.session_name && s.terms.some(t=>t.term_name===p.term_name));
+function currentPick(periods){
+  if(validPick(periods,state.resultsPick)) return state.resultsPick;
+  let saved=null; try{ saved=JSON.parse(sessionStorage.getItem('nnss_results_pick')||'null'); }catch{ /* storage unavailable */ }
+  state.resultsPick=validPick(periods,saved)?saved:(validPick(periods,periods.default)?periods.default:null);
+  return state.resultsPick;
+}
+function periodPicker(periods,pick){
+  const session=periods.sessions.find(s=>s.session_name===pick.session_name);
+  const sOpts=periods.sessions.map(s=>`<option value="${esc(s.session_name)}" ${s.session_name===pick.session_name?'selected':''}>${esc(s.session_name)}${s.is_current?' (current)':''}</option>`).join('');
+  const tOpts=session.terms.map(t=>`<option value="${esc(t.term_name)}" ${t.term_name===pick.term_name?'selected':''}>${esc(t.term_name)}${t.has_results?'':' (no results yet)'}</option>`).join('');
+  return `<div class="results-picker no-print"><div class="form-group"><label for="pickSession">Session</label><select id="pickSession">${sOpts}</select></div><div class="form-group"><label for="pickTerm">Term</label><select id="pickTerm">${tOpts}</select></div></div>`;
+}
+function bindResultsPicker(){
+  const ss=$('#pickSession'), tt=$('#pickTerm'); if(!ss||!tt) return;
+  const periods=state.shownPeriods; if(!periods) return;
+  const apply=(session_name,term_name)=>{
+    state.resultsPick={session_name,term_name};
+    try{ sessionStorage.setItem('nnss_results_pick',JSON.stringify(state.resultsPick)); }catch{ /* storage unavailable */ }
+    $('#appRoot').innerHTML=renderPanel('results'); bindPanel('results');
+    $('#pickTerm')?.focus();
+  };
+  ss.onchange=()=>{
+    // Moving to another session keeps the same term when it exists there, else its latest term with results, else its first term.
+    const s=periods.sessions.find(x=>x.session_name===ss.value); if(!s) return;
+    const same=s.terms.find(t=>t.term_name===state.resultsPick.term_name);
+    const withResults=[...s.terms].reverse().find(t=>t.has_results);
+    apply(ss.value,(same||withResults||s.terms[0]).term_name);
+  };
+  tt.onchange=()=>apply(ss.value,tt.value);
+}
 function renderReportCards(){
   const u=state.user, meta=state.reportMeta||{}, stu=meta.student||{};
   const isJunior=stu.is_junior!==undefined?!!stu.is_junior:/^JSS/i.test(u.class_name||'');
@@ -413,7 +460,13 @@ function renderReportCards(){
     if(!groups.has(key)) groups.set(key,{session_name:r.session_name,term_name:r.term_name,rows:[]});
     groups.get(key).rows.push(r);
   });
-  const cards=[...groups.values()].map(g=>{
+  // The student picks one session and one term; only that term's report card is shown.
+  const periods=resultPeriods(groups);
+  state.shownPeriods=periods;
+  const pick=currentPick(periods);
+  const pickBar=pick?periodPicker(periods,pick):'';
+  const shown=pick?[...groups.values()].filter(g=>g.session_name===pick.session_name && g.term_name===pick.term_name):[];
+  const cards=shown.map(g=>{
     const info=(state.termStats||[]).find(t=>t.session_name===g.session_name && t.term_name===g.term_name)||{};
     const st=info.stats||null;
     const dash=v=>v===null||v===undefined?'—':esc(String(v));
@@ -460,8 +513,8 @@ function renderReportCards(){
       ${comment}
       <div class="report-card-signatures"><div>Class Teacher</div><div>Commandant</div></div>
     </section>`;
-  }).join('') || card('Published results','<div class="portal-empty">No approved results have been published yet.</div>');
-  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${cards}`;
+  }).join('') || card('No results found',`<div class="portal-empty">${pick?`<h3>No results found for ${esc(pick.term_name)}, ${esc(pick.session_name)}</h3><p>Results for this term have not been uploaded or published yet. Please check again later, or ask your class teacher.</p>`:'<p>No sessions or results are available yet. Please check again later.</p>'}</div>`);
+  return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${pickBar}${cards}`;
 }
 function renderSubjects(){ const rows=state.subjects.map((s,i)=>`<tr><td>${i+1}</td><td><strong>${esc(s.subject_name)}</strong></td><td>${s.ca_max}</td><td>${s.exam_max}</td><td>${s.ca_max+s.exam_max}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic programme</div><h1>My Subjects</h1></div></div>${card('Enrolled subjects',table(['#','Subject','CA max','Exam max','Total'],rows,'No subjects have been enrolled for this session.'))}`; }
 function renderAnnouncements(){
@@ -614,6 +667,7 @@ function studentStatusModal(id,currentStatus,name){
 
 function bindPanel(panel){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>render(b.dataset.go));
+  if(panel==='results' && state.user.role==='student') bindResultsPicker();
   if(panel==='sheet') Sheets.bindTeacherSheet();
   if(panel==='manual') Scanner.bindManual();
   if(panel==='scanner') Scanner.bindScanner();
