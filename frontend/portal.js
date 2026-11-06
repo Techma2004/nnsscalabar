@@ -119,7 +119,10 @@ async function init(){
 // or a screen their role cannot open) falls back to the dashboard.
 const menuPanels=()=>(menus[state.user.role]||[]).map(m=>m[1]);
 function panelFromHash(){ let h=location.hash.replace(/^#/,''); try{ h=decodeURIComponent(h); }catch{ return 'dashboard'; } return menuPanels().includes(h)?h:'dashboard'; }
-async function signOut(){ try{await logout();}finally{location.href='login.html';} }
+async function signOut(){
+  try{ Object.keys(sessionStorage).filter(k=>k.startsWith('nnss_results_pick')).forEach(k=>sessionStorage.removeItem(k)); }catch{ /* storage unavailable */ }
+  try{await logout();}finally{location.href='login.html';}
+}
 
 async function loadCommon(){ state.stats=await getStats(); }
 async function render(panel,{silent=false,fromHistory=false}={}){
@@ -417,10 +420,12 @@ function resultPeriods(groups){
   const first=sessions[0]; const t=first&&[...first.terms].reverse()[0];
   return {sessions,default:first&&t?{session_name:first.session_name,term_name:t.term_name}:null};
 }
+// Remembered per student, so one student's choice never carries over to the next person who signs in on the same browser tab.
+const pickKey=()=>`nnss_results_pick:${state.user.user_code}`;
 const validPick=(periods,p)=>!!p && periods.sessions.some(s=>s.session_name===p.session_name && s.terms.some(t=>t.term_name===p.term_name));
 function currentPick(periods){
   if(validPick(periods,state.resultsPick)) return state.resultsPick;
-  let saved=null; try{ saved=JSON.parse(sessionStorage.getItem('nnss_results_pick')||'null'); }catch{ /* storage unavailable */ }
+  let saved=null; try{ saved=JSON.parse(sessionStorage.getItem(pickKey())||'null'); }catch{ /* storage unavailable */ }
   state.resultsPick=validPick(periods,saved)?saved:(validPick(periods,periods.default)?periods.default:null);
   return state.resultsPick;
 }
@@ -430,15 +435,22 @@ function periodPicker(periods,pick){
   const tOpts=session.terms.map(t=>`<option value="${esc(t.term_name)}" ${t.term_name===pick.term_name?'selected':''}>${esc(t.term_name)}${t.has_results?'':' (no results yet)'}</option>`).join('');
   return `<div class="results-picker no-print"><div class="form-group"><label for="pickSession">Session</label><select id="pickSession">${sOpts}</select></div><div class="form-group"><label for="pickTerm">Term</label><select id="pickTerm">${tOpts}</select></div></div>`;
 }
+// When the chosen term is empty but the student does have results elsewhere, say where.
+function availableLinks(periods){
+  const have=periods.sessions.flatMap(s=>s.terms.filter(t=>t.has_results).map(t=>({s:s.session_name,t:t.term_name})));
+  if(!have.length) return '';
+  return `<p style="margin-top:.8rem">Your results are available for:</p><div class="portal-actions" style="justify-content:center;margin-top:.4rem">${have.map(h=>`<button class="btn btn-secondary btn-sm" data-pick-session="${esc(h.s)}" data-pick-term="${esc(h.t)}">${esc(h.t)}, ${esc(h.s)}</button>`).join('')}</div>`;
+}
 function bindResultsPicker(){
   const ss=$('#pickSession'), tt=$('#pickTerm'); if(!ss||!tt) return;
   const periods=state.shownPeriods; if(!periods) return;
   const apply=(session_name,term_name)=>{
     state.resultsPick={session_name,term_name};
-    try{ sessionStorage.setItem('nnss_results_pick',JSON.stringify(state.resultsPick)); }catch{ /* storage unavailable */ }
+    try{ sessionStorage.setItem(pickKey(),JSON.stringify(state.resultsPick)); }catch{ /* storage unavailable */ }
     $('#appRoot').innerHTML=renderPanel('results'); bindPanel('results');
     $('#pickTerm')?.focus();
   };
+  document.querySelectorAll('[data-pick-session]').forEach(b=>b.onclick=()=>apply(b.dataset.pickSession,b.dataset.pickTerm));
   ss.onchange=()=>{
     // Moving to another session keeps the same term when it exists there, else its latest term with results, else its first term.
     const s=periods.sessions.find(x=>x.session_name===ss.value); if(!s) return;
@@ -513,7 +525,7 @@ function renderReportCards(){
       ${comment}
       <div class="report-card-signatures"><div>Class Teacher</div><div>Commandant</div></div>
     </section>`;
-  }).join('') || card('No results found',`<div class="portal-empty">${pick?`<h3>No results found for ${esc(pick.term_name)}, ${esc(pick.session_name)}</h3><p>Results for this term have not been uploaded or published yet. Please check again later, or ask your class teacher.</p>`:'<p>No sessions or results are available yet. Please check again later.</p>'}</div>`);
+  }).join('') || card('No results found',`<div class="portal-empty">${pick?`<h3>No results found for ${esc(pick.term_name)}, ${esc(pick.session_name)}</h3><p>Results for this term have not been uploaded or published yet. Please check again later, or ask your class teacher.</p>${availableLinks(periods)}`:'<p>No sessions or results are available yet. Please check again later.</p>'}</div>`);
   return `<div class="portal-toolbar"><div><div class="eyebrow">Academic record</div><h1>My Results</h1><p>Only approved results are visible to students.</p></div><button class="btn btn-secondary no-print" data-action="print">${ic('printer',16)}Print</button></div>${pickBar}${cards}`;
 }
 function renderSubjects(){ const rows=state.subjects.map((s,i)=>`<tr><td>${i+1}</td><td><strong>${esc(s.subject_name)}</strong></td><td>${s.ca_max}</td><td>${s.exam_max}</td><td>${s.ca_max+s.exam_max}</td></tr>`).join(''); return `<div class="portal-toolbar"><div><div class="eyebrow">Academic programme</div><h1>My Subjects</h1></div></div>${card('Enrolled subjects',table(['#','Subject','CA max','Exam max','Total'],rows,'No subjects have been enrolled for this session.'))}`; }

@@ -610,3 +610,21 @@ The test suite uses a stub database for application smoke/security checks and un
 This is proprietary school software. Public visibility of this repository does not grant permission to reuse, modify, deploy, redistribute, or sell it. Read the full [LICENSE](LICENSE).
 
 For security expectations, safe deployment configuration, and how to privately report a suspected vulnerability, read [SECURITY.md](SECURITY.md). For practical day-to-day instructions for each account role, read the [Portal User Guide](PORTAL_GUIDE.md).
+
+## Testing the whole portal
+
+Run these against a throwaway database (never the school's live one). Start the server on it first.
+
+```bash
+cd backend && npm test                      # fast unit tests (no database needed)
+
+# 1. Real journey through the API: admin makes an HOD + teacher, teacher fills a sheet,
+#    HOD approves, the student signs in and sees the result (also privacy checks).
+BASE=http://127.0.0.1:5077 ADMIN_CODE=ADM001 ADMIN_PASSWORD=... node test/e2e-portal.js
+
+# 2. Browser checks (once: npm i --no-save playwright && npx playwright install chromium)
+#    Every screen for every role - fails on JS errors, failed API calls, blank pages:
+BASE=http://127.0.0.1:5077 ACCOUNTS='[{"role":"admin","code":"ADM001","pw":"..."},{"role":"student","code":"STU0001","pw":"..."}]' node test/ui-sweep.js
+#    The student "My Results" screen (session/term pickers, no-results message):
+STUDENT_A=... STUDENT_B=... PASSWORD=... node test/ui-results-picker.js
+```
