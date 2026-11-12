@@ -422,7 +422,7 @@ router.post('/subjects', requireManagement, async (req, res) => {
   const subject_name = String(req.body?.subject_name || '').trim();
   const dept_id = Number(req.body?.dept_id) || null;
   // Every subject is scored on the school's Continuous Assessment Sheet
-  // (CA 30 = 10+2+3 and 10+3+2, Exam 70), so the split is fixed rather than editable.
+  // (CA 30 = six components of 5 marks, Exam 70), so the split is fixed rather than editable.
   const ca_max = scheme.CA_MAX;
   const exam_max = scheme.EXAM_MAX;
   if (!subject_name || subject_name.length < 2 || subject_name.length > 100) return res.status(400).json({ error: 'Subject name must be 2-100 characters.' });
