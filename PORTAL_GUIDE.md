@@ -275,7 +275,7 @@ The configured sheet totals 100 marks:
 | Exam | 60 |
 | **Term total** | **100** |
 
-The six continuous-assessment components total 40, and the examination is 60. The application calculates totals, grades, and remarks from the configured scheme; do not manually change the total to force a desired grade. If the school's approved grading policy changes, have an authorized maintainer update and verify the single source of truth in the application.
+The six continuous-assessment components total 30, and the examination is 70. The application calculates totals, grades, and remarks from the configured scheme; do not manually change the total to force a desired grade. If the school's approved grading policy changes, have an authorized maintainer update and verify the single source of truth in the application.
 
 ### Option A — Score Sheet (whole class)
 
