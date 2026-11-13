@@ -30,7 +30,7 @@ The application includes several controls intended to reduce common risks. These
 - **Browser protections:** Content Security Policy, security headers, restricted CORS origins, origin/Sec-Fetch-Site checks for state-changing requests, and `Cache-Control: no-store` on API responses.
 - **Request limits:** bounded JSON payloads and route-specific rate limits; OCR upload handling uses temporary storage and a timeout.
 - **Result workflow:** scores are validated against configured component limits; OCR output requires teacher review; HOD approval controls student visibility; edits to approved results reset approval and are logged.
-- **Operational checks:** `GET /api/health` reports API/database connectivity, and `cd backend && npm test` runs the current backend test suite.
+- **Operational checks:** `GET /api/health` is an unauthenticated liveness probe (`{"status":"ok"}` only); database detail is at `GET /api/admin/health` for admin/commandant, and `cd backend && npm test` runs the current backend test suite.
 
 Security behavior can change as the repository evolves. Review the current implementation and tests rather than relying solely on this summary.
 

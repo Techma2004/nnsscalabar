@@ -88,6 +88,7 @@ app.use('/api/posts/image', express.json({limit:'4mb'}));
 app.use(express.json({limit:'1mb'}));
 app.use(express.urlencoded({extended:true,limit:'1mb'}));
 app.use(parseCookies);
+const auth=require('./middleware/auth');
 const authAttempts=new Map();
 const authIpAttempts=new Map();
 const LOGIN_WINDOW_MS=15*60*1000;
@@ -151,7 +152,14 @@ const authCleanupTimer=setInterval(()=>{cleanupAttemptMap(authAttempts);cleanupA
 authCleanupTimer.unref();
 
 app.use('/api/auth/login',loginRateLimit);
-app.get('/api/health',async(req,res)=>{try{await db.query('SELECT 1');res.json({status:'ok',service:'nnss-calabar-api',database:'connected',time:new Date().toISOString()});}catch(err){res.status(503).json({status:'degraded',service:'nnss-calabar-api',database:'unavailable'});}});
+// Unauthenticated probe: liveness only. Service name, database state and clock are
+// deliberately not exposed; admins get the detail from /api/admin/health.
+app.get('/api/health',(req,res)=>{res.json({status:'ok'});});
+app.get('/api/admin/health',auth,async(req,res)=>{
+  if(!['admin','commandant'].includes(req.user.role))return res.status(403).json({error:'Management access required.'});
+  try{await db.query('SELECT 1');res.json({status:'ok',service:'nnss-calabar-api',database:'connected',time:new Date().toISOString()});}
+  catch(err){res.status(503).json({status:'degraded',service:'nnss-calabar-api',database:'unavailable'});}
+});
 app.use('/api/auth',require('./routes/auth'));
 app.use('/api/admin',require('./routes/admin'));
 app.use('/api/students',require('./routes/students'));
