@@ -7,7 +7,15 @@ const { passwordTooLong } = require('../validate');
 const { cookieOptions, clearOptions, signToken } = require('../sessionCookie');
 
 const router = express.Router();
-router.use(routeLimiter(120, 'Too many authentication requests. Please try again later.'));
+// /me is read on every screen restore, so it must not share the sign-in budget:
+// a teacher navigating quickly could otherwise exhaust the login limiter and
+// lock themselves out of authentication. It keeps its own counter; the API-wide
+// limiter in server.js still applies on top.
+const authLimiter = routeLimiter(120, 'Too many authentication requests. Please try again later.');
+const meLimiter = routeLimiter(300, 'Too many account requests. Please try again later.');
+router.use((req, res, next) =>
+  req.path === '/me' ? meLimiter(req, res, next) : authLimiter(req, res, next)
+);
 // Used only to give a nonexistent user_code the same bcrypt.compare timing
 // cost as a real one at login (see the SECURITY FIX comment below) — not a
 // real credential, never checked against an actual account.
@@ -100,14 +108,18 @@ router.get('/me', auth, async (req, res) => {
 // brute-forcing that check mirrors the login rate limiter (same 15-minute
 // window), keyed by account rather than IP since the request is already
 // authenticated.
+const PASSWORD_WINDOW_MS = 15 * 60 * 1000;
+const PASSWORD_MAX_ATTEMPTS = 10;
 const passwordAttempts = new Map();
+// Keyed by account, not IP: the request is already authenticated. Returns
+// { allowed, resetAt } so the response can carry Retry-After.
 function passwordChangeAllowed(userId) {
   const now = Date.now();
-  const entry = passwordAttempts.get(userId) || { count: 0, resetAt: now + 15 * 60 * 1000 };
-  if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 15 * 60 * 1000; }
+  let entry = passwordAttempts.get(userId);
+  if (!entry || now >= entry.resetAt) entry = { count: 0, resetAt: now + PASSWORD_WINDOW_MS };
   entry.count += 1;
   passwordAttempts.set(userId, entry);
-  return entry.count <= 10;
+  return { allowed: entry.count <= PASSWORD_MAX_ATTEMPTS, resetAt: entry.resetAt };
 }
 
 router.patch('/password', auth, async (req, res) => {
@@ -118,7 +130,11 @@ router.patch('/password', auth, async (req, res) => {
   if (passwordTooLong(newPassword)) return res.status(400).json({ error: 'New password must be 72 bytes or fewer.' });
   if (passwordTooLong(currentPassword)) return res.status(401).json({ error: 'Current password is incorrect.' });
   if (newPassword === currentPassword) return res.status(400).json({ error: 'New password must be different from your current password.' });
-  if (!passwordChangeAllowed(req.user.id)) return res.status(429).json({ error: 'Too many attempts. Please try again in a few minutes.' });
+  const attempt = passwordChangeAllowed(req.user.id);
+  if (!attempt.allowed) {
+    res.set('Retry-After', String(Math.max(1, Math.ceil((attempt.resetAt - Date.now()) / 1000))));
+    return res.status(429).json({ error: 'Too many attempts. Please try again in a few minutes.' });
+  }
   try {
     const [[row]] = await db.query('SELECT password_hash FROM users WHERE id=? LIMIT 1', [req.user.id]);
     if (!row) return res.status(404).json({ error: 'Account not found.' });
