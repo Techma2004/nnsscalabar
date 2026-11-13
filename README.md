@@ -9,6 +9,7 @@ A web-based school management platform and public website for Nigerian Navy Seco
 ## Documentation
 
 - **[Windows Setup Guide](WINDOWS_SETUP.md)** — complete beginner-friendly Windows/PowerShell install: Node.js, Git, MySQL, uv and Tesseract, PATH fixes, database, `.env`, running and backups.
+- **[Windows Server deployment guide](WINDOWS_SERVER.md)** — run the portal unattended on Windows Server 2025: Windows service, HTTPS reverse proxy, firewall, service account, scheduled backups, go-live checklist. Not yet validated on a live server; see its honesty statement.
 - **[Configuration Reference](CONFIGURATION.md)** — every `backend/.env` setting, built-in limits, and example configurations.
 - **[FAQ](FAQ.md)** — fixes for the most common errors (not recognized, 1045, login loops, scanner, backups).
 - **[Fresh install on a new PC](FRESH_INSTALL.md)** — the short version.
@@ -211,7 +212,7 @@ OCR is optional; do not install these packages unless you need score-sheet scann
 
 ## 3. Install on Windows
 
-> **New to Windows setup?** Follow the full guide: **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)**. It explains installs, PATH, and what to do when PowerShell says a program is not recognized. The summary below is the short version.
+> **New to Windows setup?** Follow the full guide: **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)**. It explains installs, PATH, and what to do when PowerShell says a program is not recognized. The summary below is the short version. Setting up a school **server** that must run unattended (service, HTTPS, backups)? Use **[WINDOWS_SERVER.md](WINDOWS_SERVER.md)** after this.
 
 Use a supported 64-bit Windows version and open **PowerShell** or **Windows Terminal**.
 
@@ -530,7 +531,7 @@ The first command is a dry run; the second writes records. Temporary imported cr
 
 ## Production deployment checklist
 
-Before a live deployment:
+Before a live deployment (on Windows Server, see the step-by-step **[Windows Server deployment guide](WINDOWS_SERVER.md)**):
 
 1. Use supported Node.js and MySQL/MariaDB versions and persistent hosting.
 2. Use a dedicated least-privilege database account; do not run the application as database root.

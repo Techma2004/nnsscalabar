@@ -206,7 +206,7 @@ An Administrator or the Commandant opens **Account Management**, finds the perso
 
 ### "Too many sign-in attempts"
 
-The portal limits sign-in attempts to protect accounts. Wait about 15 minutes and try again. If this happens to many people at once, see the next question.
+The portal allows **10 sign-in attempts per account, per network address, in a 15-minute window**. **Every attempt counts, including successful ones**, so repeatedly signing in and out can use the allowance up. The window is **fixed**: it starts at the first attempt and is not extended by further tries, so waiting is enough. The error response includes a `Retry-After` header with the seconds remaining (at most 900). Trying again while blocked does not lengthen the wait. If this happens to many people at once, see the next question.
 
 ### Everyone gets "too many requests" at the same time
 

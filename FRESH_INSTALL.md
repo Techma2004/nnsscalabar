@@ -1,6 +1,6 @@
 # Fresh install on a new PC
 
-> **On Windows?** Use the full guide, [WINDOWS_SETUP.md](WINDOWS_SETUP.md). The commands below use Linux/macOS style; Windows differences are called out. Settings: [CONFIGURATION.md](CONFIGURATION.md). Problems: [FAQ.md](FAQ.md).
+> **On Windows?** Use the full guide, [WINDOWS_SETUP.md](WINDOWS_SETUP.md). The commands below use Linux/macOS style; Windows differences are called out. Settings: [CONFIGURATION.md](CONFIGURATION.md). Problems: [FAQ.md](FAQ.md). For an unattended school server (Windows service, HTTPS, backups) use [WINDOWS_SERVER.md](WINDOWS_SERVER.md).
 
 On a new machine, **`database/schema.sql` is the only SQL file you run.** It is the complete, current database: all tables, the classes, arms, subjects and terms, and every upgrade that was ever made (files `002`–`006`). Do **not** run the other `.sql` files in `database/`. They exist only to upgrade older databases that already hold data.
 
