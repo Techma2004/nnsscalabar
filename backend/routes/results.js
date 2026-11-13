@@ -470,6 +470,8 @@ router.get('/student/:studentCode', async (req, res) => {
   const studentCode = String(req.params.studentCode || '').trim().toUpperCase();
   const role = req.user.role;
   if (role === 'student' && req.user.user_code !== studentCode) return res.status(403).json({ error: 'You can only view your own results.' });
+  // Explicit allow-list: the news-team (editor) role, and any role added later, must not read results.
+  if (!['student', 'teacher', 'hod', 'admin', 'commandant'].includes(role)) return res.status(403).json({ error: 'Results are not available for your role.' });
   try {
     // SECURITY FIX: any authenticated teacher or HOD could previously pull a
     // *named* student's full result history (approved and pending both) by
