@@ -10,7 +10,8 @@
  *   node database/import-rosters.js --apply             write to the database
  *
  * Options:
- *   --roster <file>        roster JSON (default database/rosters/2025-2026-second-term.json)
+ *   --roster <file>        roster JSON (required). Roster files contain students' real names, so they
+ *                          are never committed (database/rosters/ is git-ignored): keep yours outside Git.
  *   --credentials <file>   where to save the generated temporary passwords
  *                          (default database/.imported-credentials.csv, git-ignored, mode 0600)
  *   --mirror-assignments   also copy teaching assignments for these classes from the
@@ -35,7 +36,11 @@ const option = (name, fallback) => { const i = args.indexOf(name); return i >= 0
 
 const APPLY = flag('--apply');
 const MIRROR = flag('--mirror-assignments');
-const ROSTER_FILE = path.resolve(option('--roster', path.join(__dirname, 'rosters', '2025-2026-second-term.json')));
+const ROSTER_FILE = (() => {
+  const given = option('--roster', null);
+  if (!given) { console.error('Pass --roster <file>. Roster files hold student names (personal data of minors) and are not shipped with the repository.'); process.exit(1); }
+  return path.resolve(given);
+})();
 const CREDENTIALS_FILE = path.resolve(option('--credentials', path.join(__dirname, '.imported-credentials.csv')));
 
 const normalise = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
