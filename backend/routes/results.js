@@ -39,6 +39,13 @@ const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 60000);
 const OCR_RATE_WINDOW_MS = 5 * 60 * 1000;
 const OCR_RATE_MAX = 6;
 const OCR_RATE_MAX_ENTRIES = 5000;
+
+// /ai-status spawns the runner twice per call (Tesseract version + pypdfium2
+// import), which is far more expensive than it looks and is not covered by the
+// per-teacher scan limit. Readiness is a property of the server, not the user,
+// so one short-lived cache entry serves everybody.
+const AI_STATUS_TTL_MS = 30 * 1000;
+let aiStatusCache = { at: 0, payload: null };
 const OCR_IMAGE_EXTENSIONS = Object.freeze({ jpeg: 'jpeg', jpg: 'jpeg', png: 'png', webp: 'webp', pdf: 'pdf' });
 const ocrAttempts = new Map();
 function cleanupOcrAttempts(now = Date.now()) {
@@ -51,7 +58,10 @@ function ocrRateLimit(req, res, next) {
   const entry = ocrAttempts.get(key);
   if (!entry || now >= entry.resetAt) { ocrAttempts.set(key, { count: 1, resetAt: now + OCR_RATE_WINDOW_MS }); return next(); }
   entry.count += 1;
-  if (entry.count > OCR_RATE_MAX) return res.status(429).json({ error: 'Too many scans in a short time. Please wait a few minutes and try again.' });
+  if (entry.count > OCR_RATE_MAX) {
+    res.set('Retry-After', String(Math.max(1, Math.ceil((entry.resetAt - now) / 1000))));
+    return res.status(429).json({ error: 'Too many scans in a short time. Please wait a few minutes and try again.' });
+  }
   next();
 }
 const ocrCleanupTimer = setInterval(() => cleanupOcrAttempts(), OCR_RATE_WINDOW_MS);
@@ -242,6 +252,10 @@ router.get('/ai-status', async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can use score-sheet import.' });
   const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
   if (!enabled) return res.json({ enabled: false, available: false, model: 'Tesseract OCR' });
+  const now = Date.now();
+  if (aiStatusCache.payload && now - aiStatusCache.at < AI_STATUS_TTL_MS) {
+    return res.json(aiStatusCache.payload);
+  }
   // Cheap readiness probe: actually invoking Tesseract's own version check is
   // more honest than pinging a network service, since OCR runs locally with
   // no server to be "down". Use the same runner (uv or raw python) as a real
@@ -260,11 +274,13 @@ router.get('/ai-status', async (req, res) => {
     // before the version check, exactly as a real scan does.
     await probe('import ocr_score_sheet, pytesseract; pytesseract.get_tesseract_version()');
   } catch {
-    return res.json({ enabled: true, available: false, pdf: false, model: 'Tesseract OCR' });
+    aiStatusCache = { at: now, payload: { enabled: true, available: false, pdf: false, model: 'Tesseract OCR' } };
+    return res.json(aiStatusCache.payload);
   }
   // PDF scans (CamScanner etc.) need the pypdfium2 renderer; without it photos still work.
   const pdf = await probe('import pypdfium2').then(() => true, () => false);
-  res.json({ enabled: true, available: true, pdf, model: 'Tesseract OCR' });
+  aiStatusCache = { at: now, payload: { enabled: true, available: true, pdf, model: 'Tesseract OCR' } };
+  res.json(aiStatusCache.payload);
 });
 
 router.post('/ai-import', ocrRateLimit, async (req, res) => {

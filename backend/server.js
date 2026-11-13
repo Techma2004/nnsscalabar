@@ -102,6 +102,8 @@ function cleanupAttemptMap(map,now=Date.now()){
   }
 }
 
+// Returns { allowed, resetAt } so the caller can tell the client exactly how
+// long to wait, instead of a vague "try again later".
 function consumeAttempt(map,key,maxEntries,maxAttempts,now){
   let entry=map.get(key);
   if(!entry||now>=entry.resetAt){
@@ -113,11 +115,18 @@ function consumeAttempt(map,key,maxEntries,maxAttempts,now){
         if(oldestKey!==undefined) map.delete(oldestKey);
       }
     }
-    map.set(key,{count:1,resetAt:now+LOGIN_WINDOW_MS});
-    return true;
+    entry={count:1,resetAt:now+LOGIN_WINDOW_MS};
+    map.set(key,entry);
+    return {allowed:true,resetAt:entry.resetAt};
   }
   entry.count+=1;
-  return entry.count<=maxAttempts;
+  return {allowed:entry.count<=maxAttempts,resetAt:entry.resetAt};
+}
+
+// The window opens on the first attempt and is never extended, so Retry-After
+// is simply the time left in the current window (seconds, minimum 1).
+function retryAfterSeconds(resetAt,now){
+  return String(Math.max(1,Math.ceil((resetAt-now)/1000)));
 }
 
 function loginRateLimit(req,res,next){
@@ -125,10 +134,14 @@ function loginRateLimit(req,res,next){
   // Account codes are at most 20 characters in this app; truncating only the
   // limiter key prevents arbitrary large request values from bloating memory.
   const userCode=String(req.body?.user_code||'').trim().toUpperCase().slice(0,20);
-  if(!consumeAttempt(authIpAttempts,req.ip,LOGIN_IP_MAX_ENTRIES,LOGIN_IP_MAX_ATTEMPTS,now)){
+  const byIp=consumeAttempt(authIpAttempts,req.ip,LOGIN_IP_MAX_ENTRIES,LOGIN_IP_MAX_ATTEMPTS,now);
+  if(!byIp.allowed){
+    res.set('Retry-After',retryAfterSeconds(byIp.resetAt,now));
     return res.status(429).json({error:'Too many login attempts from this network. Please try again later.'});
   }
-  if(!consumeAttempt(authAttempts,`${req.ip}:${userCode}`,LOGIN_MAX_ENTRIES,LOGIN_MAX_ATTEMPTS,now)){
+  const byAccount=consumeAttempt(authAttempts,`${req.ip}:${userCode}`,LOGIN_MAX_ENTRIES,LOGIN_MAX_ATTEMPTS,now);
+  if(!byAccount.allowed){
+    res.set('Retry-After',retryAfterSeconds(byAccount.resetAt,now));
     return res.status(429).json({error:'Too many login attempts. Please try again later.'});
   }
   next();
