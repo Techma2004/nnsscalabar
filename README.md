@@ -9,6 +9,7 @@ A web-based school management platform and public website for Nigerian Navy Seco
 ## Documentation
 
 - **[Windows Setup Guide](WINDOWS_SETUP.md)** — complete beginner-friendly Windows/PowerShell install: Node.js, Git, MySQL, uv and Tesseract, PATH fixes, database, `.env`, running and backups.
+- **[HTTPS guide](HTTPS.md)** — TLS in front of the portal with nginx (LAN CA or Let's Encrypt), cookie settings and the hostile-LAN caveat.
 - **[Windows Server deployment guide](WINDOWS_SERVER.md)** — run the portal unattended on Windows Server 2025: Windows service, HTTPS reverse proxy, firewall, service account, scheduled backups, go-live checklist. Not yet validated on a live server; see its honesty statement.
 - **[Configuration Reference](CONFIGURATION.md)** — every `backend/.env` setting, built-in limits, and example configurations.
 - **[FAQ](FAQ.md)** — fixes for the most common errors (not recognized, 1045, login loops, scanner, backups).
@@ -516,15 +517,15 @@ The fallback `OCR_RUNNER=python` mode requires `OCR_PYTHON_BIN` to point to a Py
 
 Migration files are version-specific. The repository includes `database/002_result_rejection.sql`, `database/003_promotion_and_departments.sql`, `database/004_ca_sheet_scheme.sql`, `database/005_session_version.sql` and `database/006_news_team_requests_contacts.sql` (adds the news-team role, blog/newsletter posts and student change requests) and `database/007_grading_30_70.sql` (Continuous Assessment 30 + Exam 70, every CA column out of 5; WAEC A1-F9 grading for senior classes and A/C/P/F for junior classes, following the student's current class so a promoted student is regraded on the new class's scale; existing marks are kept and regraded, run `mariadb-dump` first). All of them are already included in `database/schema.sql`, so a new installation needs none of them (see [FRESH_INSTALL.md](FRESH_INSTALL.md)). Apply only the migration(s) required by your current schema, in the order intended for that installation. If you are unsure which version is installed, stop and inspect the schema rather than running every SQL file blindly.
 
-### Importing the included scanned-sheet rosters
+### Importing class rosters
 
-The file `database/rosters/2025-2026-second-term.json` contains transcribed names for SS1 SIRI and JSS3 AYAM. It is roster data, not score data. Review it against the official register before use.
+Roster files list students' real names, which is personal data of minors, so **none is shipped with the repository** and `database/rosters/` is git-ignored. Prepare your own JSON file (the format is described at the top of `database/import-rosters.js`), keep it outside Git, and review it against the official register before use.
 
 From the repository root:
 
 ```bash
-node database/import-rosters.js
-node database/import-rosters.js --apply
+node database/import-rosters.js --roster /path/to/your-roster.json
+node database/import-rosters.js --roster /path/to/your-roster.json --apply
 ```
 
 The first command is a dry run; the second writes records. Temporary imported credentials are written to a git-ignored file. Protect and securely dispose of that file after authorized delivery. Use `--mirror-assignments` only when you deliberately want to copy teaching assignments from the current session.

@@ -24,3 +24,13 @@ __pycache__/
 
 # Pictures uploaded by the school news team
 frontend/uploads/
+
+# Personal data and security-scan artefacts must never be committed
+database/rosters/
+vuln*.png
+Screenshot-of-flags*
+*.p12
+*-credentials.txt
+demo-credentials.txt
+backups/
+*.sql.gz

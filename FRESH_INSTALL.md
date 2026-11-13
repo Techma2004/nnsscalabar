@@ -43,7 +43,7 @@ On a new machine, **`database/schema.sql` is the only SQL file you run.** It is 
 ## What you do NOT need
 
 - The other `.sql` files in `database/` (`002`–`006`): already inside `schema.sql`.
-- `database/import-rosters.js`: optional, only to load the SS1 SIRI and JSS3 AYAM class lists.
+- `database/import-rosters.js`: optional, loads class lists from a roster file you supply with `--roster` (no roster data ships with the repository).
 - `seed-demo.js` and `test-seed.js`: demo and test data only.
 - Python, uv and Tesseract: only for the AI Scanner. Manual Entry and Excel upload work without them.
 
