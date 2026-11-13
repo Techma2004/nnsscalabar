@@ -192,6 +192,7 @@ How many reverse proxies (such as Nginx or Caddy) sit between the internet and t
 - `0`: visitors connect directly. **Use this when there is no proxy.**
 - `1`: one proxy in front (the usual case when you run Nginx on the same machine).
 - Setting it **too low behind a proxy** makes every visitor look like the same address, so the request limits hit everyone at once ([FAQ](FAQ.md#everyone-gets-too-many-requests-at-the-same-time)).
+  - **Example for a school.** Say the portal sits behind Caddy on the same server but `TRUST_PROXY_HOPS` is still `0`. The portal then sees every teacher, student and parent as `127.0.0.1`, so the whole school shares **one** bucket of 300 API requests per 15 minutes. That is about **20 requests per minute for everyone together**. A few teachers saving score sheets during the day can use it up, and then *everybody* sees "too many requests". With a proxy in front, set `TRUST_PROXY_HOPS=1`. This is the single most likely production misconfiguration.
 - Setting it **higher than the real number** lets visitors fake their address. Count carefully.
 
 ---
@@ -276,17 +277,39 @@ These protect the portal on modest hardware. They are fixed in the code. If a us
 | Limit | Value |
 |---|---|
 | All API requests, per computer address | 300 per 15 minutes |
-| Sign-in and account requests | 120 per 15 minutes |
+| Static pages and screen loads, per computer address | 1000 per 15 minutes |
+| Sign-in attempts, per computer address **and** account | 10 per 15 minutes |
+| Sign-in attempts, per computer address (all accounts together) | 300 per 15 minutes |
+| Sign-in, sign-out and password requests | 120 per 15 minutes |
+| Account details (`/api/auth/me`) | 300 per 15 minutes |
 | Administration requests | 400 per 15 minutes |
 | Directory, results and blog-management requests | 300 per 15 minutes |
 | Dashboard, announcements and change requests | 200 per 15 minutes |
 | Password changes, per user | 10 per 15 minutes |
 | Scanner scans, per teacher | 6 per 5 minutes |
-| Login session length | 8 hours |
+| Scanner readiness check | cached for 30 seconds |
+| Login session length | 8 hours from last use |
 | Excel score-sheet upload | about 4 MB file |
 | Scanner photo or PDF | under 7 MB |
 | Blog picture | PNG, JPEG or WebP, 2.5 MB |
 | Passwords | at least 8 characters |
+
+### How long the waiting period lasts
+
+Every limit uses a **fixed window** that opens at your **first** request in it. Being blocked does **not** restart the clock. Example, for sign-in:
+
+| Time | What happens |
+|---|---|
+| 08:00 | Attempt 1 — the window opens and will close at 08:15 |
+| 08:02 | Attempt 10 — still allowed |
+| 08:03 | Attempt 11 — blocked |
+| 08:15 | The counter clears; 10 fresh attempts |
+
+So the wait is **at most 15 minutes** (5 minutes for scans), and less if the window was already part-way through. Every "too many requests" response includes a **`Retry-After`** header giving the exact number of seconds to wait, so a front end can show a real countdown.
+
+Note that a **successful** sign-in counts as an attempt too. Signing in and out repeatedly in a short time can trigger the limit even with the correct password.
+
+**Scanner readiness check.** The scanner screen asks the server whether Tesseract and `uv` are available, and the server remembers the answer for 30 seconds (checking is slow, and every check starts the scanner program twice). The trade-off: right after you install `uv` or Tesseract, the scanner screen can still report "unavailable" for up to 30 seconds. Wait half a minute and reopen the screen; you do not need to restart the portal.
 
 ---
 
