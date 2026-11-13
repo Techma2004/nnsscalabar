@@ -120,6 +120,8 @@ router.get('/:studentCode', async (req, res) => {
 router.get('/:studentCode/subjects', async (req, res) => {
   const code = String(req.params.studentCode || '').trim().toUpperCase();
   if (!/^[A-Z0-9_-]{3,20}$/.test(code)) return res.status(400).json({ error: 'Invalid student code format.' });
+  // Answer before any lookup so a student cannot tell which other codes exist (403 vs 404).
+  if (req.user.role === 'student' && req.user.user_code !== code) return res.status(403).json({ error: 'Forbidden.' });
   try {
     const [[student]] = await db.query(`SELECT s.id AS student_id,s.class_level_id,s.arm_id,u.user_code FROM students s
       JOIN users u ON u.id=s.user_id WHERE u.user_code=? AND u.is_active=1 LIMIT 1`, [code]);
