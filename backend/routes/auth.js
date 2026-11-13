@@ -5,6 +5,7 @@ const auth = require('../middleware/auth');
 const { routeLimiter } = require('../middleware/security');
 const { passwordTooLong } = require('../validate');
 const { cookieOptions, clearOptions, signToken } = require('../sessionCookie');
+const loginSecurity = require('../loginSecurity');
 
 const router = express.Router();
 // /me is read on every screen restore, so it must not share the sign-in budget:
@@ -32,12 +33,26 @@ router.post('/login', async (req, res) => {
   // refuse it before spending CPU on a hash comparison.
   if (user_code.length > 20 || passwordTooLong(password)) return res.status(401).json({ error: 'Invalid user ID or password.' });
 
+  const ip = req.ip;
   try {
     const [rows] = await db.query(
-      `SELECT id, user_code, full_name, email, role, password_hash, is_active, session_version
+      `SELECT id, user_code, full_name, email, role, password_hash, is_active, session_version,
+              (locked_until IS NOT NULL AND locked_until > NOW()) AS is_locked,
+              GREATEST(1, COALESCE(TIMESTAMPDIFF(SECOND, NOW(), locked_until), 0)) AS lock_seconds,
+              (locked_until IS NOT NULL AND locked_until <= NOW()) AS lock_expired
        FROM users WHERE user_code = ? LIMIT 1`, [user_code]
     );
     const user = rows[0];
+
+    // Persistent lockout (second layer, after the in-memory IP limiters). The
+    // counter is not advanced while locked, so repeated tries cannot extend it.
+    if (user && loginSecurity.isLocked(user)) {
+      await loginSecurity.recordAttempt(ip, user_code, false);
+      res.set('Retry-After', String(user.lock_seconds));
+      return res.status(429).json({ error: 'Too many failed sign-in attempts. Please try again later.' });
+    }
+    if (user && Number(user.lock_expired) === 1) await loginSecurity.clearExpiredLock(user.id);
+
     // SECURITY FIX: bcrypt.compare only ran when a matching user_code was
     // found, so a nonexistent code returned instantly while a real one took
     // bcrypt's deliberately-slow hashing time — an attacker could use that
@@ -45,11 +60,17 @@ router.post('/login', async (req, res) => {
     // guessing a password. Always run a compare, against a fixed dummy hash
     // when there's no real user, so both paths take comparable time.
     const valid = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
-    if (!user || !valid || !user.is_active) return res.status(401).json({ error: 'Invalid user ID or password.' });
+    if (!user || !valid || !user.is_active) {
+      await loginSecurity.recordAttempt(ip, user_code, false);
+      if (user && !valid) await loginSecurity.registerFailure(user.id);
+      await loginSecurity.checkStuffing();
+      return res.status(401).json({ error: 'Invalid user ID or password.' });
+    }
 
     const token = signToken({ id: user.id, user_code: user.user_code, role: user.role, name: user.full_name, sv: user.session_version });
 
-    await db.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+    await loginSecurity.registerSuccess(user.id);
+    await loginSecurity.recordAttempt(ip, user_code, true);
     res.cookie('nnss_token', token, cookieOptions);
     res.json({ user: safeUser(user) });
   } catch (err) {

@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const scheme = require('../scheme');
+const loginSecurity = require('../loginSecurity');
 const { syncResultScales } = require('../gradeScale');
 const v = require('../validate');
 const { routeLimiter } = require('../middleware/security');
@@ -354,7 +355,7 @@ router.patch('/users/:userId/password', requireManagement, async (req, res) => {
     if (!target) return res.status(404).json({ error: 'User not found.' });
     if (['admin','commandant'].includes(target.role) && req.user.role !== 'commandant') return res.status(403).json({ error: 'Only the Commandant can reset a management-level account password.' });
     const hash = await bcrypt.hash(newPassword, 12);
-    await db.query('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?', [hash, targetId]);
+    await db.query('UPDATE users SET password_hash=?, session_version=session_version+1, failed_attempts=0, locked_until=NULL WHERE id=?', [hash, targetId]);
     await db.query('INSERT INTO activity_log (user_id, action, entity_type, entity_id, detail) VALUES (?, ?, ?, ?, ?)',
       [req.user.id, 'RESET_PASSWORD', 'user', targetId, JSON.stringify({ user_code: target.user_code })]);
     res.json({ message: `Password reset for ${target.full_name} (${target.user_code}).` });
@@ -490,6 +491,20 @@ router.get('/curriculum/history', requireManagement, async (req, res) => {
     );
     res.json(rows);
   } catch (err) { console.error('[admin/curriculum/history]', err); res.status(500).json({ error: 'Unable to load curriculum history.' }); }
+});
+
+// Credential-stuffing signal and recent failed sign-ins (management only).
+router.get('/security-alerts', requireManagement, async (req, res) => {
+  try {
+    const summary = await loginSecurity.stuffingSummary();
+    const [recent] = await db.query(
+      `SELECT ip, user_code, success, ts FROM login_attempts
+        WHERE success = 0 ORDER BY ts DESC LIMIT 50`);
+    const [locked] = await db.query(
+      `SELECT user_code, role, failed_attempts, locked_until FROM users
+        WHERE locked_until IS NOT NULL AND locked_until > NOW() ORDER BY locked_until DESC LIMIT 50`);
+    res.json({ summary, locked_accounts: locked, recent_failures: recent });
+  } catch (err) { console.error('[admin/security-alerts]', err); res.status(500).json({ error: 'Unable to load security alerts.' }); }
 });
 
 router.patch('/subjects/:subjectId/status', requireManagement, async (req, res) => {

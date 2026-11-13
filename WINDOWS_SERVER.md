@@ -173,7 +173,7 @@ Get-Content C:\nnss-logs\portal.log -Tail 20 # look for: Database connection: OK
 Invoke-RestMethod http://127.0.0.1:5000/api/health
 ```
 
-The health call should return `status: ok` and `database: connected`.
+The health call returns `status: ok` (liveness only; database detail is at `/api/admin/health` for signed-in admins).
 
 The application shuts down gracefully on SIGTERM/SIGINT (with a 10-second forced exit), so stopping or restarting the service is safe.
 

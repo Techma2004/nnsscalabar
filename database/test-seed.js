@@ -13,6 +13,12 @@
  */
 'use strict';
 
+// Demo/test accounts must never be creatable on a production server.
+if (process.env.NODE_ENV === 'production') {
+  console.error('[test-seed.js] Refusing to run: NODE_ENV=production. This script creates demo accounts and must never run on a live server.');
+  process.exit(1);
+}
+
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
