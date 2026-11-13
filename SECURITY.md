@@ -49,6 +49,16 @@ Security behavior can change as the repository evolves. Review the current imple
 11. **Keep dependencies and CI current.** Review dependency/security alerts, CI workflows, and changes to authentication, authorization, SQL, OCR, and session handling.
 12. **Treat OCR as untrusted input.** Confirm each extracted student and score against the official source before submission. OCR does not approve or publish results automatically.
 
+### Windows Server production
+
+When deploying on Windows Server (full steps in [WINDOWS_SERVER.md](WINDOWS_SERVER.md), which has not yet been validated on a live server):
+
+- Run the portal as a service under a **dedicated, non-administrator service account** with least-privilege ACLs: Modify only on `frontend\uploads` and the log folder, Read on `backend\.env`.
+- Expose **only 443 and 80**; never 5000 or 3306. Keep `HOST=127.0.0.1` so only the reverse proxy reaches Node.
+- Serve over **HTTPS** with `COOKIE_SECURE=true` (automatic with `NODE_ENV=production`) and set `TRUST_PROXY_HOPS` to the verified hop count (normally `1`).
+- Run **a single instance**: the in-memory rate limiter is not shared between instances.
+- Back up nightly to a different drive or machine, treat backups as confidential student data, and **test a restore**.
+
 ## Security testing and maintenance
 
 Run the targeted backend tests from the repository root:

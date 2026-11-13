@@ -447,7 +447,7 @@ Open your browser at **<http://localhost:5000/login.html>** and sign in with the
 | **Restart** after changing `.env` | Stop it, then start it again. Changes to `.env` are only read at start. |
 | Check the database is running | `Get-Service *mysql*` → Status must be **Running**. |
 
-The MySQL service starts automatically with Windows (you ticked that in step 3.3). The **portal does not**: someone must run `npm start` after each reboot. For a school server that must run unattended, ask your IT person to run it as a Windows service (for example with a service wrapper such as NSSM) and to put it behind HTTPS; see the production checklist in the [README](README.md#production-deployment-checklist).
+The MySQL service starts automatically with Windows (you ticked that in step 3.3). The **portal does not**: someone must run `npm start` after each reboot. For a school server that must run unattended, give your IT person **[WINDOWS_SERVER.md](WINDOWS_SERVER.md)**: it covers running the portal as a Windows service, HTTPS, the firewall, a service account and scheduled backups. The general production checklist is in the [README](README.md#production-deployment-checklist).
 
 ---
 
