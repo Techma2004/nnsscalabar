@@ -172,7 +172,7 @@ Changing the secret signs **everybody** out, which is useful if you suspect it l
 | Default | empty (means: `true` when `NODE_ENV=production`, otherwise `false`) |
 | Values | `true` or `false` |
 
-Whether the login cookie is only sent over HTTPS.
+Whether the login cookie is only sent over HTTPS. To put the portal behind TLS, see [HTTPS.md](HTTPS.md).
 
 | Your situation | Setting |
 |---|---|
@@ -280,6 +280,8 @@ These protect the portal on modest hardware. They are fixed in the code. If a us
 | Static pages and screen loads, per computer address | 1000 per 15 minutes |
 | Sign-in attempts, per computer address **and** account | 10 per 15 minutes |
 | Sign-in attempts, per computer address (all accounts together) | 300 per 15 minutes |
+| Account lockout (kept in the database, survives a restart) | locked for 15 minutes after 10 wrong passwords in a row; a correct sign-in or an admin password reset clears it |
+| Credential-stuffing alert | more than 20 failed sign-ins across at least 5 different accounts in 10 minutes writes a `SECURITY_ALERT` to the activity log; see `GET /api/admin/security-alerts` |
 | Sign-in, sign-out and password requests | 120 per 15 minutes |
 | Account details (`/api/auth/me`) | 300 per 15 minutes |
 | Administration requests | 400 per 15 minutes |
@@ -406,6 +408,6 @@ Run these from the **`backend`** folder.
 |---|---|
 | `schema.sql` | **New installation:** run this one file. Safe to run again. Works on MySQL 8 and MariaDB. |
 | `002_*` … `006_*.sql` | **Upgrading an old database only,** and only the ones you are missing, in number order. A new installation never needs them. |
-| `import-rosters.js` | Optional: loads the SS1 SIRI and JSS3 AYAM class lists |
+| `import-rosters.js` | Optional: loads class lists from a roster JSON you pass with `--roster` (none is shipped) |
 
 Always **back up before** changing a live database: see [Windows setup, section 11](WINDOWS_SETUP.md#11-backups-and-restore) or `mysqldump` on Linux and macOS.

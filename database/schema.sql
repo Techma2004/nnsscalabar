@@ -345,8 +345,21 @@ CREATE TABLE IF NOT EXISTS users (
   last_login    DATETIME,
   profile_photo VARCHAR(255),
   session_version INT NOT NULL DEFAULT 0,
+  failed_attempts INT NOT NULL DEFAULT 0,
+  locked_until  DATETIME NULL DEFAULT NULL,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Sign-in audit trail (see database/008_login_lockout.sql)
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id        BIGINT AUTO_INCREMENT PRIMARY KEY,
+  ip        VARCHAR(45) NOT NULL,
+  user_code VARCHAR(20) NOT NULL,
+  success   BOOLEAN NOT NULL,
+  ts        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_login_attempts_ts (ts),
+  INDEX idx_login_attempts_ip_ts (ip, ts)
 );
 
 -- =====================================================
@@ -963,6 +976,37 @@ SET @sql := IF(@col_exists = 0,
   'DO 0'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Migration 008: persistent lockout columns + login_attempts (see database/008_login_lockout.sql)
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'failed_attempts'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE users ADD COLUMN failed_attempts INT NOT NULL DEFAULT 0',
+  'DO 0'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'locked_until'
+);
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE users ADD COLUMN locked_until DATETIME NULL DEFAULT NULL',
+  'DO 0'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id        BIGINT AUTO_INCREMENT PRIMARY KEY,
+  ip        VARCHAR(45) NOT NULL,
+  user_code VARCHAR(20) NOT NULL,
+  success   BOOLEAN NOT NULL,
+  ts        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_login_attempts_ts (ts),
+  INDEX idx_login_attempts_ip_ts (ip, ts)
+);
 
 -- Migration 004: Continuous Assessment Sheet components (see database/004_ca_sheet_scheme.sql)
 SET @col_exists := (

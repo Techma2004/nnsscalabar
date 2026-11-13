@@ -1,0 +1,14 @@
+title = "NNSS Calabar gitleaks config"
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders and test fixtures, never real credentials"
+regexes = [
+  '''change-this-database-password''',
+  '''replace-with-a-[a-z -]+''',
+  '''crypto\.randomBytes''',
+]
+paths = [
+  '''backend/\.env\.example''',
+]
