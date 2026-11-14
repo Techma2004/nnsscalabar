@@ -35,7 +35,6 @@ A web-based school management platform and public website for Nigerian Navy Seco
 - [Existing database and roster tools](#existing-database-and-roster-tools)
 - [Production deployment checklist](#production-deployment-checklist)
 - [Troubleshooting](#troubleshooting)
-- [Testing](#testing)
 - [License and security](#license-and-security)
 
 ## Features
@@ -543,7 +542,7 @@ Before a live deployment (on Windows Server, see the step-by-step **[Windows Ser
 7. Set `TRUST_PROXY_HOPS` to the exact, verified proxy hop count. Use `0` for direct connections. Never enable unrestricted proxy trust; the trusted proxy must overwrite forwarded headers.
 8. Keep `.env`, bootstrap credentials, imported credentials, backups, and student data out of Git and public storage.
 9. Restrict network access to the web server and database; enable monitoring and tested backups.
-10. Run the targeted backend test suite and verify sign-in, each role's access, result approval, and restoration procedures before go-live.
+10. Verify sign-in, each role's access, result approval, and restoration procedures before go-live.
 11. For multiple backend instances, replace the in-memory rate-limit stores with a shared store such as Redis.
 12. Review [SECURITY.md](SECURITY.md) and the [License](LICENSE) before operating or redistributing the software.
 
@@ -595,17 +594,6 @@ Check `tesseract --version`, `uv --version`, and `python --version`; run `uv syn
 ### A SQL prompt shows `->`
 
 The SQL statement is incomplete. Enter `\c` to cancel it, then `EXIT;` to leave the SQL prompt. Shell commands such as `mysql ... < database/schema.sql` must be run in the operating-system terminal, not inside `mysql>`.
-
-## Testing
-
-From the repository root:
-
-```bash
-cd backend
-npm test
-```
-
-The test suite uses a stub database for application smoke/security checks and unit tests. It does not prove that a live deployment is configured securely; perform deployment checks and a database backup/restore test separately.
 
 ## License and security
 

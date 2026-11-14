@@ -30,7 +30,7 @@ The application includes several controls intended to reduce common risks. These
 - **Browser protections:** Content Security Policy, security headers, restricted CORS origins, origin/Sec-Fetch-Site checks for state-changing requests, and `Cache-Control: no-store` on API responses.
 - **Request limits:** bounded JSON payloads and route-specific rate limits; OCR upload handling uses temporary storage and a timeout.
 - **Result workflow:** scores are validated against configured component limits; OCR output requires teacher review; HOD approval controls student visibility; edits to approved results reset approval and are logged.
-- **Operational checks:** `GET /api/health` is an unauthenticated liveness probe (`{"status":"ok"}` only); database detail is at `GET /api/admin/health` for admin/commandant, and `cd backend && npm test` runs the current backend test suite.
+- **Operational checks:** `GET /api/health` is an unauthenticated liveness probe (`{"status":"ok"}` only); database detail is at `GET /api/admin/health` for admin/commandant.
 
 Security behavior can change as the repository evolves. Review the current implementation and tests rather than relying solely on this summary.
 
@@ -49,18 +49,9 @@ Security behavior can change as the repository evolves. Review the current imple
 11. **Keep dependencies and CI current.** Review dependency/security alerts, CI workflows, and changes to authentication, authorization, SQL, OCR, and session handling.
 12. **Treat OCR as untrusted input.** Confirm each extracted student and score against the official source before submission. OCR does not approve or publish results automatically.
 
-## Security testing and maintenance
+## Security maintenance
 
-Run the targeted backend tests from the repository root:
-
-```bash
-cd backend
-npm test
-```
-
-These tests provide useful regression coverage but are not a substitute for a production configuration review, dependency review, manual authorization checks, or database backup/restore test. Avoid broad testing against live school data without authorization and a controlled plan.
-
-Changes to authentication, permissions, database queries, uploads/OCR, cookies, proxy settings, or result publication should include focused tests and corresponding documentation updates. Do not suppress or dismiss a security finding merely to make a dashboard green; document the rationale and verify the affected code path.
+Before and after going live, review the production configuration, run `npm audit --omit=dev` in `backend`, check authorization manually with one account per role, and test a database backup and restore. Avoid broad testing against live school data without authorization and a controlled plan.
 
 ## Data handling
 

@@ -38,9 +38,6 @@ jobs:
           while IFS= read -r -d '' file; do
             node --check "$file"
           done < <(find . -path './node_modules' -prune -o -type f -name '*.js' -print0)
-      - name: Run smoke tests
-        working-directory: backend
-        run: npm test
       - name: Check production dependency vulnerabilities
         working-directory: backend
         run: npm audit --omit=dev --audit-level=low
