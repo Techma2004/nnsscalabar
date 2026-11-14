@@ -172,7 +172,7 @@ Dependencies are not installed. From the `backend` folder run `npm install`, the
 
 | Command | Folder |
 |---|---|
-| `npm install`, `npm start`, `npm run seed:admin`, `npm test` | `backend` |
+| `npm install`, `npm start`, `npm run seed:admin` | `backend` |
 | `mysql ... SOURCE database/schema.sql` | project root (the folder that contains `database`) |
 | `uv sync`, `uv run` (scanner) | project root |
 

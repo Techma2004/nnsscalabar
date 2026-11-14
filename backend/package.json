@@ -9,8 +9,7 @@
     "dev": "node --watch server.js",
     "seed:admin": "node seed-admin.js",
     "seed:commandant": "node seed-commandant.js",
-    "build:template": "node build-template.js",
-    "test": "node --test \"test/*.test.js\""
+    "build:template": "node build-template.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

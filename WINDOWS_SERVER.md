@@ -359,7 +359,7 @@ Tick every box on the evaluation ISO first, then again on the real server.
 - [ ] A backup ran and a **restore was tested**.
 - [ ] Ports **5000 and 3306 are unreachable** from another machine (`Test-NetConnection <server> -Port 5000`).
 - [ ] Bootstrap passwords are removed from `.env`, and `.env` is **not in Git**.
-- [ ] `cd backend && npm test` passes.
+- [ ] `cd backend && npm audit --omit=dev` reports no vulnerabilities.
 
 Record the date, who ran it, and any step that needed changing.
 

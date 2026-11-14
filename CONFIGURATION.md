@@ -384,7 +384,6 @@ Run these from the **`backend`** folder.
 | `npm run seed:admin` | Creates or resets the first account from the `INITIAL_ADMIN_*` settings. |
 | `npm run seed:commandant` | Creates or resets the Commandant from the `INITIAL_COMMANDANT_*` settings. |
 | `npm run build:template` | Rebuilds the blank Excel score-sheet template file (developers only). |
-| `npm test` | Runs the automated tests (developers only). |
 
 ---
 
