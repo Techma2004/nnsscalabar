@@ -1,6 +1,6 @@
 {
   "name": "nnss-calabar-backend",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "description": "NNSS Calabar School Management API",
   "main": "server.js",
