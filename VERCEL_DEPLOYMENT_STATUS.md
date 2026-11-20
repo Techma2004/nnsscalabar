@@ -63,6 +63,8 @@ Do not mark this deployment ready until every gate below is complete and tested.
 
 ## Vercel project setup (after all application gates pass)
 
+A step-by-step dashboard and environment setup guide is available in [VERCEL_SUPABASE_R2_SETUP.md](VERCEL_SUPABASE_R2_SETUP.md). It documents Supabase Transaction Pooler configuration, private R2 bucket setup, Vercel Preview deployment, custom-domain cutover, and rollback. Its R2 variable names are a target contract only; the current runtime does not yet implement the R2 adapter.
+
 The repository now contains the initial Vercel routing adapter, but the application is **not ready for a functional hosted deployment** while the database remains MySQL-specific and uploads depend on local disk. Do not configure production traffic or real records yet.
 
 1. Import `Techma2004/nnsscalabar` into Vercel.
