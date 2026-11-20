@@ -6,7 +6,7 @@ This document is intentionally explicit about what is and is not deployable. **T
 
 ## Current repository state
 
-The branch has a Vercel Express entry point and root runtime package manifest. The existing local startup path remains in place.
+The branch now has an initial Vercel Express adapter (`api/index.js`) and `vercel.json` routing. The Vercel function bundles the existing `frontend/**` files so the current Express static middleware can read them. The root runtime package manifest and local startup path remain in place. This is deployment plumbing only; it does not make the application compatible with Supabase or durable object storage.
 
 The application is still MySQL-specific:
 
@@ -15,7 +15,7 @@ The application is still MySQL-specific:
 - SQL throughout the application uses MySQL syntax and semantics, including `DATE_FORMAT`, `FIND_IN_SET`, `NOW()`, boolean arithmetic, and MySQL upsert/transaction patterns.
 - `database/schema.sql` is a MySQL schema. It is not a PostgreSQL migration.
 - News images are currently written to `frontend/uploads/` on the local filesystem. That storage is not durable on Vercel.
-- The server currently uses `express.static(FRONTEND_DIR)`. Vercel does not serve static assets through Express's `express.static()`; deployable assets must be placed under the project-root `public/` directory.
+- The server currently uses `express.static(FRONTEND_DIR)`. The Vercel function currently includes `frontend/**` as a compatibility bridge; static assets have not yet been separated into Vercel's static output. Verify every page and nested asset on a preview, and consider moving public assets to root `public/` as a later optimization.
 - Score-sheet and image upload endpoints accept base64 JSON. Vercel Function request and response bodies are limited to 4.5 MB, so file uploads must be redesigned to upload directly from the browser to object storage.
 - OCR must remain disabled for the first hosted release.
 
@@ -44,9 +44,9 @@ Do not mark this deployment ready until every gate below is complete and tested.
    - Add cleanup for abandoned uploads and deleted records.
 
 4. **Frontend and Vercel routing**
-   - Move the complete required frontend asset tree into root `public/` without omitting nested scripts, styles, fonts, images, or HTML pages.
-   - Confirm all API paths, page routes, cache headers, and asset URLs on a preview deployment.
-   - Add Vercel configuration only after the route and static-asset layout is verified.
+   - Initial Vercel routing now exists in `vercel.json`; `api/index.js` exports the existing Express application and `frontend/**` is bundled with the function.
+   - Verify all API paths, page routes, nested assets, cache headers, and asset URLs on a preview deployment.
+   - Decide whether to keep the bundled Express static compatibility bridge or move public assets into root `public/` after preview verification. Do not remove either path until all existing pages and assets are confirmed.
 
 5. **Production security**
    - Configure secure cookies, trusted proxy handling, strict allowed origins, and shared rate limiting where multiple function instances require it.
@@ -61,7 +61,9 @@ Do not mark this deployment ready until every gate below is complete and tested.
    - Verify representative report cards and grading calculations.
    - Do not migrate real school records until the synthetic migration and restore test pass.
 
-## Vercel project setup (after all gates pass)
+## Vercel project setup (after all application gates pass)
+
+The repository now contains the initial Vercel routing adapter, but the application is **not ready for a functional hosted deployment** while the database remains MySQL-specific and uploads depend on local disk. Do not configure production traffic or real records yet.
 
 1. Import `Techma2004/nnsscalabar` into Vercel.
 2. Select branch `deploy/vercel-supabase-r2` for a preview deployment. A merge to `main` is not required to deploy a branch preview.
