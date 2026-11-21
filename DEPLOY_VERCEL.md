@@ -71,11 +71,27 @@ S=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url')
    **Do not add:** `PORT`, `HOST`, `DB_POOL_SIZE`, `TRUST_PROXY_HOPS` (leave unset; it is `1` on Vercel automatically), `OCR_*`, `INITIAL_*`. **Never leave a variable blank**: delete it instead.
 5. Deploy. Function region is set in `vercel.json` (`dub1` = Dublin, matching a Supabase Ireland project; use `lhr1` for a London project).
 
-## 5. Domain
+## 5. Custom domain (live: https://nnsscalabar.dpdns.org)
 
-1. Buy the domain at any registrar.
-2. Vercel -> Settings -> **Domains** -> add it, then add the DNS records Vercel shows at the registrar. HTTPS is automatic.
-3. Put the final address in `FRONTEND_ORIGIN`, then **Redeploy**.
+1. Register the domain (any registrar; free `dpdns.org` names work too).
+2. Vercel -> Settings -> **Domains** -> add `nnsscalabar.dpdns.org`. Vercel lists the records to add.
+3. At the DNS provider add the records Vercel shows. Copy the exact values from Vercel:
+
+| Type | Name | Value |
+|---|---|---|
+| TXT | `_vercel` | `vc-domain-verify=...` (only if Vercel says the domain is linked to another account; delete it afterwards) |
+| A | `@` | the IP Vercel shows (often `76.76.21.21`) |
+| CNAME | `www` | the `...vercel-dns.com` address Vercel shows |
+
+4. Click **Refresh** in Vercel until the tick is green. HTTPS is automatic.
+5. **Required:** add the environment variable `FRONTEND_ORIGIN=https://nnsscalabar.dpdns.org` (exact origin, no trailing slash; several origins separated by commas) and **Redeploy**. Without it every login fails with **"Request not allowed."**
+6. `vercel.json` already redirects `www.nnsscalabar.dpdns.org` (permanent) and `nnsscalabar.vercel.app` (temporary) to the main domain. If the domain ever changes, edit the two `redirects` entries, `frontend/robots.txt` and `frontend/sitemap.xml`.
+
+### Google Search Console
+
+1. search.google.com/search-console -> Add property -> **Domain** -> `nnsscalabar.dpdns.org`.
+2. Add the TXT record Google shows (name `@`, value `google-site-verification=...`) at the DNS provider, then **Verify**. If the DNS panel cannot take it, use **URL prefix** with the HTML tag method and add the tag to `frontend/index.html`.
+3. Sitemaps -> submit `sitemap.xml`. It lists the home, about, blog and newsletter pages. `robots.txt` blocks `/portal`, `/login` and `/api/`, and those two pages also send `X-Robots-Tag: noindex`.
 
 ## 6. Check it works
 
@@ -98,6 +114,7 @@ Enable **Analytics** in the Vercel project. The public pages already carry the p
 | Login shows `[object Object]` | Vercel's own error is an object | Fixed: the page now prints the real message |
 | Password with `! # @` fails or bash says "event not found" | Special characters in the URL / shell history expansion | Encode the password (step 1), or use letters and numbers only |
 | Connect dialog has no "Transaction pooler" | Supabase labels differ | Take the Session pooler string and change the port to `6543` |
+| Login shows "Request not allowed." on the new domain | The domain is not in the allow-list | Set `FRONTEND_ORIGIN` to the exact `https://` domain and redeploy (step 5) |
 | Login button stuck on "Signing in…" after pressing Back from the portal | Browser restored the login page frozen | Fixed: sign-in replaces the login page in history and the page resets itself |
 
 ## Limits to know

@@ -47,12 +47,45 @@
           "value": "max-age=31536000; includeSubDomains"
         }
       ]
+    },
+    {
+      "source": "/(portal|login)(\\.html)?",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
     }
   ],
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.nnsscalabar.dpdns.org"
+        }
+      ],
+      "destination": "https://nnsscalabar.dpdns.org/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "nnsscalabar.vercel.app"
+        }
+      ],
+      "destination": "https://nnsscalabar.dpdns.org/$1",
+      "permanent": false
     }
   ]
 }

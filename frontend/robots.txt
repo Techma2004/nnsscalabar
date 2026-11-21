@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /portal
+Disallow: /login
+Disallow: /api/
+
+Sitemap: https://nnsscalabar.dpdns.org/sitemap.xml
