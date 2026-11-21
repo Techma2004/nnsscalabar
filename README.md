@@ -60,7 +60,7 @@ Browser
   └── Node.js + Express (frontend + /api)
         ├── Authentication and role checks
         ├── Student / staff / results / assignments / announcements / dashboard routes
-        └── MySQL or MariaDB
+        └── PostgreSQL (local, or Supabase online)
 ```
 
 The application is served from one origin. For local development, the default address is `http://localhost:5000`; no separate frontend development server is required.
@@ -70,7 +70,7 @@ The application is served from one origin. For local development, the default ad
 ### Required
 
 - **Node.js 20 or newer** (use an active LTS release) and npm.
-- **MySQL 8+ or MariaDB 10.6+**.
+- **PostgreSQL 14+** (local) or a Supabase project (online). The old MySQL steps below are legacy.
 - Git.
 - A modern browser.
 

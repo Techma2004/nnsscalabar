@@ -1,98 +1,116 @@
 # Deploy online: Vercel + Supabase + Cloudflare R2
 
-Do the steps in order. Total time: about 45 minutes.
+Do the steps in order. This is the setup that is live and working.
 
 | Part | Service | Job |
 |---|---|---|
 | Website + API | Vercel | Hosts the portal |
-| Database | Supabase (Postgres) | Accounts, results, everything |
+| Database | Supabase (PostgreSQL) | Accounts, results, everything |
 | Images | Cloudflare R2 | Blog/news pictures |
 | Domain | Any registrar | Points your address at Vercel |
 
-The score-sheet scanner (OCR) stays **off** online. Everything else works.
+Score-sheet scanning (OCR) stays **off** online. Everything else works.
 
 ## 1. Supabase (database)
 
-1. supabase.com -> New project. Name `nnss-calabar`. Region: **London (eu-west-2)** (closest available to Nigeria). Save the database password.
-2. Open **SQL Editor** -> New query.
-3. Paste the whole content of `database/postgres/schema.sql` -> **Run**. It is safe to run twice.
-4. Click **Connect** (top bar) -> **Transaction pooler**. Copy the string (port **6543**). Put your password in place of `[YOUR-PASSWORD]`. This is your `DATABASE_URL`.
+1. supabase.com -> New project, name `nnss-calabar`. Region: under **Europe** pick **West Europe (London)**; Ireland (`eu-west-1`) also works. Supabase has no Africa region. Save the database password.
+2. Left sidebar -> **SQL Editor** -> New query. Paste all of `database/postgres/schema.sql` -> **Run** ("Success. No rows returned"). Safe to run twice.
+3. Click **Connect** (top bar). Choose **Transaction pooler** (port **6543**). If you only see "Session pooler" (5432), copy it and change `:5432` to `:6543`. Never use the "Direct connection" string.
+4. In the string, replace `[YOUR-PASSWORD]` with your password, **without the brackets**. Spaces and symbols must be encoded (space `%20`, `#` `%23`, `@` `%40`, `/` `%2F`, `!` `%21`). Easiest: use a password of letters and numbers only. To encode one:
+   ```bash
+   python3 -c "import urllib.parse as u,getpass;print(u.quote(getpass.getpass('Password: '),safe=''))"
+   ```
+   (Do not type a password inside a bash command: `!` triggers "event not found".)
 
-## 2. Cloudflare R2 (images)
-
-1. Cloudflare dashboard -> R2 -> Create bucket `nnss-files`.
-2. Bucket -> Settings -> **Public access**: enable the `r2.dev` URL (or connect a custom domain such as `files.yourschool.edu.ng`). Copy that URL: it is `R2_PUBLIC_URL`.
-3. R2 overview -> **Manage API tokens** -> Create token, permission **Object Read & Write**, only for this bucket. Copy the Access Key ID and Secret.
-4. Copy your **Account ID** (right side of the R2 overview page).
-
-## 3. Create the first admin (from your own computer, once)
+## 2. Create the admin and commandant accounts (from your own computer, once)
 
 ```bash
-cd backend
+git clone https://github.com/Techma2004/nnsscalabar
+cd nnsscalabar/backend
+npm install
 cp .env.example .env
 ```
 
-In `backend/.env` set only: `DATABASE_URL` (from step 1), `JWT_SECRET`, `INITIAL_ADMIN_CODE`, `INITIAL_ADMIN_PASSWORD`. Then:
+Edit `backend/.env`: set `DATABASE_URL` (in double quotes), `INITIAL_ADMIN_CODE`, `INITIAL_ADMIN_PASSWORD`, `INITIAL_COMMANDANT_CODE`, `INITIAL_COMMANDANT_PASSWORD`. Test the connection, then seed:
 
 ```bash
-npm install
+node -e "require('./db').query('select 1 as ok').then(([r])=>{console.log('connected',r);process.exit(0)}).catch(e=>{console.log('failed:',e.message);process.exit(1)})"
 npm run seed:admin
 npm run seed:commandant
 ```
 
-(Optional) load the class rosters: `node ../database/import-rosters.js`.
+Generate and save a JWT secret into `.env` (also paste it into Vercel in step 4):
+
+```bash
+S=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))") && (grep -q '^JWT_SECRET=' .env && sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$S|" .env || echo "JWT_SECRET=$S" >> .env) && echo "$S"
+```
+
+## 3. Cloudflare R2 (images) — optional until you need news pictures
+
+1. R2 -> create a bucket (e.g. `nnss-files`). Enable public access (the `r2.dev` URL, or a custom domain). That URL is `R2_PUBLIC_URL`.
+2. R2 -> Manage API tokens -> token with **Object Read & Write** for this bucket. Copy the Access Key ID and Secret.
+3. Copy your Cloudflare **Account ID**.
 
 ## 4. Vercel
 
-1. vercel.com -> Add New -> Project -> import the GitHub repo.
-2. Leave Root Directory as the repo root. `vercel.json` already sets everything else.
-3. **Settings -> Functions -> Function Region to match Supabase: London project -> London (lhr1); Ireland project -> Dublin (dub1). `vercel.json` currently sets dub1.
-4. **Settings -> Environment Variables** (Production), add:
+1. vercel.com -> Add New -> Project -> import the GitHub repo (`main` branch).
+2. **Root Directory:** `./`. **Application Preset:** `Other`. (`vercel.json` in the repo sets the rest.)
+3. **Settings -> General -> Node.js Version:** `22.x`.
+4. **Settings -> Environment Variables** (Production). Add only these:
 
 | Name | Value |
 |---|---|
-| `DATABASE_URL` | pooler string from step 1 |
-| `JWT_SECRET` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"` |
 | `NODE_ENV` | `production` |
-| `FRONTEND_ORIGIN` | your domain, e.g. `https://portal.yourschool.edu.ng` |
-| `R2_ACCOUNT_ID` | step 2 |
-| `R2_ACCESS_KEY_ID` | step 2 |
-| `R2_SECRET_ACCESS_KEY` | step 2 |
-| `R2_BUCKET` | `nnss-files` |
-| `R2_PUBLIC_URL` | step 2, no trailing slash |
+| `DATABASE_URL` | the encoded pooler string, **no quotes** |
+| `JWT_SECRET` | the secret from step 2 |
+| `COOKIE_SECURE` | `true` |
+| `AI_SCORE_IMPORT_ENABLED` | `false` |
+| `FRONTEND_ORIGIN` | your domain, once attached (optional before) |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | from step 3 (when ready) |
 
-5. Deploy.
+   **Do not add:** `PORT`, `HOST`, `DB_POOL_SIZE`, `TRUST_PROXY_HOPS` (leave unset; it is `1` on Vercel automatically), `OCR_*`, `INITIAL_*`. **Never leave a variable blank**: delete it instead.
+5. Deploy. Function region is set in `vercel.json` (`dub1` = Dublin, matching a Supabase Ireland project; use `lhr1` for a London project).
 
 ## 5. Domain
 
-1. Buy the domain at any registrar (Namecheap, Cloudflare, Qservers for `.ng`).
-2. Vercel -> Project -> Settings -> **Domains** -> add it. Vercel shows the DNS records. Add them at the registrar.
-3. Wait for the green tick (minutes to a few hours). HTTPS is automatic.
-4. Put the final address in `FRONTEND_ORIGIN`, then **Redeploy**.
+1. Buy the domain at any registrar.
+2. Vercel -> Settings -> **Domains** -> add it, then add the DNS records Vercel shows at the registrar. HTTPS is automatic.
+3. Put the final address in `FRONTEND_ORIGIN`, then **Redeploy**.
 
 ## 6. Check it works
 
-1. Open `https://<your-domain>/api/health` -> `{"status":"ok"}`.
-2. Log in with the admin code from step 3.
-3. Create a news post with an image -> the image must appear.
-4. Change the admin password.
+1. `https://<your-site>/api/health` shows `{"status":"ok"}`.
+2. Log in as `ADM001`, then as `CMD001`. Change both passwords.
+3. Create a news post with an image (needs R2).
+
+## Optional: Vercel Web Analytics
+
+Enable **Analytics** in the Vercel project. The public pages already carry the plain-HTML tag `<script defer src="/_vercel/insights/script.js"></script>`; no npm package is needed (the `@vercel/analytics/next` import is for Next.js only).
+
+## Problems we hit, and the fixes
+
+| What you see | Cause | Fix |
+|---|---|---|
+| Vercel shows "Multiple applications detected" and asks for a `vercel.json` | Imported a branch that lacked the Vercel config | Merge the work into `main`, re-import, preset **Other**, root `./` |
+| `500 FUNCTION_INVOCATION_FAILED`, log says `Cannot find module 'dotenv'` | Packages were installed in `backend/` only | Fixed: the repo root `package.json` lists the runtime packages. **Keep it in sync with `backend/package.json`** |
+| Login says "The page could not be found" | Vercel's catch-all file name did not match `/api/auth/login` | Fixed: one function `api/index.js` plus a rewrite in `vercel.json` |
+| Every request 500, log says `TRUST_PROXY_HOPS must be an integer from 0 to 10` | The variable was blank in Vercel | Fixed in code (blank = unset). Still: delete blank variables |
+| Login shows `[object Object]` | Vercel's own error is an object | Fixed: the page now prints the real message |
+| Password with `! # @` fails or bash says "event not found" | Special characters in the URL / shell history expansion | Encode the password (step 1), or use letters and numbers only |
+| Connect dialog has no "Transaction pooler" | Supabase labels differ | Take the Session pooler string and change the port to `6543` |
+| Login button stuck on "Signing in…" after pressing Back from the portal | Browser restored the login page frozen | Fixed: sign-in replaces the login page in history and the page resets itself |
 
 ## Limits to know
 
-- Uploads go through Vercel: max **4.5 MB** per request. The portal caps images at 2.5 MB. Bigger files would need direct-to-R2 uploads.
-- Score-sheet OCR is off. Teachers use the Excel template import instead.
-- Use the **pooler** URL (port 6543), not the direct one, or you will run out of connections.
+- Uploads pass through Vercel: max **4.5 MB** per request; the portal caps images at 2.5 MB. Bigger files need direct-to-R2 uploads.
+- OCR is off online. Teachers use the Excel template import. Later options: a small Docker service (Render, Railway, Fly.io), a VPS, or the school PC.
+- Use the **pooler** URL (6543), not the direct one.
+- Sessions last 8 hours or until sign out.
 
 ## Running the same code on a school PC instead
 
-Install PostgreSQL, create a database, run `database/postgres/schema.sql` on it, and set:
+Install PostgreSQL, create a database, run `database/postgres/schema.sql`, and set `DATABASE_URL=postgres://nnss_user:password@127.0.0.1:5432/nnss_calabar`. Nothing else changes. Set `AI_SCORE_IMPORT_ENABLED=true` there to use OCR.
 
-```
-DATABASE_URL=postgres://nnss_user:password@127.0.0.1:5432/nnss_calabar
-```
+## Before real data
 
-Nothing else changes. Set `AI_SCORE_IMPORT_ENABLED=true` there to use OCR.
-
-## Later: bringing OCR back
-
-Vercel cannot run Tesseract. Options: a small Docker service on Render, Railway or Fly.io; a cheap VPS; or the school PC. The portal calls it only when `AI_SCORE_IMPORT_ENABLED=true`.
+Reset the database password and `JWT_SECRET` if they were ever pasted anywhere shared, and change the admin and commandant passwords after first login.
