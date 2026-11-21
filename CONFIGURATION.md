@@ -1,4 +1,4 @@
-> **Database update:** the portal now runs on **PostgreSQL** (local Postgres or Supabase), configured with one `DATABASE_URL`. Schema file: `database/postgres/schema.sql`. For the online setup follow [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md). Sections below that mention MySQL, `mysql`, `DB_HOST`/`DB_USER`/`DB_PASSWORD`, port 3306 or `database/schema.sql` are from the old MySQL setup and are being rewritten.
+> **Updated for PostgreSQL.** The database and online (Vercel) sections of this page are current. Other guides (README, WINDOWS_*, FRESH_INSTALL, FAQ) still describe the old MySQL install and are being rewritten; for the online setup follow [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md).
 
 # Configuration reference
 
@@ -19,6 +19,7 @@ Related: [Windows setup](WINDOWS_SETUP.md) · [FAQ](FAQ.md) · [Portal user guid
 - [Score-sheet scanner settings](#score-sheet-scanner-settings)
 - [Built-in limits (not configurable)](#built-in-limits-not-configurable)
 - [Ready-made examples](#ready-made-examples)
+- [Online (Vercel) settings](#online-vercel-settings)
 - [Commands (`npm run ...`)](#commands-npm-run-)
 - [Folders and files](#folders-and-files)
 - [Database files in `database/`](#database-files-in-database)
@@ -42,7 +43,7 @@ Copy `backend/.env.example` to `backend/.env`, then set at least:
 
 | Setting | Why |
 |---|---|
-| [`DB_PASSWORD`](#db_password) | The password of the database user you created |
+| [`DATABASE_URL`](#database_url) | Where the PostgreSQL database is (local PC or Supabase) |
 | [`JWT_SECRET`](#jwt_secret) | A long random secret; the server will not start without a good one |
 | [`INITIAL_ADMIN_PASSWORD`](#first-login-seed-settings) | Password for your first portal login (used once by `npm run seed:admin`) |
 
@@ -96,55 +97,33 @@ If a browser shows errors like *"Origin not allowed by CORS"* or requests are re
 
 ## Database settings
 
-The portal needs a MySQL 8 or MariaDB 10.6+ database that already contains the schema (`database/schema.sql`) and a database user it can sign in as. The install guides create these.
+The portal uses **PostgreSQL only**. The same code and the same schema (`database/postgres/schema.sql`) run on a school PC or on Supabase online; you switch by changing one setting.
 
-### `DB_HOST`
-
-| | |
-|---|---|
-| Default | `127.0.0.1` |
-
-Where the database runs. Keep `127.0.0.1` when MySQL is on the same computer. Use `127.0.0.1` rather than `localhost`: on some systems `localhost` resolves to the IPv6 address first and fails.
-
-### `DB_PORT`
+### `DATABASE_URL`
 
 | | |
 |---|---|
-| Default | `3306` |
+| Required | Yes |
+| Local example | `postgres://nnss_user:password@127.0.0.1:5432/nnss_calabar` |
+| Supabase example | `postgresql://postgres.<project-ref>:<encoded-password>@aws-0-eu-west-1.pooler.supabase.com:6543/postgres` |
 
-The database's port. Change it only if your MySQL listens on another port (for example because XAMPP and MySQL are both installed).
+For Supabase use the **Transaction pooler** string (port `6543`) from the **Connect** button, never the direct `db.<ref>.supabase.co` one. Remove the square brackets around `[YOUR-PASSWORD]`. If the password contains spaces or symbols, encode it (space `%20`, `#` `%23`, `@` `%40`, `/` `%2F`, `!` `%21`); in Python: `python3 -c "import urllib.parse as u,getpass;print(u.quote(getpass.getpass(),safe=''))"`. In `.env`, wrap the whole URL in double quotes. In Vercel, paste it without quotes. The server refuses to start if the URL still contains the placeholder password from `.env.example`.
 
-### `DB_USER`
-
-| | |
-|---|---|
-| Default | `nnss_user` |
-
-The database account name the portal signs in as. It must match the account you created (`CREATE USER 'nnss_user'...`). Do not use `root` for the portal.
-
-### `DB_PASSWORD`
+### `DATABASE_SSL`
 
 | | |
 |---|---|
-| Default | `change-this-database-password` (a placeholder, **rejected at startup**) |
+| Default | automatic |
 
-The password for `DB_USER`. The server refuses to start while this is still a placeholder. Wrap it in double quotes if it contains `#` or spaces.
-
-### `DB_NAME`
-
-| | |
-|---|---|
-| Default | `nnss_calabar` |
-
-The name of the database. The schema file creates `nnss_calabar`; change this only if you deliberately renamed it. A one-letter spelling mistake here gives *Access denied to database* errors.
+Automatic means SSL is on for any remote host (Supabase) and off for localhost and private networks. Set `true` or `false` only to override.
 
 ### `DB_POOL_SIZE`
 
 | | |
 |---|---|
-| Default | `10` |
+| Default | `10` (`3` on Vercel) |
 
-How many database connections the portal keeps open. Ten is plenty for a school. Raise it only if you see queries waiting under heavy use, and make sure MySQL's `max_connections` is higher.
+How many database connections the portal keeps open. Ten is plenty for a school. Raise it only if you see queries waiting under heavy use, and make sure the database's connection limit is higher. On Vercel the default is **3** per instance (many instances run at once); leave it unset there.
 
 ---
 
@@ -327,11 +306,7 @@ Open `backend/.env` and use one of these as a starting point (replace every valu
 NODE_ENV=development
 PORT=5000
 HOST=127.0.0.1
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=nnss_user
-DB_PASSWORD="<your database password>"
-DB_NAME=nnss_calabar
+DATABASE_URL="postgres://nnss_user:<your database password>@127.0.0.1:5432/nnss_calabar"
 JWT_SECRET=<output of the node command above>
 INITIAL_ADMIN_CODE=ADM001
 INITIAL_ADMIN_PASSWORD="<first login password>"
@@ -374,6 +349,24 @@ AI_SCORE_IMPORT_ENABLED=false
 
 ---
 
+## Online (Vercel) settings
+
+Set these in Vercel under **Settings -> Environment Variables** (Production). Do not use a `.env` file there.
+
+| Setting | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | Supabase transaction pooler string |
+| `JWT_SECRET` | 32+ random characters (`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`) |
+| `COOKIE_SECURE` | `true` |
+| `AI_SCORE_IMPORT_ENABLED` | `false` (OCR cannot run on Vercel) |
+| `FRONTEND_ORIGIN` | your domain, once you attach one (optional before that) |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` | Cloudflare R2 (news images). Without them image upload says "not available". |
+
+Rules: **never leave a variable blank** (delete it instead); leave `TRUST_PROXY_HOPS` unset (it is `1` on Vercel automatically); leave `DB_POOL_SIZE` unset; do not add `PORT`, `HOST`, `OCR_*` or the `INITIAL_*` account settings (create accounts from your own computer). Full steps and troubleshooting: [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md).
+
+---
+
 ## Commands (`npm run ...`)
 
 Run these from the **`backend`** folder.
@@ -407,8 +400,8 @@ Run these from the **`backend`** folder.
 
 | File | When to use it |
 |---|---|
-| `schema.sql` | **New installation:** run this one file. Safe to run again. Works on MySQL 8 and MariaDB. |
-| `002_*` … `006_*.sql` | **Upgrading an old database only,** and only the ones you are missing, in number order. A new installation never needs them. |
+| `postgres/schema.sql` | **New installation (local or Supabase):** run this one file. Safe to run again. |
+| `schema.sql`, `002_*` … `008_*.sql` | **Legacy MySQL files. Do not use.** Kept for history only. |
 | `import-rosters.js` | Optional: loads class lists from a roster JSON you pass with `--roster` (none is shipped) |
 
-Always **back up before** changing a live database: see [Windows setup, section 11](WINDOWS_SETUP.md#11-backups-and-restore) or `mysqldump` on Linux and macOS.
+Always **back up before** changing a live database: see [Windows setup, section 11](WINDOWS_SETUP.md#11-backups-and-restore) or `pg_dump` on Linux and macOS. On Supabase use its backups.
