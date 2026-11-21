@@ -573,12 +573,12 @@ ON CONFLICT (session_id, term_number) DO NOTHING;
 INSERT INTO posts (kind, title, body, image_url, event_date, status)
 SELECT v.kind, v.title, v.body, v.image_url, v.event_date::date, v.status
 FROM (VALUES
-  ('blog', 'STEM Competition won by NNSS CAL [2025]', 'The Chief of Naval Staff organizes yearly competitions for all NN welfare schools. Through determination, hardwork and commitment, NNSS Calabar emerged first at the command level and third nationwide.', 'img-2.png', '2025-05-29', 'published'),
-  ('blog', 'Engineering Department', 'NNSS Calabar in its bid to produce outstanding individuals in works of life, provides a platform to give engineering a practical means of learning through facilitated labs and termly external competitions with other schools.', 'img-3.png', '2026-02-20', 'published'),
-  ('blog', 'Students'' Carol night 2025', 'NNSS Calabar pays keen attention to the religious growth and moral development of its students. It organizes a yearly carol night involving candlelight processions, inter-house carol singing competitions, a fireworks display and much more.', 'img-4.png', '2025-12-07', 'published'),
-  ('blog', 'Night View of the School Environment', 'At NNSS Calabar, the management treats student security as a top priority. Its newly installed NDDC streetlights aid in the lighting of the premises, making the environment much safer.', 'img-5.png', '2026-04-05', 'published'),
-  ('blog', 'Sport and Activities', 'The school provides facilities and equipment for sports activities, improving students'' athleticism and sportsmanship. It also hosts sessional cultural days to celebrate our cultural heritage.', 'slider-05.png', '2026-04-25', 'published'),
-  ('blog', 'Academic Excellence', 'NNSS Calabar has consistently produced students with outstanding grades from JAMB to WAEC to NECO, and even the JSS3 BECE.', 'img-6.png', '2026-05-08', 'published'),
+  ('blog', 'STEM Competition won by NNSS CAL [2025]', 'The Chief of Naval Staff organizes yearly competitions for all NN welfare schools. Through determination, hardwork and commitment, NNSS Calabar emerged first at the command level and third nationwide.', 'img-2.webp', '2025-05-29', 'published'),
+  ('blog', 'Engineering Department', 'NNSS Calabar in its bid to produce outstanding individuals in works of life, provides a platform to give engineering a practical means of learning through facilitated labs and termly external competitions with other schools.', 'img-3.webp', '2026-02-20', 'published'),
+  ('blog', 'Students'' Carol night 2025', 'NNSS Calabar pays keen attention to the religious growth and moral development of its students. It organizes a yearly carol night involving candlelight processions, inter-house carol singing competitions, a fireworks display and much more.', 'img-4.webp', '2025-12-07', 'published'),
+  ('blog', 'Night View of the School Environment', 'At NNSS Calabar, the management treats student security as a top priority. Its newly installed NDDC streetlights aid in the lighting of the premises, making the environment much safer.', 'img-5.webp', '2026-04-05', 'published'),
+  ('blog', 'Sport and Activities', 'The school provides facilities and equipment for sports activities, improving students'' athleticism and sportsmanship. It also hosts sessional cultural days to celebrate our cultural heritage.', 'slider-05.webp', '2026-04-25', 'published'),
+  ('blog', 'Academic Excellence', 'NNSS Calabar has consistently produced students with outstanding grades from JAMB to WAEC to NECO, and even the JSS3 BECE.', 'img-6.webp', '2026-05-08', 'published'),
   ('newsletter', 'Enrollment Open for 2026/2027 Academic Session', 'Admissions are now open for the 2026/2027 academic session for JSS1 and SS1. Interested parents and guardians should visit the school administration office or contact us for the admission forms and requirements. The new session begins in September 2026.', NULL, '2026-05-11', 'published'),
   ('newsletter', 'New Digital Portal Launched', 'NNSS Calabar has launched a comprehensive digital portal system for students, teachers, and administrators. The portal allows students to view their results online, teachers to upload scores, and administrators to manage school data efficiently. All users should log in with their credentials to access the new system.', NULL, '2026-04-15', 'published'),
   ('newsletter', 'Inter-House Sports Competition 2026', 'The annual inter-house sports competition was a huge success with students from all houses (ADEKEYE, ADENIYI, AJADI and BAJE) participating enthusiastically. House ADEKEYE emerged as the overall champions. Thank you to all teachers, parents, and students who made this event possible.', NULL, '2026-03-20', 'published'),
@@ -593,6 +593,36 @@ WHERE NOT EXISTS (SELECT 1 FROM posts);
 -- Supabase exposes public tables over its REST API, so lock that door:
 -- row level security on with no policies = no access for anon/authenticated.
 -- (The portal's own connection role bypasses RLS.)
+-- ---------------------------------------------------------------------------
+-- Indexes on foreign-key columns. PostgreSQL (unlike MySQL) does not create
+-- these by itself; without them joins and filters on these columns scan the table.
+-- ---------------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_subjects_dept_id ON subjects (dept_id);
+CREATE INDEX IF NOT EXISTS idx_track_subjects_subject_id ON track_subjects (subject_id);
+CREATE INDEX IF NOT EXISTS idx_students_arm_id ON students (arm_id);
+CREATE INDEX IF NOT EXISTS idx_students_class_level_id ON students (class_level_id);
+CREATE INDEX IF NOT EXISTS idx_teachers_dept_id ON teachers (dept_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_subjects_subject_id ON teacher_subjects (subject_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_class_assignments_arm_id ON teacher_class_assignments (arm_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_class_assignments_class_level_id ON teacher_class_assignments (class_level_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_class_assignments_session_id ON teacher_class_assignments (session_id);
+CREATE INDEX IF NOT EXISTS idx_teacher_class_assignments_subject_id ON teacher_class_assignments (subject_id);
+CREATE INDEX IF NOT EXISTS idx_student_subject_enrollment_session_id ON student_subject_enrollment (session_id);
+CREATE INDEX IF NOT EXISTS idx_student_subject_enrollment_subject_id ON student_subject_enrollment (subject_id);
+CREATE INDEX IF NOT EXISTS idx_results_approved_by ON results (approved_by);
+CREATE INDEX IF NOT EXISTS idx_results_rejected_by ON results (rejected_by);
+CREATE INDEX IF NOT EXISTS idx_result_approval_log_actor_id ON result_approval_log (actor_id);
+CREATE INDEX IF NOT EXISTS idx_result_approval_log_result_id ON result_approval_log (result_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_recorded_by ON attendance (recorded_by);
+CREATE INDEX IF NOT EXISTS idx_attendance_term_id ON attendance (term_id);
+CREATE INDEX IF NOT EXISTS idx_announcements_author_id ON announcements (author_id);
+CREATE INDEX IF NOT EXISTS idx_posts_created_by ON posts (created_by);
+CREATE INDEX IF NOT EXISTS idx_posts_updated_by ON posts (updated_by);
+CREATE INDEX IF NOT EXISTS idx_change_requests_reviewed_by ON change_requests (reviewed_by);
+CREATE INDEX IF NOT EXISTS idx_change_requests_session_id ON change_requests (session_id);
+CREATE INDEX IF NOT EXISTS idx_change_requests_subject_id ON change_requests (subject_id);
+CREATE INDEX IF NOT EXISTS idx_change_requests_target_arm_id ON change_requests (target_arm_id);
+
 DO $$
 DECLARE r record;
 BEGIN

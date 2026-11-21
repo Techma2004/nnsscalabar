@@ -181,6 +181,8 @@ if(!onVercel&&fs.existsSync(FRONTEND_DIR)){
   // Static pages touch the file system, so they get their own (generous) ceiling.
   const staticLimit=routeLimiter(1000,'Too many page requests. Please try again later.');
   app.use(staticLimit);
+  // Old picture links (.png) now point at the compressed .webp files.
+  app.get(/^\/(img-[0-9]|slider-0[0-9])\.png$/,(req,res)=>res.redirect(301,`/${req.params[0]}.webp`));
   app.use(express.static(FRONTEND_DIR,{extensions:['html'],maxAge:isProduction?'1h':0}));
   // Express 5 (path-to-regexp 8) rejects a bare '*'; a named wildcard is required.
   app.get('/{*splat}',(req,res,next)=>{if(req.path.startsWith('/api/'))return next();res.sendFile(path.join(FRONTEND_DIR,'index.html'));});

@@ -117,6 +117,23 @@ Enable **Analytics** in the Vercel project. The public pages already carry the p
 | Login shows "Request not allowed." on the new domain | The domain is not in the allow-list | Set `FRONTEND_ORIGIN` to the exact `https://` domain and redeploy (step 5) |
 | Login button stuck on "Signing in…" after pressing Back from the portal | Browser restored the login page frozen | Fixed: sign-in replaces the login page in history and the page resets itself |
 
+## Speed
+
+What made the portal slow and what fixed it:
+
+| Cause | Fix |
+|---|---|
+| The home page loaded about 34 MB of pictures (slider photos of 2-5 MB each) | Photos are now WebP at 1600 px wide (about 2 MB for all of them) and the logo is 56 KB. Old `.png` links (e.g. blog posts already saved in the database) redirect to the `.webp` files automatically |
+| Images were not cached by the browser | `vercel.json` sets `Cache-Control: public, max-age=604800` on pictures |
+| `exceljs` (about 200 ms) loaded on every cold start | Now loaded only when an Excel sheet is exported or imported |
+| PostgreSQL does not index foreign-key columns by itself | `schema.sql` now creates 25 `idx_*` indexes (safe to run again) |
+
+**For an existing Supabase database,** run the "Indexes on foreign-key columns" block at the end of `database/postgres/schema.sql` in the SQL Editor (or the whole file again; it is safe).
+
+**Adding pictures later:** use WebP (or JPEG) of at most about 1600 px wide and under 300 KB. Phone photos are 3-5 MB and will make pages slow again. Free tool: squoosh.app.
+
+Remaining delay you cannot remove: the server is in Ireland and users are in Nigeria, so every request travels about 5,000 km each way (roughly 150-250 ms). The first request after a quiet period also waits for the server to wake up (about 1 second). Fewer requests per page is the lever; a paid Supabase/Vercel plan does not change this.
+
 ## Limits to know
 
 - Uploads pass through Vercel: max **4.5 MB** per request; the portal caps images at 2.5 MB. Bigger files need direct-to-R2 uploads.

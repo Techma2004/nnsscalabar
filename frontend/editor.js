@@ -7,7 +7,7 @@ import { getManagedPosts, createPost, updatePost, deletePost, uploadPostImage } 
 let C = null;
 export function init(ctx) { C = ctx; }
 
-const SITE_IMAGES = ['img-1.png', 'img-2.png', 'img-3.png', 'img-4.png', 'img-5.png', 'img-6.png', 'slider-01.png', 'slider-02.png', 'slider-03.png', 'slider-04.png', 'slider-05.png', 'slider-06.png'];
+const SITE_IMAGES = ['img-1.webp', 'img-2.webp', 'img-3.webp', 'img-4.webp', 'img-5.webp', 'img-6.webp', 'slider-01.webp', 'slider-02.webp', 'slider-03.webp', 'slider-04.webp', 'slider-05.webp', 'slider-06.webp'];
 const KIND_LABEL = { blog: 'Blog', newsletter: 'Newsletter' };
 const today = () => new Date().toISOString().slice(0, 10);
 
