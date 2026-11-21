@@ -9,7 +9,7 @@
     "dub1"
   ],
   "functions": {
-    "api/[...path].js": {
+    "api/index.js": {
       "maxDuration": 60,
       "memory": 1024
     }
@@ -47,6 +47,12 @@
           "value": "max-age=31536000; includeSubDomains"
         }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api"
     }
   ]
 }
