@@ -37,9 +37,9 @@ router.post('/login', async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT id, user_code, full_name, email, role, password_hash, is_active, session_version,
-              (locked_until IS NOT NULL AND locked_until > NOW()) AS is_locked,
-              GREATEST(1, COALESCE(TIMESTAMPDIFF(SECOND, NOW(), locked_until), 0)) AS lock_seconds,
-              (locked_until IS NOT NULL AND locked_until <= NOW()) AS lock_expired
+              (locked_until IS NOT NULL AND locked_until > NOW())::int AS is_locked,
+              GREATEST(1, COALESCE(CEIL(EXTRACT(EPOCH FROM (locked_until - NOW())))::int, 0)) AS lock_seconds,
+              (locked_until IS NOT NULL AND locked_until <= NOW())::int AS lock_expired
        FROM users WHERE user_code = ? LIMIT 1`, [user_code]
     );
     const user = rows[0];

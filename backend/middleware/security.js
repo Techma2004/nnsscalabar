@@ -71,12 +71,15 @@ function forbid(res) {
   return res.status(403).json({ error: 'Cross-site request blocked.' });
 }
 
+// Pictures uploaded to Cloudflare R2 load from its public address.
+const R2_ORIGIN = require('../storage').imageOrigin();
+
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
   // Inline style attributes are used throughout the UI; scripts stay strict.
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob:${R2_ORIGIN ? ' ' + R2_ORIGIN : ''}`,
   "font-src 'self'",
   "connect-src 'self'",
   "object-src 'none'",

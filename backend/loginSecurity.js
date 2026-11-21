@@ -36,12 +36,11 @@ async function recordAttempt(ip, userCode, success) {
   }
 }
 
-// Wrong password for a real account. locked_until is assigned BEFORE
-// failed_attempts so it sees the old counter in both MySQL and MariaDB.
+// Wrong password for a real account. both columns are computed from the row as it was before the update.
 async function registerFailure(userId) {
   await db.query(
     `UPDATE users
-        SET locked_until = IF(failed_attempts + 1 >= ?, DATE_ADD(NOW(), INTERVAL ? SECOND), locked_until),
+        SET locked_until = CASE WHEN failed_attempts + 1 >= ?::int THEN NOW() + (?::int * INTERVAL '1 second') ELSE locked_until END,
             failed_attempts = failed_attempts + 1
       WHERE id = ?`,
     [MAX_FAILED_ATTEMPTS, LOCK_SECONDS, userId]);
@@ -61,7 +60,7 @@ async function stuffingSummary() {
   const [[row]] = await db.query(
     `SELECT COUNT(*) AS failures, COUNT(DISTINCT user_code) AS accounts, COUNT(DISTINCT ip) AS addresses
        FROM login_attempts
-      WHERE success = 0 AND ts >= DATE_SUB(NOW(), INTERVAL ? MINUTE)`, [ALERT_WINDOW_MINUTES]);
+      WHERE success = 0 AND ts >= NOW() - (?::int * INTERVAL '1 minute')`, [ALERT_WINDOW_MINUTES]);
   const failures = Number(row?.failures || 0);
   const accounts = Number(row?.accounts || 0);
   return {
@@ -92,7 +91,7 @@ async function checkStuffing() {
 }
 
 async function pruneOld() {
-  try { await db.query('DELETE FROM login_attempts WHERE ts < DATE_SUB(NOW(), INTERVAL ? DAY)', [RETENTION_DAYS]); }
+  try { await db.query('DELETE FROM login_attempts WHERE ts < NOW() - (?::int * INTERVAL \'1 day\')', [RETENTION_DAYS]); }
   catch (err) { console.error('[loginSecurity/prune]', err.code || err.message); }
 }
 const pruneTimer = setInterval(pruneOld, 6 * 60 * 60 * 1000);

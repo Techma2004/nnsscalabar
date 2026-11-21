@@ -24,9 +24,9 @@ async function syncResultScales(conn = db, { classId, studentId } = {}) {
   if (classId) { where.push('s.class_level_id = ?'); params.push(classId); }
   if (studentId) { where.push('s.id = ?'); params.push(studentId); }
   const [result] = await conn.query(
-    `UPDATE results r JOIN students s ON s.id = r.student_id JOIN class_levels cl ON cl.id = s.class_level_id
-        SET r.is_junior = cl.is_junior, r.updated_at = r.updated_at
-      WHERE ${where.join(' AND ')}`, params);
+    `UPDATE results r SET is_junior = cl.is_junior
+        FROM students s, class_levels cl
+      WHERE s.id = r.student_id AND cl.id = s.class_level_id AND ${where.join(' AND ')}`, params);
   return result.affectedRows || 0;
 }
 

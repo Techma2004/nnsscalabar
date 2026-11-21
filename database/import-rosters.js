@@ -26,9 +26,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const mysql = require('../backend/node_modules/mysql2/promise');
 const bcrypt = require('../backend/node_modules/bcryptjs');
 require('../backend/node_modules/dotenv').config({ path: path.join(__dirname, '..', 'backend', '.env') });
+// Same database as the portal (DATABASE_URL): local PostgreSQL or Supabase.
+const db = require('../backend/db');
 
 const args = process.argv.slice(2);
 const flag = name => args.includes(name);
@@ -75,10 +76,7 @@ function loadRoster(file) {
 
 async function main() {
   const roster = loadRoster(ROSTER_FILE);
-  const conn = await mysql.createConnection({
-    host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306),
-    user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME, charset: 'utf8mb4'
-  });
+  const conn = await db.getConnection();
   const report = { session: 'exists', term: 'exists', created: [], skipped: [], assignments: 0, credentials: [] };
 
   try {
@@ -121,16 +119,17 @@ async function main() {
         const password = tempPassword();
         const [u] = await conn.query(`INSERT INTO users (user_code, full_name, password_hash, role, is_active) VALUES (?, ?, ?, 'student', 1)`, [code, normalise(name), await bcrypt.hash(password, 12)]);
         const [s] = await conn.query(`INSERT INTO students (user_id, class_level_id, arm_id, track, status) VALUES (?, ?, ?, ?, 'active')`, [u.insertId, level.id, arm.id, track]);
-        await conn.query(`INSERT IGNORE INTO student_subject_enrollment (student_id, subject_id, session_id) SELECT ?, ts.subject_id, ? FROM track_subjects ts WHERE ts.track=?`, [s.insertId, session.id, track]);
+        await conn.query(`INSERT INTO student_subject_enrollment (student_id, subject_id, session_id) SELECT ?::int, ts.subject_id, ?::int FROM track_subjects ts WHERE ts.track=? ON CONFLICT DO NOTHING`, [s.insertId, session.id, track]);
         report.created.push(`${c.class} ${c.arm}: ${normalise(name)} -> ${code}`);
         report.credentials.push([code, normalise(name), c.class, c.arm, password]);
       }
 
       if (MIRROR) {
-        const [r] = await conn.query(`INSERT IGNORE INTO teacher_class_assignments (teacher_id, subject_id, class_level_id, arm_id, session_id)
-          SELECT tca.teacher_id, tca.subject_id, tca.class_level_id, tca.arm_id, ?
+        const [r] = await conn.query(`INSERT INTO teacher_class_assignments (teacher_id, subject_id, class_level_id, arm_id, session_id)
+          SELECT tca.teacher_id, tca.subject_id, tca.class_level_id, tca.arm_id, ?::int
           FROM teacher_class_assignments tca JOIN academic_sessions cur ON cur.id=tca.session_id AND cur.is_current=1
-          WHERE tca.class_level_id=? AND tca.arm_id=?`, [session.id, level.id, arm.id]);
+          WHERE tca.class_level_id=? AND tca.arm_id=?
+          ON CONFLICT DO NOTHING`, [session.id, level.id, arm.id]);
         report.assignments += r.affectedRows;
       }
     }
@@ -140,7 +139,8 @@ async function main() {
     try { await conn.rollback(); } catch { /* nothing to roll back */ }
     throw err;
   } finally {
-    await conn.end();
+    conn.release();
+    await db.end();
   }
 
   console.log(`${APPLY ? 'APPLIED' : 'DRY RUN (nothing written - add --apply to save)'}  roster: ${path.relative(process.cwd(), ROSTER_FILE)}`);

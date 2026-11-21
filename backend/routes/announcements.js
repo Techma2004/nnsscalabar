@@ -19,7 +19,8 @@ function normalizeAudience(input, posterRole) {
   // instructing management — that stays admin/commandant-only.
   if (posterRole === 'hod') audience = audience.filter(a => !['admin', 'commandant'].includes(a));
   if (!audience.length) audience = ['hod'];
-  return [...new Set(audience)];
+  const chosen = new Set(audience);
+  return VALID_AUDIENCE.filter(a => chosen.has(a)); // fixed order, no duplicates
 }
 
 router.get('/', auth, async (req, res) => {
@@ -41,10 +42,11 @@ router.get('/manage', auth, async (req, res) => {
   const q = String(req.query.q || '').trim();
   const params = [];
   let searchClause = '';
-  if (q) { searchClause = 'AND (a.title LIKE ? OR a.body LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   // An HOD only manages what they themselves posted; admin/commandant see everything.
+  // (The owner placeholder comes first in the SQL, so its value is pushed first.)
   let ownerClause = '';
   if (req.user.role === 'hod') { ownerClause = 'AND a.author_id = ?'; params.push(req.user.id); }
+  if (q) { searchClause = 'AND (a.title ILIKE ? OR a.body ILIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   try {
     const [rows] = await db.query(`SELECT a.id,a.title,a.body,a.type,a.audience,a.is_pinned,a.publish_at,a.expires_at,u.full_name AS author_name
       FROM announcements a LEFT JOIN users u ON u.id=a.author_id

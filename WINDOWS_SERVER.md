@@ -1,3 +1,5 @@
+> **Database update:** the portal now runs on **PostgreSQL** (local Postgres or Supabase), configured with one `DATABASE_URL`. Schema file: `database/postgres/schema.sql`. For the online setup follow [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md). Sections below that mention MySQL, `mysql`, `DB_HOST`/`DB_USER`/`DB_PASSWORD`, port 3306 or `database/schema.sql` are from the old MySQL setup and are being rewritten.
+
 # NNSS Calabar Portal — Windows Server 2025 deployment guide
 
 For the school's IT administrator. This guide turns the portal into an unattended, HTTPS-served Windows service on **Windows Server 2025 (x64)**. Allow about 60–90 minutes. It assumes Desktop Experience unless stated, and an install root of `C:\nnss` (no spaces, not in OneDrive, not in a redirected profile).

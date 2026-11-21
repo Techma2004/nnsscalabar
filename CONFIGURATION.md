@@ -1,3 +1,5 @@
+> **Database update:** the portal now runs on **PostgreSQL** (local Postgres or Supabase), configured with one `DATABASE_URL`. Schema file: `database/postgres/schema.sql`. For the online setup follow [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md). Sections below that mention MySQL, `mysql`, `DB_HOST`/`DB_USER`/`DB_PASSWORD`, port 3306 or `database/schema.sql` are from the old MySQL setup and are being rewritten.
+
 # Configuration reference
 
 Everything you can change about the NNSS Calabar portal, in one place. Settings live in a file called **`.env`** inside the `backend` folder. If you have not created it yet, the install guides show how: [Windows](WINDOWS_SETUP.md#6-configure-the-application-the-env-file) · [Linux, macOS and the rest](README.md#configure-the-application).

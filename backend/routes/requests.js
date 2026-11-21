@@ -90,7 +90,7 @@ router.post('/', async (req, res) => {
       if (type === 'subject_add' && enr) return res.status(400).json({ error: 'You already take that subject.' });
       if (type === 'subject_drop' && !enr) return res.status(400).json({ error: 'You are not enrolled in that subject.' });
     }
-    const [[dup]] = await db.query(`SELECT id FROM change_requests WHERE student_id=? AND status='pending' AND request_type=? AND (? IS NULL OR subject_id=?) LIMIT 1`, [student.id, type, subjectId, subjectId]);
+    const [[dup]] = await db.query(`SELECT id FROM change_requests WHERE student_id=? AND status='pending' AND request_type=? AND (?::int IS NULL OR subject_id=?) LIMIT 1`, [student.id, type, subjectId, subjectId]);
     if (dup) return res.status(409).json({ error: 'You already have a request like this waiting for review.' });
     await db.query('INSERT INTO change_requests (student_id, session_id, request_type, target_arm_id, subject_id, reason) VALUES (?,?,?,?,?,?)', [student.id, session.id, type, armId, subjectId, reason]);
     res.status(201).json({ message: 'Request sent. Your HOD will review it.' });
@@ -143,13 +143,13 @@ router.patch('/:id/decision', async (req, res) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [[cr]] = await conn.query(`SELECT cr.*, sub.dept_id FROM change_requests cr LEFT JOIN subjects sub ON sub.id=cr.subject_id WHERE cr.id=? FOR UPDATE`, [id]);
+    const [[cr]] = await conn.query(`SELECT cr.*, sub.dept_id FROM change_requests cr LEFT JOIN subjects sub ON sub.id=cr.subject_id WHERE cr.id=? FOR UPDATE OF cr`, [id]);
     if (!cr) { await conn.rollback(); return res.status(404).json({ error: 'Request not found.' }); }
     if (!scope.all && cr.request_type !== 'arm' && cr.dept_id !== scope.deptId) { await conn.rollback(); return res.status(403).json({ error: 'That request belongs to another department.' }); }
     if (cr.status !== 'pending') { await conn.rollback(); return res.status(409).json({ error: `This request was already ${cr.status}.` }); }
 
     if (decision === 'approved') {
-      const [[st]] = await conn.query(`SELECT s.id, s.arm_id, s.track, s.class_level_id, cl.is_junior FROM students s JOIN class_levels cl ON cl.id=s.class_level_id WHERE s.id=? FOR UPDATE`, [cr.student_id]);
+      const [[st]] = await conn.query(`SELECT s.id, s.arm_id, s.track, s.class_level_id, cl.is_junior FROM students s JOIN class_levels cl ON cl.id=s.class_level_id WHERE s.id=? FOR UPDATE OF s`, [cr.student_id]);
       if (cr.request_type === 'arm') {
         const [[arm]] = await conn.query('SELECT id, arm_type FROM arms WHERE id=? AND is_active=1 LIMIT 1', [cr.target_arm_id]);
         if (!arm) { await conn.rollback(); return res.status(409).json({ error: 'The arm the student asked for is no longer available.' }); }
@@ -157,12 +157,12 @@ router.patch('/:id/decision', async (req, res) => {
         await conn.query('UPDATE students SET arm_id=?, track=? WHERE id=?', [arm.id, newTrack, st.id]);
         if (newTrack !== st.track) {
           // New track: enrol in its subjects, and drop old ones only when nothing has been recorded for them.
-          await conn.query(`INSERT IGNORE INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by) SELECT ?,ts.subject_id,?,? FROM track_subjects ts WHERE ts.track=?`, [st.id, cr.session_id, req.user.id, newTrack]);
-          await conn.query(`DELETE e FROM student_subject_enrollment e WHERE e.student_id=? AND e.session_id=? AND e.subject_id NOT IN (SELECT subject_id FROM track_subjects WHERE track=?)
+          await conn.query(`INSERT INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by) SELECT ?::int,ts.subject_id,?::int,?::int FROM track_subjects ts WHERE ts.track=? ON CONFLICT DO NOTHING`, [st.id, cr.session_id, req.user.id, newTrack]);
+          await conn.query(`DELETE FROM student_subject_enrollment e WHERE e.student_id=? AND e.session_id=? AND e.subject_id NOT IN (SELECT subject_id FROM track_subjects WHERE track=?)
             AND NOT EXISTS (SELECT 1 FROM results r JOIN terms t ON t.id=r.term_id WHERE r.student_id=e.student_id AND r.subject_id=e.subject_id AND t.session_id=e.session_id)`, [st.id, cr.session_id, newTrack]);
         }
       } else if (cr.request_type === 'subject_add') {
-        await conn.query(`INSERT INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE is_active=1, enrolled_by=VALUES(enrolled_by)`, [st.id, cr.subject_id, cr.session_id, req.user.id]);
+        await conn.query(`INSERT INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by) VALUES (?,?,?,?) ON CONFLICT (student_id, subject_id, session_id) DO UPDATE SET is_active=1, enrolled_by=EXCLUDED.enrolled_by`, [st.id, cr.subject_id, cr.session_id, req.user.id]);
       } else {
         const [[used]] = await conn.query(`SELECT COUNT(*) AS n FROM results r JOIN terms t ON t.id=r.term_id WHERE r.student_id=? AND r.subject_id=? AND t.session_id=?`, [st.id, cr.subject_id, cr.session_id]);
         if (Number(used.n) > 0) { await conn.rollback(); return res.status(409).json({ error: 'This subject already has recorded results this session, so it cannot be dropped. Decline the request and explain why.' }); }

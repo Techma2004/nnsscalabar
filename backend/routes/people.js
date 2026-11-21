@@ -57,7 +57,7 @@ router.get('/directory', async (req, res) => {
       if (deptId) { where += ' AND t.dept_id=?'; params.push(deptId); }
       if (q) { where += ` AND (u.full_name LIKE ? OR u.user_code LIKE ? OR EXISTS (SELECT 1 FROM teacher_subjects x JOIN subjects xs ON xs.id=x.subject_id WHERE x.teacher_id=t.id AND xs.subject_name LIKE ?))`; params.push(like, like, like); }
       const [rows] = await db.query(`SELECT u.id AS user_id, u.user_code, u.full_name, u.email, u.phone, t.id AS teacher_id, d.dept_name AS department,
-          (SELECT GROUP_CONCAT(xs.subject_name ORDER BY xs.subject_name SEPARATOR ', ') FROM teacher_subjects x JOIN subjects xs ON xs.id=x.subject_id WHERE x.teacher_id=t.id) AS subjects
+          (SELECT string_agg(xs.subject_name::text, ', ' ORDER BY xs.subject_name) FROM teacher_subjects x JOIN subjects xs ON xs.id=x.subject_id WHERE x.teacher_id=t.id) AS subjects
         FROM teachers t JOIN users u ON u.id=t.user_id LEFT JOIN departments d ON d.id=t.dept_id
         WHERE ${where} ORDER BY u.full_name LIMIT ${LIMIT}`, params);
       return res.json({ rows, truncated: rows.length === LIMIT, scope: await deptName(deptId) });
@@ -112,7 +112,7 @@ router.get('/:userId', async (req, res) => {
         out.subjects = subjects;
         // Management sees every result; an HOD only their own department's. Averages use approved results only.
         const [terms] = await db.query(`SELECT t.id AS term_id, t.term_name, ac.session_name, COUNT(*) AS subjects,
-            SUM(r.is_approved=1) AS approved, SUM(r.is_approved=0) AS awaiting,
+            SUM((r.is_approved=1)::int) AS approved, SUM((r.is_approved=0)::int) AS awaiting,
             ROUND(AVG(CASE WHEN r.is_approved=1 THEN r.total_score END),1) AS average
           FROM results r JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id JOIN subjects sub ON sub.id=r.subject_id
           WHERE r.student_id=? ${deptId ? 'AND sub.dept_id=?' : ''} GROUP BY t.id, ac.id ORDER BY ac.start_date DESC, t.term_number DESC`,
@@ -122,7 +122,7 @@ router.get('/:userId', async (req, res) => {
           FROM change_requests cr LEFT JOIN arms ta ON ta.id=cr.target_arm_id LEFT JOIN subjects sub ON sub.id=cr.subject_id
           WHERE cr.student_id=? ${deptId ? 'AND (cr.subject_id IS NULL OR sub.dept_id=?)' : ''} ORDER BY cr.created_at DESC LIMIT 20`, deptId ? [st.student_id, deptId] : [st.student_id]);
         out.requests = requests;
-        const [[att]] = await db.query(`SELECT COUNT(*) AS days, SUM(status='present') AS present, SUM(status='absent') AS absent, SUM(status='late') AS late FROM attendance WHERE student_id=?`, [st.student_id]);
+        const [[att]] = await db.query(`SELECT COUNT(*) AS days, SUM((status='present')::int) AS present, SUM((status='absent')::int) AS absent, SUM((status='late')::int) AS late FROM attendance WHERE student_id=?`, [st.student_id]);
         out.attendance = Number(att.days) ? { days: Number(att.days), present: Number(att.present), absent: Number(att.absent), late: Number(att.late) } : null;
       }
     }
@@ -140,7 +140,7 @@ router.get('/:userId', async (req, res) => {
           deptId ? [tr.teacher_id, sessionId || 0, deptId] : [tr.teacher_id, sessionId || 0]);
         out.assignments = assignments.map(x => ({ ...x, students: Number(x.students) }));
         const [sheets] = await db.query(`SELECT t.term_name, ac.session_name, sub.subject_name, cl.level_name AS class, a.arm_name AS arm, COUNT(*) AS entered,
-            SUM(r.is_approved=1) AS approved, SUM(r.is_approved=0 AND r.rejected_at IS NULL) AS pending, SUM(r.is_approved=0 AND r.rejected_at IS NOT NULL) AS rejected, MAX(r.updated_at) AS last_update
+            SUM((r.is_approved=1)::int) AS approved, SUM((r.is_approved=0 AND r.rejected_at IS NULL)::int) AS pending, SUM((r.is_approved=0 AND r.rejected_at IS NOT NULL)::int) AS rejected, MAX(r.updated_at) AS last_update
           FROM results r JOIN students s ON s.id=r.student_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
           JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
           WHERE r.teacher_id=? ${deptId ? 'AND sub.dept_id=?' : ''} GROUP BY t.id, ac.id, sub.id, cl.id, a.id ORDER BY MAX(r.updated_at) DESC LIMIT 30`,
@@ -150,7 +150,7 @@ router.get('/:userId', async (req, res) => {
     }
 
     // Account activity: things this person did, and things done to the account.
-    const [activity] = await db.query(`SELECT l.action, l.logged_at, l.detail, actor.full_name AS actor_name, l.user_id = ? AS by_them
+    const [activity] = await db.query(`SELECT l.action, l.logged_at, l.detail, actor.full_name AS actor_name, (l.user_id = ?)::int AS by_them
       FROM activity_log l LEFT JOIN users actor ON actor.id=l.user_id
       WHERE (l.user_id = ? OR (l.entity_type='user' AND l.entity_id = ?)) ${deptId ? "AND l.action NOT IN ('RESET_PASSWORD','DEACTIVATE_USER')" : ''} ORDER BY l.logged_at DESC, l.id DESC LIMIT 20`, [userId, userId, userId]);
     out.activity = activity.map(a => ({ action: a.action, logged_at: a.logged_at, actor_name: a.actor_name, by_them: !!a.by_them }));

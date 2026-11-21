@@ -1,3 +1,5 @@
+> **Database update:** the portal now runs on **PostgreSQL** (local Postgres or Supabase), configured with one `DATABASE_URL`. Schema file: `database/postgres/schema.sql`. For the online setup follow [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md). Sections below that mention MySQL, `mysql`, `DB_HOST`/`DB_USER`/`DB_PASSWORD`, port 3306 or `database/schema.sql` are from the old MySQL setup and are being rewritten.
+
 # NNSS Calabar School Management System
 
 A web-based school management platform and public website for Nigerian Navy Secondary School, Calabar. The application includes role-based portals for the Commandant, administrators, Heads of Department (HODs), teachers, and students; academic result entry and approval; curriculum and account management; announcements; and optional local score-sheet OCR.

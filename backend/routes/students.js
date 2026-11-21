@@ -78,11 +78,12 @@ router.get('/teacher/:teacherCode', async (req, res) => {
     params.push(req.user.id);
   }
   try {
-    const [rows] = await db.query(`SELECT DISTINCT u.user_code,u.full_name,s.id AS student_id,cl.level_name AS class,a.arm_name AS arm,s.track,s.admission_no
+    const [rows] = await db.query(`SELECT u.user_code,u.full_name,s.id AS student_id,cl.level_name AS class,a.arm_name AS arm,s.track,s.admission_no
       FROM teacher_class_assignments tca JOIN teachers t ON t.id=tca.teacher_id JOIN users tu ON tu.id=t.user_id
       JOIN subjects sub ON sub.id=tca.subject_id
       JOIN students s ON s.class_level_id=tca.class_level_id AND s.arm_id=tca.arm_id JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
-      JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tu.user_code=? AND u.is_active=1 AND ac.is_current=1 ${searchClause} ${departmentClause} ORDER BY cl.id,a.arm_name,u.full_name`, params);
+      JOIN academic_sessions ac ON ac.id=tca.session_id WHERE tu.user_code=? AND u.is_active=1 AND ac.is_current=1 ${searchClause} ${departmentClause}
+      GROUP BY u.user_code,u.full_name,s.id,cl.id,cl.level_name,a.arm_name,s.track,s.admission_no ORDER BY cl.id,a.arm_name,u.full_name`, params);
     res.json(rows);
   } catch (err) { console.error('[students/teacher]', err); res.status(500).json({ error: 'Unable to load assigned students.' }); }
 });
@@ -112,7 +113,7 @@ router.get('/:studentCode', async (req, res) => {
     }
     const [results] = await db.query(`SELECT r.id,sub.subject_name,t.term_name,ac.session_name,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.is_approved
       FROM results r JOIN students student_row ON student_row.id=r.student_id JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
-      WHERE r.student_id=? AND (r.is_approved=1 OR ?) ${resultScope} ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, resultParams);
+      WHERE r.student_id=? AND (r.is_approved=1 OR ?::int = 1) ${resultScope} ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, resultParams);
     res.json({ student, results });
   } catch (err) { console.error('[students/detail]', err); res.status(500).json({ error: 'Unable to load student profile.' }); }
 });

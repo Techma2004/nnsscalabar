@@ -14,21 +14,25 @@ const PORT = Number(process.env.PORT || 5000);
 const HOST = process.env.HOST || '127.0.0.1';
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend');
 const isProduction = process.env.NODE_ENV === 'production';
+// On Vercel the app runs as a serverless function: no listening port, and the
+// static pages are served by Vercel's CDN (see vercel.json) instead of Express.
+const onVercel = !!process.env.VERCEL;
 
 const jwtSecret = String(process.env.JWT_SECRET || '');
 if (jwtSecret.length < 32 || /^(replace|change[-_ ]?me|your[-_ ]|example|default|generate[-_ ]|insert[-_ ]|put[-_ ])/i.test(jwtSecret)) {
   throw new Error('JWT_SECRET must be a unique random secret of at least 32 characters; do not use a placeholder value.');
 }
-const dbPassword = String(process.env.DB_PASSWORD || '');
-if (/^(change-this-database-password|replace-with-a-long-unique-password)/i.test(dbPassword)) {
-  throw new Error('DB_PASSWORD is still a placeholder; configure a unique database password before starting the server.');
+const dbPassword = String(process.env.DB_PASSWORD || '') + ' ' + String(process.env.DATABASE_URL || '');
+if (/(change-this-database-password|replace-with-a-long-unique-password)/i.test(dbPassword)) {
+  throw new Error('The database password is still a placeholder (DATABASE_URL / DB_PASSWORD); configure a unique database password before starting the server.');
 }
 app.disable('x-powered-by');
 
 // Trust only the exact number of reverse-proxy hops configured by the operator.
 // Default 0 means direct client connections. Never use trust proxy=true: it can
 // let clients spoof X-Forwarded-For and bypass IP-based rate limits.
-const trustProxyHopsRaw = process.env.TRUST_PROXY_HOPS ?? '0';
+// On Vercel exactly one proxy sits in front of the function, so default to 1 there.
+const trustProxyHopsRaw = process.env.TRUST_PROXY_HOPS ?? (onVercel ? '1' : '0');
 if (!/^(0|[1-9][0-9]*)$/.test(trustProxyHopsRaw)) {
   throw new Error('TRUST_PROXY_HOPS must be an integer from 0 to 10.');
 }
@@ -59,6 +63,8 @@ function getAllowedOrigins(){
     `http://[::1]:${PORT}`,
     ...explicitOrigins
   ]);
+  // The site's own Vercel addresses (production domain + this deployment).
+  for(const host of [process.env.VERCEL_PROJECT_PRODUCTION_URL,process.env.VERCEL_URL,process.env.VERCEL_BRANCH_URL]) if(host) origins.add(`https://${host}`);
   for(const address of getLanAddresses()) origins.add(`http://${address}:${PORT}`);
   return origins;
 }
@@ -170,7 +176,7 @@ app.use('/api/dashboard',require('./routes/dashboard'));
 app.use('/api/people',require('./routes/people'));
 app.use('/api/posts',require('./routes/posts'));
 app.use('/api/requests',require('./routes/requests'));
-if(fs.existsSync(FRONTEND_DIR)){
+if(!onVercel&&fs.existsSync(FRONTEND_DIR)){
   // Static pages touch the file system, so they get their own (generous) ceiling.
   const staticLimit=routeLimiter(1000,'Too many page requests. Please try again later.');
   app.use(staticLimit);
@@ -188,8 +194,8 @@ app.use((err,_req,res,next)=>{
   res.status(status).json({error:message});
 });
 function getLanAddresses(){const nets=os.networkInterfaces();const addresses=[];for(const name of Object.keys(nets))for(const net of nets[name]||[])if(net.family==='IPv4'&&!net.internal)addresses.push(net.address);return addresses;}
-const server=app.listen(PORT,HOST,async()=>{try{await db.query('SELECT 1');console.log('Database connection: OK');try{const moved=await syncResultScales();if(moved)console.log(`Grading: ${moved} result(s) moved to the grading scale of their student's current class.`);}catch(err){console.warn('Grading scale check skipped. Has database/007_grading_30_70.sql been run? ('+err.message+')');}}catch(err){console.error('Database connection failed:',err.message);}console.log(`NNSS Calabar server listening on http://localhost:${PORT}`);if(HOST==='0.0.0.0'||HOST==='::'){const lan=getLanAddresses();if(lan.length){console.log('Also reachable on this network at:');lan.forEach(ip=>console.log(`  http://${ip}:${PORT}`));console.log('Share one of the addresses above with devices on the same wifi/LAN to let them use the portal.');}else console.log('No LAN network interface detected yet — connect this machine to the school network to enable local-network access.');}});
+const server=onVercel?null:app.listen(PORT,HOST,async()=>{try{await db.query('SELECT 1');console.log('Database connection: OK');try{const moved=await syncResultScales();if(moved)console.log(`Grading: ${moved} result(s) moved to the grading scale of their student's current class.`);}catch(err){console.warn('Grading scale check skipped. Is the database schema loaded? ('+err.message+')');}}catch(err){console.error('Database connection failed:',err.message);}console.log(`NNSS Calabar server listening on http://localhost:${PORT}`);if(HOST==='0.0.0.0'||HOST==='::'){const lan=getLanAddresses();if(lan.length){console.log('Also reachable on this network at:');lan.forEach(ip=>console.log(`  http://${ip}:${PORT}`));console.log('Share one of the addresses above with devices on the same wifi/LAN to let them use the portal.');}else console.log('No LAN network interface detected yet — connect this machine to the school network to enable local-network access.');}});
 async function shutdown(signal){console.log(`${signal} received; shutting down...`);const force=setTimeout(()=>process.exit(1),10000);force.unref();server.close(async()=>{try{await db.end();}finally{process.exit(0);}});}
-process.on('SIGTERM',()=>shutdown('SIGTERM'));process.on('SIGINT',()=>shutdown('SIGINT'));
+if(server){process.on('SIGTERM',()=>shutdown('SIGTERM'));process.on('SIGINT',()=>shutdown('SIGINT'));}
 app.server=server;
 module.exports=app;
