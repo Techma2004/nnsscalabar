@@ -21,7 +21,10 @@ async function apiFetch(endpoint, options = {}) {
     }
   }
   if (!response.ok) {
-    const err = new Error(data.error || `Request failed (${response.status}).`);
+    // data.error is normally text; a platform failure (e.g. Vercel) can send an object instead.
+    const raw = data.error;
+    const text = typeof raw === 'string' ? raw : (raw && (raw.message || raw.code)) || '';
+    const err = new Error(text || `Request failed (${response.status}).`);
     err.status = response.status;
     err.data = data; // e.g. data.row_errors from a rejected score sheet
     throw err;
