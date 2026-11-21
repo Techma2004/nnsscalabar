@@ -46,7 +46,7 @@ npm run seed:commandant
 
 1. vercel.com -> Add New -> Project -> import the GitHub repo.
 2. Leave Root Directory as the repo root. `vercel.json` already sets everything else.
-3. **Settings -> Functions -> Function Region: London (lhr1)**. This must match Supabase.
+3. **Settings -> Functions -> Function Region to match Supabase: London project -> London (lhr1); Ireland project -> Dublin (dub1). `vercel.json` currently sets dub1.
 4. **Settings -> Environment Variables** (Production), add:
 
 | Name | Value |

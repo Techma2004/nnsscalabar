@@ -6,7 +6,7 @@
   "outputDirectory": "frontend",
   "cleanUrls": true,
   "trailingSlash": false,
-  "regions": ["lhr1"],
+  "regions": ["dub1"],
   "functions": {
     "api/[...path].js": { "maxDuration": 60, "memory": 1024 }
   },
