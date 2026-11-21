@@ -128,7 +128,7 @@ router.post('/users', requireManagement, async (req, res) => {
       const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
       if (currentSession) {
         await conn.query(`INSERT INTO student_subject_enrollment(student_id,subject_id,session_id,enrolled_by)
-          SELECT ?,ts.subject_id,?,? FROM track_subjects ts WHERE ts.track=?`, [studentInsert.insertId,currentSession.id,req.user.id,track]);
+          SELECT ?::int,ts.subject_id,?::int,?::int FROM track_subjects ts WHERE ts.track=?`, [studentInsert.insertId,currentSession.id,req.user.id,track]);
       }
     }
 
@@ -144,7 +144,7 @@ router.post('/users', requireManagement, async (req, res) => {
       }
       if (!deptRow) throw new Error('A valid department is required.');
       if (role === 'teacher') {
-        const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, date_joined) VALUES (?, ?, ?, CURDATE())',
+        const [teacherResult] = await conn.query('INSERT INTO teachers (user_id, staff_no, dept_id, date_joined) VALUES (?, ?, ?, CURRENT_DATE)',
           [userId, staff_no, deptRow.id]);
         const [[currentSession]] = await conn.query('SELECT id FROM academic_sessions WHERE is_current=1 ORDER BY start_date DESC LIMIT 1');
         const [levels] = await conn.query('SELECT id,level_name,is_junior FROM class_levels');
@@ -165,7 +165,7 @@ router.post('/users', requireManagement, async (req, res) => {
               const track = trackFor(level, arm);
               if (!TRACKS.includes(track)) continue;
               const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1', [track, subjectId]);
-              if (mapped) await conn.query('INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)', [teacherResult.insertId, subjectId, level.id, arm.id, currentSession.id]);
+              if (mapped) await conn.query('INSERT INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING', [teacherResult.insertId, subjectId, level.id, arm.id, currentSession.id]);
             }
           } else {
             for (const x of teacherAssignments) {
@@ -174,12 +174,12 @@ router.post('/users', requireManagement, async (req, res) => {
               if (!level || !arm) throw new Error(`Class assignment is invalid: ${x.class_level} ${x.arm}`);
               const [[mapped]] = await conn.query('SELECT id FROM track_subjects WHERE track=? AND subject_id=? LIMIT 1', [trackFor(level, arm), subjectIds.get(x.subject)]);
               if (!mapped) throw new Error(`Class assignment is invalid: ${x.subject} is not on the curriculum for ${x.class_level} ${x.arm}`);
-              await conn.query('INSERT IGNORE INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?)', [teacherResult.insertId, subjectIds.get(x.subject), level.id, arm.id, currentSession.id]);
+              await conn.query('INSERT INTO teacher_class_assignments(teacher_id,subject_id,class_level_id,arm_id,session_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING', [teacherResult.insertId, subjectIds.get(x.subject), level.id, arm.id, currentSession.id]);
             }
           }
         }
       } else {
-        await conn.query('INSERT INTO hods (user_id, dept_id, appointed_date) VALUES (?, ?, CURDATE())', [userId, deptRow.id]);
+        await conn.query('INSERT INTO hods (user_id, dept_id, appointed_date) VALUES (?, ?, CURRENT_DATE)', [userId, deptRow.id]);
       }
     }
 
@@ -207,7 +207,7 @@ router.get('/users', requireManagement, async (req, res) => {
     // not users.phone, so that is the number shown for students.
     const [rows] = await db.query(`SELECT u.id AS user_id, u.user_code, u.full_name, u.email, u.role, u.is_active, u.last_login,
         CASE WHEN u.role='student' THEN st.parent_phone ELSE u.phone END AS phone,
-        (u.role='student') AS phone_is_guardian
+        (u.role='student')::int AS phone_is_guardian
       FROM users u LEFT JOIN students st ON st.user_id=u.id
       WHERE u.is_active=1 ${searchClause.replace(/full_name/g, 'u.full_name').replace(/user_code/g, 'u.user_code')}
       ORDER BY CASE u.role WHEN 'admin' THEN 1 WHEN 'commandant' THEN 2 WHEN 'hod' THEN 3 WHEN 'teacher' THEN 4 WHEN 'student' THEN 5 WHEN 'editor' THEN 6 ELSE 7 END, u.full_name
@@ -230,10 +230,10 @@ router.get('/teachers', requireStaffDirectory, async (req, res) => {
     params.push(hod.dept_id);
   }
   let searchClause = '';
-  if (q) { searchClause = 'HAVING u.full_name LIKE ? OR u.user_code LIKE ? OR subjects LIKE ?'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  if (q) { searchClause = "HAVING u.full_name LIKE ? OR u.user_code LIKE ? OR string_agg(DISTINCT s.subject_name::text, ', ' ORDER BY s.subject_name::text) ILIKE ?"; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   try {
     const [rows] = await db.query(`SELECT u.id AS user_id,u.user_code,u.full_name,u.email,u.phone,u.gender,t.id AS teacher_id,t.staff_no,d.dept_name AS department,t.date_joined,
-      GROUP_CONCAT(DISTINCT s.subject_name ORDER BY s.subject_name SEPARATOR ', ') AS subjects
+      string_agg(DISTINCT s.subject_name::text, ', ' ORDER BY s.subject_name::text) AS subjects
       FROM teachers t JOIN users u ON u.id=t.user_id LEFT JOIN departments d ON d.id=t.dept_id
       LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects s ON s.id=ts.subject_id
       WHERE u.is_active=1 ${deptClause} GROUP BY u.id,t.id,d.dept_name ${searchClause} ORDER BY u.full_name LIMIT 300`, params);
@@ -412,9 +412,9 @@ router.get('/subjects', requireManagement, async (req, res) => {
   if (Number.isInteger(deptId) && deptId > 0) { deptClause = 'WHERE s.dept_id = ?'; params.push(deptId); }
   try {
     const [rows] = await db.query(`SELECT s.id, s.subject_name, s.dept_id, d.dept_name, s.ca_max, s.exam_max, s.is_active,
-      GROUP_CONCAT(DISTINCT ts.track ORDER BY ts.track SEPARATOR ',') AS tracks
+      string_agg(DISTINCT ts.track, ',' ORDER BY ts.track) AS tracks
       FROM subjects s LEFT JOIN departments d ON d.id = s.dept_id LEFT JOIN track_subjects ts ON ts.subject_id = s.id
-      ${deptClause} GROUP BY s.id ORDER BY s.subject_name`, params);
+      ${deptClause} GROUP BY s.id, d.id ORDER BY s.subject_name`, params);
     res.json(rows.map(r => ({ ...r, tracks: r.tracks ? r.tracks.split(',') : [] })));
   } catch (err) { console.error('[admin/subjects]', err); res.status(500).json({ error: 'Unable to load subjects.' }); }
 });
@@ -529,7 +529,7 @@ router.post('/curriculum/toggle', requireManagement, async (req, res) => {
   if (!Number.isInteger(subject_id) || subject_id < 1) return res.status(400).json({ error: 'Invalid subject ID.' });
   try {
     if (enabled) {
-      await db.query('INSERT IGNORE INTO track_subjects (track, subject_id) VALUES (?, ?)', [track, subject_id]);
+      await db.query('INSERT INTO track_subjects (track, subject_id) VALUES (?, ?) ON CONFLICT DO NOTHING', [track, subject_id]);
     } else {
       await db.query('DELETE FROM track_subjects WHERE track=? AND subject_id=?', [track, subject_id]);
     }
@@ -596,12 +596,12 @@ router.get('/departments/:deptId', requireStaffReference, async (req, res) => {
 
     const [subjects, teachers, [[resultStats]], grades, classes] = await Promise.all([
       db.query(`SELECT s.id, s.subject_name, s.ca_max, s.exam_max, s.is_active,
-        GROUP_CONCAT(DISTINCT ts.track ORDER BY ts.track SEPARATOR ',') AS tracks,
+        string_agg(DISTINCT ts.track, ',' ORDER BY ts.track) AS tracks,
         (SELECT COUNT(*) FROM results r WHERE r.subject_id=s.id) AS result_count
         FROM subjects s LEFT JOIN track_subjects ts ON ts.subject_id=s.id
         WHERE s.dept_id=? GROUP BY s.id ORDER BY s.is_active DESC, s.subject_name`, [deptId]).then(r => r[0]),
       db.query(`SELECT u.id AS user_id, u.user_code, u.full_name, u.email, t.staff_no, t.date_joined,
-        GROUP_CONCAT(DISTINCT sub.subject_name ORDER BY sub.subject_name SEPARATOR ', ') AS subjects
+        string_agg(DISTINCT sub.subject_name::text, ', ' ORDER BY sub.subject_name::text) AS subjects
         FROM teachers t JOIN users u ON u.id=t.user_id
         LEFT JOIN teacher_subjects ts ON ts.teacher_id=t.id LEFT JOIN subjects sub ON sub.id=ts.subject_id
         WHERE t.dept_id=? AND u.is_active=1 GROUP BY u.id, t.id ORDER BY u.full_name`, [deptId]).then(r => r[0]),
@@ -837,18 +837,24 @@ router.post('/sessions/:sessionId/promote', requireManagement, async (req, res) 
     const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
-      await conn.query(`UPDATE students s JOIN class_levels cl ON cl.id = s.class_level_id LEFT JOIN class_levels nxt ON nxt.sort_order = cl.sort_order + 1
-        SET s.class_level_id = COALESCE(nxt.id, s.class_level_id),
-            s.status = CASE WHEN nxt.id IS NULL THEN 'graduated' ELSE 'active' END,
-            s.status_reason = CASE WHEN nxt.id IS NULL THEN 'Graduated at the end of the session' ELSE NULL END,
-            s.status_updated_at = NOW()
-        WHERE s.status = 'active'`);
+      await conn.query(`UPDATE students s
+        SET class_level_id = COALESCE(nxt.id, s.class_level_id),
+            status = CASE WHEN nxt.id IS NULL THEN 'graduated' ELSE 'active' END,
+            status_reason = CASE WHEN nxt.id IS NULL THEN 'Graduated at the end of the session' ELSE NULL END,
+            status_updated_at = NOW()
+        FROM class_levels cl LEFT JOIN class_levels nxt ON nxt.sort_order = cl.sort_order + 1
+        WHERE cl.id = s.class_level_id AND s.status = 'active'`);
+      // Graduates leave the school: their accounts are switched off (and any open session ended),
+      // exactly as when an administrator marks a student graduated by hand. History is kept.
+      await conn.query(`UPDATE users u SET is_active = 0, session_version = session_version + 1
+        FROM students s WHERE s.user_id = u.id AND s.status = 'graduated' AND u.is_active = 1`);
       await conn.query(`UPDATE students SET status='active', status_reason='Repeated the same class', status_updated_at=NOW() WHERE status='repeating'`);
       // A promoted student's track follows their new class, derived the same way as when an account
       // is created or an arm change is approved: Junior classes are 'junior', otherwise the arm's type.
-      await conn.query(`UPDATE students s JOIN class_levels cl ON cl.id = s.class_level_id JOIN arms a ON a.id = s.arm_id
-        SET s.track = IF(cl.is_junior = 1, 'junior', a.arm_type)
-        WHERE s.status = 'active' AND s.track <> IF(cl.is_junior = 1, 'junior', a.arm_type)`);
+      await conn.query(`UPDATE students s SET track = CASE WHEN cl.is_junior = 1 THEN 'junior' ELSE a.arm_type END
+        FROM class_levels cl, arms a
+        WHERE cl.id = s.class_level_id AND a.id = s.arm_id AND s.status = 'active'
+          AND s.track <> CASE WHEN cl.is_junior = 1 THEN 'junior' ELSE a.arm_type END`);
       // Promoted students are graded on the scale of their new class (e.g. JSS3 -> SS1).
       await syncResultScales(conn);
       await conn.query('UPDATE academic_sessions SET promoted_at=NOW() WHERE id=?', [sessionId]);

@@ -135,7 +135,7 @@ router.get('/assignments', async (req, res) => {
     const [rows] = await db.query(`SELECT tca.id,tca.teacher_id,tca.subject_id,s.subject_name,s.ca_max,s.exam_max,tca.class_level_id,cl.level_name AS class_name,tca.arm_id,a.arm_name,
       tca.session_id,ac.session_name FROM teacher_class_assignments tca JOIN subjects s ON s.id=tca.subject_id JOIN class_levels cl ON cl.id=tca.class_level_id
       JOIN arms a ON a.id=tca.arm_id JOIN academic_sessions ac ON ac.id=tca.session_id
-      WHERE s.is_active=1 AND (? IS NULL OR tca.teacher_id=?) ORDER BY ac.start_date DESC,cl.id,a.arm_name,s.subject_name`, [teacher?.id ?? null, teacher?.id ?? null]);
+      WHERE s.is_active=1 AND (?::int IS NULL OR tca.teacher_id=?) ORDER BY ac.start_date DESC,cl.id,a.arm_name,s.subject_name`, [teacher?.id ?? null, teacher?.id ?? null]);
     res.json(rows);
   } catch (err) { console.error('[results/assignments]', err); res.status(500).json({ error: 'Unable to load teaching assignments.' }); }
 });
@@ -250,7 +250,7 @@ router.post('/sheet/import', async (req, res) => {
 
 router.get('/ai-status', async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can use score-sheet import.' });
-  const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
+  const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || (process.env.VERCEL ? 'false' : 'true')).toLowerCase() !== 'false';
   if (!enabled) return res.json({ enabled: false, available: false, model: 'Tesseract OCR' });
   const now = Date.now();
   if (aiStatusCache.payload && now - aiStatusCache.at < AI_STATUS_TTL_MS) {
@@ -285,7 +285,7 @@ router.get('/ai-status', async (req, res) => {
 
 router.post('/ai-import', ocrRateLimit, async (req, res) => {
   if (req.user.role !== 'teacher') return res.status(403).json({ error: 'Only teachers can import score sheets.' });
-  const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
+  const enabled = String(process.env.AI_SCORE_IMPORT_ENABLED || (process.env.VERCEL ? 'false' : 'true')).toLowerCase() !== 'false';
   if (!enabled) return res.status(503).json({ error: 'Score-sheet import is disabled. Use manual score entry.' });
   const image = String(req.body?.image || '');
   const imageMatch = image.match(/^data:(?:image\/(jpeg|jpg|png|webp)|application\/(pdf));base64,([A-Za-z0-9+/=\s]+)$/);
@@ -400,7 +400,7 @@ router.put('/approve-sheet', async (req, res) => {
     if (term.result_locked) return res.status(409).json({ error: 'This term is locked.' });
     await conn.beginTransaction();
     const [ids] = await conn.query(`SELECT r.id FROM results r JOIN students s ON s.id=r.student_id
-      WHERE r.subject_id=? AND r.term_id=? AND s.class_level_id=? AND s.arm_id=? AND r.is_approved=0 AND r.rejected_at IS NULL FOR UPDATE`,
+      WHERE r.subject_id=? AND r.term_id=? AND s.class_level_id=? AND s.arm_id=? AND r.is_approved=0 AND r.rejected_at IS NULL FOR UPDATE OF r`,
       [subject_id, term_id, class_level_id, arm_id]);
     if (!ids.length) { await conn.rollback(); return res.json({ message: 'Nothing pending on this sheet.', approved: 0 }); }
     const idList = ids.map(r => r.id);
@@ -501,7 +501,7 @@ router.get('/student/:studentCode', async (req, res) => {
     }
     const [rows] = await db.query(`SELECT r.id,sub.subject_name,t.term_name,t.term_number,ac.session_name,r.test1_score,r.quiz_score,r.assignment_score,r.test2_score,r.project_score,r.note_score,r.ca_score,r.exam_score,r.total_score,r.grade,r.remark,r.is_approved,r.uploaded_at,r.approved_at
       FROM results r JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id JOIN students s ON s.id=r.student_id JOIN users u ON u.id=s.user_id
-      WHERE u.user_code=? AND (r.is_approved=1 OR ?) ${extraWhere} ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, [studentCode, canSeePending ? 1 : 0, ...extraParams]);
+      WHERE u.user_code=? AND (r.is_approved=1 OR ?::int = 1) ${extraWhere} ORDER BY ac.start_date DESC,t.term_number DESC,sub.subject_name`, [studentCode, canSeePending ? 1 : 0, ...extraParams]);
     res.json(rows);
   } catch (err) { console.error('[results/student]', err); res.status(500).json({ error: 'Unable to load results.' }); }
 });
@@ -538,7 +538,7 @@ router.get('/student/:studentCode/term-stats', async (req, res) => {
         WHERE tc.user_id=? AND tca.class_level_id=? AND tca.arm_id=? AND asx.is_current=1 LIMIT 1`, [req.user.id, stu.class_level_id, stu.arm_id]);
       if (!assigned) return res.status(403).json({ error: 'You are not assigned to this student\'s class.' });
     }
-    const [mine] = await db.query(`SELECT r.term_id, r.subject_id, sub.subject_name, r.total_score, t.term_name, t.term_number, DATE_FORMAT(t.end_date,'%Y-%m-%d') AS end_date, ac.session_name
+    const [mine] = await db.query(`SELECT r.term_id, r.subject_id, sub.subject_name, r.total_score, t.term_name, t.term_number, to_char(t.end_date,'YYYY-MM-DD') AS end_date, ac.session_name
       FROM results r JOIN subjects sub ON sub.id=r.subject_id JOIN terms t ON t.id=r.term_id JOIN academic_sessions ac ON ac.id=t.session_id
       WHERE r.student_id=? AND r.is_approved=1 ORDER BY ac.start_date DESC, t.term_number DESC`, [stu.id]);
     const byTerm = new Map();

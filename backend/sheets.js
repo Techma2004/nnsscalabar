@@ -204,16 +204,16 @@ async function saveSheetRows(ctx, user, submitted) {
       await conn.query(`INSERT INTO results
           (student_id, subject_id, term_id, teacher_id, test1_score, quiz_score, assignment_score, test2_score, project_score, note_score, ca_score, exam_score, is_junior, is_approved)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)
-        ON DUPLICATE KEY UPDATE
-          test1_score=VALUES(test1_score), quiz_score=VALUES(quiz_score), assignment_score=VALUES(assignment_score),
-          test2_score=VALUES(test2_score), project_score=VALUES(project_score), note_score=VALUES(note_score),
-          ca_score=VALUES(ca_score), exam_score=VALUES(exam_score), teacher_id=VALUES(teacher_id), is_junior=VALUES(is_junior),
+        ON CONFLICT (student_id, subject_id, term_id) DO UPDATE SET
+          test1_score=EXCLUDED.test1_score, quiz_score=EXCLUDED.quiz_score, assignment_score=EXCLUDED.assignment_score,
+          test2_score=EXCLUDED.test2_score, project_score=EXCLUDED.project_score, note_score=EXCLUDED.note_score,
+          ca_score=EXCLUDED.ca_score, exam_score=EXCLUDED.exam_score, teacher_id=EXCLUDED.teacher_id, is_junior=EXCLUDED.is_junior,
           is_approved=0, approved_by=NULL, approved_at=NULL, rejected_at=NULL, rejected_by=NULL, rejection_note=NULL,
-          updated_at=CURRENT_TIMESTAMP`,
+          updated_at=now()`,
         [student.student_id, ctx.subject.id, ctx.term.id, ctx.teacher.id,
           values.test1, values.quiz, values.assignment, values.test2, values.project, values.note, ca, values.exam, ctx.classLevel.is_junior ? 1 : 0]);
       await conn.query(`INSERT INTO result_approval_log (result_id, action, actor_id, note)
-        SELECT r.id, 'revised', ?, ? FROM results r WHERE r.student_id=? AND r.subject_id=? AND r.term_id=?`,
+        SELECT r.id, 'revised', ?::int, ?::text FROM results r WHERE r.student_id=? AND r.subject_id=? AND r.term_id=?`,
         [user.id, 'Score sheet submitted/revised by teacher', student.student_id, ctx.subject.id, ctx.term.id]);
     }
     await conn.commit();
@@ -244,9 +244,9 @@ async function sheetIndex(termId, { deptId = null, teacherId = null } = {}) {
       (SELECT COUNT(*) FROM students st JOIN users su ON su.id=st.user_id
         WHERE st.class_level_id=tca.class_level_id AND st.arm_id=tca.arm_id AND su.is_active=1 AND st.status IN ('active','repeating')) AS roster_count,
       COUNT(r.id) AS entered,
-      COALESCE(SUM(r.is_approved=1),0) AS approved,
-      COALESCE(SUM(r.is_approved=0 AND r.rejected_at IS NULL),0) AS pending,
-      COALESCE(SUM(r.is_approved=0 AND r.rejected_at IS NOT NULL),0) AS rejected,
+      COALESCE(SUM((r.is_approved=1)::int),0) AS approved,
+      COALESCE(SUM((r.is_approved=0 AND r.rejected_at IS NULL)::int),0) AS pending,
+      COALESCE(SUM((r.is_approved=0 AND r.rejected_at IS NOT NULL)::int),0) AS rejected,
       ROUND(AVG(r.total_score),1) AS avg_score
     FROM teacher_class_assignments tca
     JOIN subjects sub ON sub.id=tca.subject_id

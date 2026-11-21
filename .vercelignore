@@ -1,0 +1,11 @@
+# Not needed by the online portal
+deploy/
+database/rosters/
+*.md
+ocr_score_sheet.py
+pyproject.toml
+uv.lock
+score-sheet-template.xlsx
+backend/.env
+backend/node_modules
+frontend/uploads

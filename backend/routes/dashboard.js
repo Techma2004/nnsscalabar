@@ -66,7 +66,7 @@ router.get('/attention', async (req, res) => {
       const [[open]] = await db.query("SELECT COUNT(*) n FROM change_requests WHERE student_id=? AND status='pending'", [st?.id || 0]);
       const [decided] = await db.query(`SELECT cr.request_type, cr.status, cr.review_note, ta.arm_name AS target_arm, sub.subject_name FROM change_requests cr
         LEFT JOIN arms ta ON ta.id=cr.target_arm_id LEFT JOIN subjects sub ON sub.id=cr.subject_id
-        WHERE cr.student_id=? AND cr.status IN ('approved','declined') AND cr.reviewed_at > NOW() - INTERVAL 14 DAY ORDER BY cr.reviewed_at DESC LIMIT 5`, [st?.id || 0]);
+        WHERE cr.student_id=? AND cr.status IN ('approved','declined') AND cr.reviewed_at > NOW() - INTERVAL '14 days' ORDER BY cr.reviewed_at DESC LIMIT 5`, [st?.id || 0]);
       return res.json({ open_requests: Number(open.n), recent_decisions: decided });
     }
     if (role === 'teacher') {
@@ -101,7 +101,7 @@ router.get('/attention', async (req, res) => {
       return res.json({ pending_requests: Number(reqs.n), staff_missing_phone: Number(staffNoPhone.n), students_missing_guardian_phone: studentsNoPhone });
     }
     if (role === 'editor') {
-      const [[r]] = await db.query(`SELECT COUNT(*) total, COALESCE(SUM(status='draft'),0) drafts, COALESCE(SUM(kind='blog'),0) blog, COALESCE(SUM(kind='newsletter'),0) newsletter FROM posts`);
+      const [[r]] = await db.query(`SELECT COUNT(*) total, COALESCE(SUM((status='draft')::int),0) drafts, COALESCE(SUM((kind='blog')::int),0) blog, COALESCE(SUM((kind='newsletter')::int),0) newsletter FROM posts`);
       return res.json({ total: Number(r.total), drafts: Number(r.drafts), blog: Number(r.blog), newsletter: Number(r.newsletter) });
     }
     res.json({});
@@ -166,26 +166,26 @@ router.get('/commandant-summary', async (req, res) => {
       db.query('SELECT COUNT(*) total FROM teachers t JOIN users u ON u.id=t.user_id WHERE u.is_active=1'),
       db.query('SELECT COUNT(*) total FROM hods h JOIN users u ON u.id=h.user_id WHERE u.is_active=1'),
       db.query('SELECT COUNT(*) total FROM departments'),
-      db.query(`SELECT COUNT(*) total, COALESCE(SUM(is_approved=1),0) approved,
-          COALESCE(SUM(is_approved=0 AND rejected_at IS NULL),0) pending, COALESCE(SUM(is_approved=0 AND rejected_at IS NOT NULL),0) rejected
+      db.query(`SELECT COUNT(*) total, COALESCE(SUM((is_approved=1)::int),0) approved,
+          COALESCE(SUM((is_approved=0 AND rejected_at IS NULL)::int),0) pending, COALESCE(SUM((is_approved=0 AND rejected_at IS NOT NULL)::int),0) rejected
         FROM results WHERE term_id=?`, [tid]),
-      db.query(`SELECT COUNT(*) total, ROUND(AVG(total_score),1) average, ROUND(SUM(total_score>=50)/NULLIF(COUNT(*),0)*100,1) pass_rate
+      db.query(`SELECT COUNT(*) total, ROUND(AVG(total_score),1) average, ROUND(SUM((total_score>=50)::int)::numeric/NULLIF(COUNT(*),0)*100,1) pass_rate
         FROM results WHERE term_id=? AND is_approved=1`, [tid]),
       db.query('SELECT is_junior, grade, COUNT(*) n FROM results WHERE term_id=? AND is_approved=1 GROUP BY is_junior, grade', [tid]),
       db.query(`SELECT cl.id AS class_level_id, cl.level_name AS class_name, a.arm_name, COUNT(DISTINCT s.id) students_scored, COUNT(r.id) results,
-          ROUND(AVG(r.total_score),1) avg_score, ROUND(SUM(r.total_score>=50)/COUNT(*)*100,1) pass_rate
+          ROUND(AVG(r.total_score),1) avg_score, ROUND(SUM((r.total_score>=50)::int)::numeric/COUNT(*)*100,1) pass_rate
         FROM results r JOIN students s ON s.id=r.student_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
         WHERE r.term_id=? AND r.is_approved=1 GROUP BY cl.id, a.id ORDER BY cl.sort_order, cl.id, a.arm_name`, [tid]),
       db.query(`SELECT d.id, d.dept_name, COUNT(r.id) AS results,
-          COALESCE(SUM(r.is_approved=1),0) approved, COALESCE(SUM(r.is_approved=0 AND r.rejected_at IS NULL),0) pending,
+          COALESCE(SUM((r.is_approved=1)::int),0) approved, COALESCE(SUM((r.is_approved=0 AND r.rejected_at IS NULL)::int),0) pending,
           ROUND(AVG(CASE WHEN r.is_approved=1 THEN r.total_score END),1) avg_score,
-          ROUND(SUM(r.is_approved=1 AND r.total_score>=50)/NULLIF(SUM(r.is_approved=1),0)*100,1) pass_rate
+          ROUND(SUM((r.is_approved=1 AND r.total_score>=50)::int)::numeric/NULLIF(SUM((r.is_approved=1)::int),0)*100,1) pass_rate
         FROM departments d LEFT JOIN subjects sub ON sub.dept_id=d.id LEFT JOIN results r ON r.subject_id=sub.id AND r.term_id=?
         GROUP BY d.id ORDER BY d.dept_name`, [tid]),
       sheets.sheetIndex(tid),
       db.query(`SELECT u.user_code, u.full_name, cl.level_name AS class, a.arm_name AS arm, ROUND(AVG(r.total_score),1) avg_score, COUNT(r.id) subjects_taken
         FROM results r JOIN students s ON s.id=r.student_id JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
-        WHERE r.is_approved=1 AND r.term_id=? GROUP BY r.student_id ORDER BY avg_score DESC, subjects_taken DESC LIMIT 5`, [tid])
+        WHERE r.is_approved=1 AND r.term_id=? GROUP BY r.student_id, u.id, cl.id, a.id ORDER BY avg_score DESC, subjects_taken DESC LIMIT 5`, [tid])
     ]);
 
     const sheetList = index ? index.sheets : [];
@@ -222,7 +222,7 @@ router.get('/top-performers', async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const [rows] = await db.query(`SELECT u.user_code,u.full_name,cl.level_name AS class,a.arm_name AS arm,ROUND(AVG(r.total_score),1) avg_score,COUNT(r.id) subjects_taken
       FROM results r JOIN students s ON s.id=r.student_id JOIN users u ON u.id=s.user_id JOIN class_levels cl ON cl.id=s.class_level_id JOIN arms a ON a.id=s.arm_id
-      WHERE ${where.join(' AND ')} GROUP BY r.student_id ORDER BY avg_score DESC, subjects_taken DESC LIMIT ?`, [...params, limit]);
+      WHERE ${where.join(' AND ')} GROUP BY r.student_id, u.id, cl.id, a.id ORDER BY avg_score DESC, subjects_taken DESC LIMIT ?`, [...params, limit]);
     res.json(rows);
   } catch(err){ console.error('[dashboard/top]',err); res.status(500).json({error:'Unable to load top performers.'}); }
 });

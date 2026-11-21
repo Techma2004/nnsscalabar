@@ -1,3 +1,5 @@
+> **Database update:** the portal now runs on **PostgreSQL** (local Postgres or Supabase), configured with one `DATABASE_URL`. Schema file: `database/postgres/schema.sql`. For the online setup follow [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md). Sections below that mention MySQL, `mysql`, `DB_HOST`/`DB_USER`/`DB_PASSWORD`, port 3306 or `database/schema.sql` are from the old MySQL setup and are being rewritten.
+
 # Fresh install on a new PC
 
 > **On Windows?** Use the full guide, [WINDOWS_SETUP.md](WINDOWS_SETUP.md). The commands below use Linux/macOS style; Windows differences are called out. Settings: [CONFIGURATION.md](CONFIGURATION.md). Problems: [FAQ.md](FAQ.md). For an unattended school server (Windows service, HTTPS, backups) use [WINDOWS_SERVER.md](WINDOWS_SERVER.md).

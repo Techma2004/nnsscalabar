@@ -11,22 +11,20 @@
  * "Editors" are the school's article / news team (role "editor"); the Administrator
  * and Commandant can do the same. Nobody else can change the public pages.
  */
-const fs = require('node:fs');
-const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const v = require('../validate');
 const { routeLimiter } = require('../middleware/security');
+const storage = require('../storage');
 const router = express.Router();
 
 const EDITORS = ['editor', 'admin', 'commandant'];
 const KINDS = ['blog', 'newsletter'];
-// Pictures must live on the school's own site (the browser is told to load images
-// only from there): either a file already in the site folder, or one uploaded here.
-const IMAGE_FILE_RE = /^(uploads\/)?[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.(png|jpe?g|webp|gif)$/i;
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'frontend', 'uploads');
+// Pictures must come from the school's own places (the browser is told to load images
+// only from there): a file already in the site folder, or one uploaded here (kept in
+// Cloudflare R2 online, or the local uploads folder on a school PC; see storage.js).
 const MAX_IMAGE_BYTES = 2.5 * 1024 * 1024;
 function sniffImage(buf) {
   if (buf.length > 12 && buf[0] === 0x89 && buf.toString('latin1', 1, 4) === 'PNG') return 'png';
@@ -39,7 +37,7 @@ router.get('/', routeLimiter(300, 'Too many requests. Please try again shortly.'
   const kind = String(req.query.kind || '');
   if (!KINDS.includes(kind)) return res.status(400).json({ error: 'Choose blog or newsletter.' });
   try {
-    const [rows] = await db.query(`SELECT id, kind, title, body, image_url, DATE_FORMAT(event_date,'%Y-%m-%d') AS event_date FROM posts WHERE kind=? AND status='published' ORDER BY event_date DESC, id DESC LIMIT 100`, [kind]);
+    const [rows] = await db.query(`SELECT id, kind, title, body, image_url, to_char(event_date,'YYYY-MM-DD') AS event_date FROM posts WHERE kind=? AND status='published' ORDER BY event_date DESC, id DESC LIMIT 100`, [kind]);
     res.json({ rows });
   } catch (err) { console.error('[posts/public]', err); res.status(500).json({ error: 'Unable to load posts.' }); }
 });
@@ -53,9 +51,9 @@ router.get('/manage', async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 80);
   const params = []; let where = '1=1';
   if (kind) { where += ' AND p.kind=?'; params.push(kind); }
-  if (q) { where += ' AND (p.title LIKE ? OR p.body LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
+  if (q) { where += ' AND (p.title ILIKE ? OR p.body ILIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
   try {
-    const [rows] = await db.query(`SELECT p.id, p.kind, p.title, p.body, p.image_url, DATE_FORMAT(p.event_date,'%Y-%m-%d') AS event_date, p.status, p.created_at, p.updated_at, cu.full_name AS created_by_name, uu.full_name AS updated_by_name
+    const [rows] = await db.query(`SELECT p.id, p.kind, p.title, p.body, p.image_url, to_char(p.event_date,'YYYY-MM-DD') AS event_date, p.status, p.created_at, p.updated_at, cu.full_name AS created_by_name, uu.full_name AS updated_by_name
       FROM posts p LEFT JOIN users cu ON cu.id=p.created_by LEFT JOIN users uu ON uu.id=p.updated_by WHERE ${where} ORDER BY p.event_date DESC, p.id DESC LIMIT 300`, params);
     res.json({ rows });
   } catch (err) { console.error('[posts/manage]', err); res.status(500).json({ error: 'Unable to load posts.' }); }
@@ -72,7 +70,7 @@ function readPost(body) {
   if (!title || title.length < 3) return { error: 'Give the post a title (at least 3 characters).' };
   if (text.length < 10) return { error: 'Write the post text (at least 10 characters).' };
   if (text.length > 8000) return { error: 'The post text is too long (8,000 characters at most).' };
-  if (image && !IMAGE_FILE_RE.test(image)) return { error: 'Choose a picture from the list, or upload one.' };
+  if (image && !storage.isAllowedImageRef(image)) return { error: 'Choose a picture from the list, or upload one.' };
   if (date === undefined) return { error: 'Enter a valid date.' };
   // Pictures belong to the blog only; a newsletter post never carries one.
   if (kind !== 'blog') image = null;
@@ -88,11 +86,11 @@ router.post('/image', async (req, res) => {
   if (buf.length > MAX_IMAGE_BYTES) return res.status(413).json({ error: 'That picture is larger than 2.5 MB. Choose a smaller one.' });
   const ext = sniffImage(buf);
   if (!ext) return res.status(400).json({ error: 'That file is not a PNG, JPEG or WebP picture.' });
+  if (!storage.canStore()) return res.status(503).json({ error: 'Picture uploads are not set up on this server yet. Ask the administrator to configure image storage.' });
   try {
-    await fs.promises.mkdir(UPLOAD_DIR, { recursive: true });
     const name = `post-${crypto.randomBytes(8).toString('hex')}.${ext}`;
-    await fs.promises.writeFile(path.join(UPLOAD_DIR, name), buf, { flag: 'wx' });
-    res.status(201).json({ image_url: `uploads/${name}` });
+    const image_url = await storage.saveImage(name, buf, ext);
+    res.status(201).json({ image_url });
   } catch (err) { console.error('[posts/image]', err); res.status(500).json({ error: 'Unable to store the picture.' }); }
 });
 
