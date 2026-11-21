@@ -32,7 +32,8 @@ app.disable('x-powered-by');
 // Default 0 means direct client connections. Never use trust proxy=true: it can
 // let clients spoof X-Forwarded-For and bypass IP-based rate limits.
 // On Vercel exactly one proxy sits in front of the function, so default to 1 there.
-const trustProxyHopsRaw = process.env.TRUST_PROXY_HOPS ?? (onVercel ? '1' : '0');
+// A blank value (e.g. an empty line pasted into Vercel) counts as not set.
+const trustProxyHopsRaw = String(process.env.TRUST_PROXY_HOPS ?? '').trim() || (onVercel ? '1' : '0');
 if (!/^(0|[1-9][0-9]*)$/.test(trustProxyHopsRaw)) {
   throw new Error('TRUST_PROXY_HOPS must be an integer from 0 to 10.');
 }
