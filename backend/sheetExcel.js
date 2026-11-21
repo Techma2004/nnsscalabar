@@ -18,7 +18,9 @@
  * (The marks each column is out of come from scheme.js: CA 30 + Exam 70.)
  * The GRADE column follows the LEVEL cell: JSS uses A/C/P/F, SSS uses A1-F9.
  */
-const ExcelJS = require('exceljs');
+// Loaded on first use: exceljs adds ~200 ms to every serverless cold start.
+let _ExcelJS;
+const excel = () => (_ExcelJS || (_ExcelJS = require('exceljs')));
 const scheme = require('./scheme');
 
 const SHEET_NAME = 'Score Sheet';
@@ -67,7 +69,7 @@ function gradeFormula(cell) {
  * @param {number} [opts.blankRows] rows to provide when no roster is given (template)
  */
 async function buildWorkbook({ header = {}, rows = [], blankRows = DEFAULT_BLANK_ROWS } = {}) {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (excel().Workbook)();
   wb.creator = 'NNSS Calabar';
   wb.created = new Date();
   const ws = wb.addWorksheet(SHEET_NAME, {
@@ -251,7 +253,7 @@ function assertSafeXlsx(buffer) {
 /** Returns { rows: [{ line, student_id, name, scores, problems }], warnings } */
 async function parseWorkbook(buffer) {
   assertSafeXlsx(buffer);
-  const wb = new ExcelJS.Workbook();
+  const wb = new (excel().Workbook)();
   await wb.xlsx.load(buffer);
   const ws = wb.getWorksheet(SHEET_NAME) || wb.worksheets[0];
   if (!ws) throw new Error('The workbook has no worksheet.');
