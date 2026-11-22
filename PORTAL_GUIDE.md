@@ -41,7 +41,7 @@ The Commandant portal is the school-wide oversight area. It is intended for the 
 
 ### Initial setup
 
-1. The system operator installs the application and imports the database schema. See [README.md](README.md#installation-at-a-glance).
+1. The system operator installs the application and imports the database schema. See [INSTALL.md](INSTALL.md), [SERVER.md](SERVER.md) or [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md).
 2. The first Commandant account is created from the server using `npm run seed:commandant`. This is a one-time bootstrap operation for the initial account, not a normal portal registration form.
 3. Sign in using the issued Commandant User ID and password.
 4. Ask the administrator to verify school reference data—classes, arms, departments, subjects, academic session, terms, and teacher assignments—before the school starts recording live results.
@@ -133,7 +133,7 @@ Use Account Management to create supported user roles:
 - **Student:** unique User ID, full name, initial password, class, arm (the track is set automatically) and the **parent or guardian's name and phone number**. All are required.
 - **Teacher:** unique User ID, full name, initial password, **phone number**, department, and **one or more subjects** (tick as many as the teacher takes). Then choose the classes: **all classes and arms that study the chosen subjects**, or **only specific classes** (pick subject + class + arm one by one). A subject can only be given to a class and arm that study it.
 - **HOD:** unique User ID, full name, initial password, phone number and the department.
-- **News team (editor):** unique User ID, full name, initial password and phone number. See [Blog and newsletter](#blog-and-newsletter-news-team).
+- **News team (editor):** unique User ID, full name, initial password and phone number. See [Blog and newsletter](#7-news-team-interface-blog-and-newsletter).
 - **Admin/Commandant:** creation of these management-level roles is restricted to the Commandant. A phone number is required.
 
 Every account needs a phone number so the HOD, Administrator and Commandant can reach staff, or a student's parent or guardian, when a student is absent, a teacher is away, or a result needs follow-up. Numbers appear as tap-to-call links in the Teachers and Students lists and on each profile.
@@ -385,7 +385,7 @@ The public **Blog** (`blog.html`) and **Newsletter** (`newsletter.html`) pages a
 
 ### A. Set up a news-team account (Commandant or Administrator, once per person)
 
-1. Make sure the database has been updated for this feature: a fresh install already has it; an existing database needs `database/006_news_team_requests_contacts.sql` run once (see the README, "Existing database and roster tools"), then restart the server.
+1. The database already supports this feature: `database/postgres/schema.sql` includes it, so nothing extra is needed.
 2. Sign in as the Commandant or an Administrator.
 3. Open **Account Management** and press **Create account**.
 4. Set **Role** to **News team (blog & newsletter)**.

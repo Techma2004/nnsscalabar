@@ -11,6 +11,8 @@ Do the steps in order. This is the setup that is live and working.
 
 Score-sheet scanning (OCR) stays **off** online. Everything else works.
 
+Prefer to run it at school instead? A PC: [INSTALL.md](INSTALL.md). Your own server: [SERVER.md](SERVER.md). Backups, updates and passwords: [OPERATIONS.md](OPERATIONS.md). Error lookup: [FAQ.md](FAQ.md). All settings: [CONFIGURATION.md](CONFIGURATION.md).
+
 ## 1. Supabase (database)
 
 1. supabase.com -> New project, name `nnss-calabar`. Region: under **Europe** pick **West Europe (London)**; Ireland (`eu-west-1`) also works. Supabase has no Africa region. Save the database password.
@@ -149,7 +151,7 @@ Remaining delay you cannot remove: the server is in Ireland and users are in Nig
 
 ## Running the same code on a school PC instead
 
-Install PostgreSQL, create a database, run `database/postgres/schema.sql`, and set `DATABASE_URL=postgres://nnss_user:password@127.0.0.1:5432/nnss_calabar`. Nothing else changes. Set `AI_SCORE_IMPORT_ENABLED=true` there to use OCR.
+Follow [INSTALL.md](INSTALL.md) (PC: Linux, macOS, Windows) or [SERVER.md](SERVER.md) (own server). In short: install PostgreSQL, create a database, run `database/postgres/schema.sql`, and set `DATABASE_URL=postgres://nnss_user:password@127.0.0.1:5432/nnss_calabar`. Nothing else changes. Set `AI_SCORE_IMPORT_ENABLED=true` there to use OCR.
 
 ## Before real data
 
