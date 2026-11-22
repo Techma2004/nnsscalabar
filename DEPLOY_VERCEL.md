@@ -99,6 +99,12 @@ S=$(node -e "console.log(require('crypto').randomBytes(32).toString('base64url')
 2. Log in as `ADM001`, then as `CMD001`. Change both passwords.
 3. Create a news post with an image (needs R2).
 
+### Link previews (WhatsApp, Facebook, X, Telegram)
+
+Every public page carries Open Graph and Twitter tags, so a shared link shows the crest image, title and description. The image is `frontend/og-image.jpg` (1200 x 630, keep it under 300 KB: WhatsApp ignores larger ones). The page URLs inside the tags are absolute (`https://nnsscalabar.dpdns.org/...`): change them if the domain changes.
+
+Apps remember the first preview they saw. After changing the image or text, refresh it: Facebook/Instagram at developers.facebook.com/tools/debug (Scrape Again); WhatsApp by sharing the link with a `?v=2` added; X by re-posting with `?v=2`.
+
 ## Optional: Vercel Web Analytics
 
 Enable **Analytics** in the Vercel project. The public pages already carry the plain-HTML tag `<script defer src="/_vercel/insights/script.js"></script>`; no npm package is needed (the `@vercel/analytics/next` import is for Next.js only).
