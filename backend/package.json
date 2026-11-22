@@ -15,6 +15,7 @@
     "@aws-sdk/client-s3": "^3.1174.0",
     "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^3.0.3",
+    "botid": "^1.5.13",
     "cors": "^2.8.5",
     "dotenv": "^18.0.10",
     "exceljs": "^4.4.0",
