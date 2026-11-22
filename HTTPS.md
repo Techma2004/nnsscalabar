@@ -2,7 +2,7 @@
 
 The portal speaks plain HTTP on `127.0.0.1:5000`. Anything that crosses a school network (passwords, session cookies, results) must be wrapped in TLS. The way to do that is a reverse proxy in front of Node. TLS is **opt-in**: LAN-HTTP development (`npm start`, `http://localhost:5000`) keeps working unchanged.
 
-Windows Server uses Caddy instead of nginx: follow [WINDOWS_SERVER.md](WINDOWS_SERVER.md) section 7. This page is the Linux/nginx route.
+Windows Server uses Caddy instead of nginx: follow [SERVER.md section 6](SERVER.md#6-https-and-the-reverse-proxy). This page covers the Linux/nginx route in more detail.
 
 > The nginx file and the commands here have **not been run on a live school server**. Test on a spare machine first.
 

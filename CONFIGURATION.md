@@ -1,10 +1,8 @@
-> **Updated for PostgreSQL.** The database and online (Vercel) sections of this page are current. Other guides (README, WINDOWS_*, FRESH_INSTALL, FAQ) still describe the old MySQL install and are being rewritten; for the online setup follow [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md).
-
 # Configuration reference
 
-Everything you can change about the NNSS Calabar portal, in one place. Settings live in a file called **`.env`** inside the `backend` folder. If you have not created it yet, the install guides show how: [Windows](WINDOWS_SETUP.md#6-configure-the-application-the-env-file) · [Linux, macOS and the rest](README.md#configure-the-application).
+Everything you can change about the NNSS Calabar portal, in one place. Settings live in a file called **`.env`** inside the `backend` folder. If you have not created it yet, the install guides show how: [PC install](INSTALL.md#6-configure-backendenv), [own server](SERVER.md#4-production-settings-backendenv), or [online with Vercel](DEPLOY_VERCEL.md#4-vercel) (Vercel uses its own *Environment Variables* screen instead of a file).
 
-Related: [Windows setup](WINDOWS_SETUP.md) · [FAQ](FAQ.md) · [Portal user guide](PORTAL_GUIDE.md) · [Security policy](SECURITY.md)
+Related: [Install on a PC](INSTALL.md) · [Own server](SERVER.md) · [Online (Vercel)](DEPLOY_VERCEL.md) · [Operations](OPERATIONS.md) · [FAQ](FAQ.md) · [Portal user guide](PORTAL_GUIDE.md) · [Security policy](SECURITY.md)
 
 ---
 
@@ -33,7 +31,7 @@ Related: [Windows setup](WINDOWS_SETUP.md) · [FAQ](FAQ.md) · [Portal user guid
 - **No spaces** around the `=` sign: `PORT=5000`, not `PORT = 5000`.
 - The portal reads the file **once, when it starts**. After you change it, **stop and start the portal** again.
 - The file is read from the folder you start the portal in. Always run `npm start` **from inside `backend`**.
-- Quote values that contain `#` or spaces, with **double quotes**: `DB_PASSWORD="pa#ss word"`. An unquoted `#` starts a comment and silently cuts the value off (`abc#def` is read as `abc`). This is the most common cause of a correct-looking password being rejected.
+- Quote values that contain `#` or spaces, with **double quotes**: `DATABASE_URL="postgres://user:pass%23word@127.0.0.1:5432/db"` (a `#` inside a URL must also be written `%23`). An unquoted `#` starts a comment and silently cuts the value off (`abc#def` is read as `abc`). This is the most common cause of a correct-looking password being rejected.
 - Never share your `.env` or commit it to Git. It holds your database password and signing secret. (It is already ignored by Git.)
 - The `◇ injected env (N) from .env` line you see when commands start is just information from the settings loader. It is not an error.
 
@@ -57,7 +55,7 @@ Everything else has a safe default for running on one computer.
 
 | | |
 |---|---|
-| Default | `development` (in `.env.example`) |
+| Default | `development` (in `.env.example`). On Vercel set `production`. |
 | Values | `development` or `production` |
 
 Set `production` when the portal is served over **HTTPS** to real users. It turns on the `Strict-Transport-Security` header and makes login cookies `secure` (HTTPS-only) unless you override that with [`COOKIE_SECURE`](#cookie_secure).
@@ -203,13 +201,13 @@ Good to know:
 
 ## Score-sheet scanner settings
 
-The **AI Scanner** (teachers photograph a paper score sheet) is optional and runs entirely on your own computer; nothing is sent to the internet. It needs Tesseract OCR and either `uv` or Python. See [Windows setup, section 9](WINDOWS_SETUP.md#9-optional-the-ai-score-sheet-scanner) for the install steps.
+The **AI Scanner** (teachers photograph a paper score sheet) is optional and runs entirely on your own computer; nothing is sent to the internet. It needs Tesseract OCR and either `uv` or Python. See [INSTALL.md section 9](INSTALL.md#9-optional-the-score-sheet-scanner-ocr) to install them. It does **not** work on Vercel.
 
 ### `AI_SCORE_IMPORT_ENABLED`
 
 | | |
 |---|---|
-| Default | `true` |
+| Default | `true` on a PC or server, `false` on Vercel |
 | Values | `true` or `false` |
 
 Set `false` to switch the scanner off completely. Teachers then use Score Sheet, Manual Entry or Excel import.
@@ -330,7 +328,7 @@ TRUST_PROXY_HOPS=1
 FRONTEND_ORIGIN=https://portal.<your-school-domain>
 ```
 
-(`COOKIE_SECURE` stays empty and becomes `true` automatically.)
+(Set `COOKIE_SECURE=true` explicitly so the intent is visible. Full steps: [SERVER.md](SERVER.md).)
 
 **4. Windows with the scanner, Tesseract in an unusual folder**
 
@@ -391,8 +389,10 @@ Run these from the **`backend`** folder.
 | `backend/.env.example` | The template you copy to make `.env` |
 | `frontend/` | The web pages, styles and scripts the browser downloads |
 | `frontend/uploads/` | Pictures uploaded by the news team. Created on first upload. **Back it up with the database.** Not in Git. |
-| `database/schema.sql` | The complete database for a fresh install |
-| `database/00N_*.sql` | Upgrade steps for **older existing** databases (already included in `schema.sql`) |
+| `database/postgres/schema.sql` | The complete database for a fresh install (local or Supabase) |
+| `database/legacy-mysql/` | Old MySQL files, kept for history. **Do not use.** |
+| `api/index.js`, `vercel.json`, root `package.json` | Vercel deployment |
+| `deploy/nginx/` | nginx HTTPS config for a Linux server |
 | `ocr_score_sheet.py`, `pyproject.toml` | The scanner program and its library list |
 | `score-sheet-template.xlsx` | The blank Excel score sheet |
 
@@ -401,7 +401,7 @@ Run these from the **`backend`** folder.
 | File | When to use it |
 |---|---|
 | `postgres/schema.sql` | **New installation (local or Supabase):** run this one file. Safe to run again. |
-| `schema.sql`, `002_*` … `008_*.sql` | **Legacy MySQL files. Do not use.** Kept for history only. |
+| `legacy-mysql/` | **Old MySQL files. Do not use.** Kept for history only. |
 | `import-rosters.js` | Optional: loads class lists from a roster JSON you pass with `--roster` (none is shipped) |
 
-Always **back up before** changing a live database: see [Windows setup, section 11](WINDOWS_SETUP.md#11-backups-and-restore) or `pg_dump` on Linux and macOS. On Supabase use its backups.
+Always **back up before** changing a live database: see [OPERATIONS.md](OPERATIONS.md#backups-and-restore).

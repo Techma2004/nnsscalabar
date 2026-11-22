@@ -39,7 +39,7 @@ Security behavior can change as the repository evolves. Review the current imple
 1. **Use HTTPS for real data.** Never serve real student/staff records over plain HTTP, including over private Wi-Fi/LAN. Configure HTTPS and set `COOKIE_SECURE=true`.
 2. **Use real secrets.** Set a unique random `JWT_SECRET` of at least 32 characters and a unique database password. The server rejects known placeholders, but operators must still protect valid secrets.
 3. **Keep secrets out of source control.** Never commit `backend/.env`, credentials, tokens, imported-credential files, database backups, or real school data. Rotate any secret that was exposed.
-4. **Use least privilege.** The app must connect with a dedicated MySQL/MariaDB user scoped to the application database, not the database root account. Restrict database network access.
+4. **Use least privilege.** The app must connect with a dedicated PostgreSQL user that owns only the application database (never the `postgres` superuser). PostgreSQL must listen on `127.0.0.1` only unless remote access is deliberate and firewalled. Restrict database network access.
 5. **Bind conservatively.** Keep `HOST=127.0.0.1` for local-only use. Use `0.0.0.0` only when LAN access is intentional and firewall rules are restricted to trusted networks.
 6. **Configure reverse proxies carefully.** Keep `TRUST_PROXY_HOPS=0` for direct access. Behind a trusted proxy, set the exact verified hop count (0–10); never use unrestricted proxy trust. The proxy must overwrite untrusted forwarded headers.
 7. **Back up and test restoration.** Back up the database before migrations or imports, protect backup files, and periodically test restoring to a controlled environment.
@@ -51,10 +51,10 @@ Security behavior can change as the repository evolves. Review the current imple
 
 ### Windows Server production
 
-When deploying on Windows Server (full steps in [WINDOWS_SERVER.md](WINDOWS_SERVER.md), which has not yet been validated on a live server):
+When deploying on Windows Server (full steps in [SERVER.md](SERVER.md), which has not yet been validated on a live server):
 
 - Run the portal as a service under a **dedicated, non-administrator service account** with least-privilege ACLs: Modify only on `frontend\uploads` and the log folder, Read on `backend\.env`.
-- Expose **only 443 and 80**; never 5000 or 3306. Keep `HOST=127.0.0.1` so only the reverse proxy reaches Node.
+- Expose **only 443 and 80**; never 5000 or 5432. Keep `HOST=127.0.0.1` so only the reverse proxy reaches Node.
 - Serve over **HTTPS** with `COOKIE_SECURE=true` (automatic with `NODE_ENV=production`) and set `TRUST_PROXY_HOPS` to the verified hop count (normally `1`).
 - Run **a single instance**: the in-memory rate limiter is not shared between instances.
 - Back up nightly to a different drive or machine, treat backups as confidential student data, and **test a restore**.
